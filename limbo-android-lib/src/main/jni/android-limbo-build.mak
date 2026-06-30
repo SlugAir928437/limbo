@@ -75,7 +75,7 @@ endif
 # Since we need ndk 11 and above we need to fix some missing calls
 USE_NDK11 = -D__NDK11_FUNC_MISSING__
 
-TOOLCHAIN_DIR = $(NDK_ROOT)/toolchains/$(EABI)/prebuilt/$(NDK_ENV)
+TOOLCHAIN_DIR = $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_ENV)
 TOOLCHAIN_CLANG_DIR = $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_ENV)
 
 TOOLCHAIN_PREFIX := $(TOOLCHAIN_DIR)/bin/$(HOST_PREFIX)-
@@ -155,7 +155,6 @@ SYSTEM_INCLUDE = \
     -I$(INCLUDE_FIXED) \
     $(SYS_ROOT) \
     -I$(LIMBO_JNI_ROOT)/qemu/linux-headers \
-    -I$(TOOLCHAIN_DIR_INC)/$(EABI)/include \
     -I$(NDK_INCLUDE) \
     $(NDK_SYSROOT_INC) \
     $(NDK_SYSROOT_ARCH_INC) \

@@ -155,6 +155,7 @@ SYSTEM_INCLUDE = \
     -I$(INCLUDE_FIXED) \
     $(SYS_ROOT) \
     -I$(LIMBO_JNI_ROOT)/qemu/linux-headers \
+    -I$(TOOLCHAIN_CLANG_DIR)/include \
     -I$(NDK_INCLUDE) \
     $(NDK_SYSROOT_INC) \
     $(NDK_SYSROOT_ARCH_INC) \

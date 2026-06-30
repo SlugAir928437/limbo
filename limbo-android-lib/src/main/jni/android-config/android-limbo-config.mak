@@ -10,7 +10,7 @@ NDK_ROOT ?= /home/dev/tools/ndk/android-ndk-r23b
 USE_GCC?=false
 
 ### the ndk api should be the same as the minSdkVersion in your AndroidManifest.xml 
-NDK_PLATFORM_API=21
+NDK_PLATFORM_API=24
 
 # Set to true if you use platform-21 or above
 USE_NDK_PLATFORM21 ?= true

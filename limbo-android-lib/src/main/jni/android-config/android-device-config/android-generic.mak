@@ -16,7 +16,7 @@ endif
 ifneq ($(NDK_TOOLCHAIN_VERSION),clang)
     ARCH_CFLAGS += -std=gnu99
 else
-    ARCH_LD_CLANG_FLAGS += -Wc,-shared
+    # ARCH_LD_CLANG_FLAGS += -Wc,-shared
 endif
 
 ARCH_CFLAGS += -Wno-macro-redefined

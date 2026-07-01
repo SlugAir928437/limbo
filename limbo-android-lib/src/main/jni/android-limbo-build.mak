@@ -91,7 +91,9 @@ ifeq ($(NDK_TOOLCHAIN_VERSION),clang)
     NDK_SYSROOT_INC=-I$(NDK_ROOT)/sysroot/usr/include
     ##### CLANG binaries
     CC=$(TOOLCHAIN_CLANG_PREFIX)/clang
+	CPP=$(TOOLCHAIN_CLANG_PREFIX)/clang -E
     CXX=$(TOOLCHAIN_CLANG_PREFIX)/clang++
+    CXXCPP=$(TOOLCHAIN_CLANG_PREFIX)/clang++ -E
     AR=$(TOOLCHAIN_CLANG_PREFIX)/llvm-ar
     AS=$(TOOLCHAIN_CLANG_PREFIX)/llvm-as
     LNK=$(TOOLCHAIN_CLANG_PREFIX)/clang
@@ -121,11 +123,11 @@ endif
 
 SYS_ROOT = --sysroot=$(SYSROOT)
 
-NDK_INCLUDE = $(NDK_ROOT)/$(NDK_PLATFORM)/arch-$(TARGET_ARCH)/usr/include
+NDK_INCLUDE = $(SYSROOT)/usr/include
 
 # INCLUDE_FIXED contains overrides for include files found under the toolchain's /usr/include.
 # Currently we don't use, left here as a placeholder.
-INCLUDE_FIXED = $(LIMBO_JNI_ROOT)/include-fixed
+# INCLUDE_FIXED = $(LIMBO_JNI_ROOT)/include-fixed
 
 # The logutils header is injected into all compiled files in order to redirect
 # output to the Android console, and provide debugging macros.
@@ -152,20 +154,21 @@ COMPATANDROID = $(LIMBO_JNI_ROOT)/compat/limbo_compat.h
 #CXX=$(TOOLCHAIN_PREFIX)g++
 
 SYSTEM_INCLUDE = \
-    -I$(INCLUDE_FIXED) \
     $(SYS_ROOT) \
-    -I$(LIMBO_JNI_ROOT)/qemu/linux-headers \
     -I$(TOOLCHAIN_CLANG_DIR)/include \
     -I$(NDK_INCLUDE) \
-    $(NDK_SYSROOT_INC) \
-    $(NDK_SYSROOT_ARCH_INC) \
-    $(STL_INCLUDE) \
     -include $(LOGUTILS) \
     -include $(COMPATUTILS_FD) \
     -include $(COMPATUTILS_QEMU) \
     -include $(COMPATMACROS) \
     -include $(COMPATANDROID)
 
+#    -I$(LIMBO_JNI_ROOT)/qemu/linux-headers \
+    -I$(INCLUDE_FIXED) \
+    $(NDK_SYSROOT_INC) \
+    $(NDK_SYSROOT_ARCH_INC) \
+    $(STL_INCLUDE) \
+	
 #info
 $(info VARIABLES)
 $(info PATH = $(PATH))

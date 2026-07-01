@@ -107,7 +107,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs clean-ffi clean-glib clean-qemu clean-pixman
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman
 
 default: limbo
 	
@@ -115,6 +115,9 @@ createdirs:
 	$(CREATE_OBJDIR)
 	$(DEL_LIBSDIR)
 	$(CREATE_LIBSDIR)
+
+pkg-config-link:
+	$(CREATE_PKG_CONFIG_LINK)
 
 ndk:
 	$(ndkbuild)
@@ -127,28 +130,26 @@ clean-ffi:
 	-cd $(LIMBO_JNI_ROOT)/libffi && $(MAKE) distclean
 	-cd $(LIMBO_JNI_ROOT)/libffi && $(MAKE) clean
 
-config-ffi:
+config-ffi: pkg-config-link
 	cd $(LIMBO_JNI_ROOT)/libffi && ./configure --host=$(GNU_HOST) $(LIBFFI_DEBUG) --enable-static --disable-shared \
-	CFLAGS="$(ARCH_CFLAGS) -I$(NDK_INCLUDE) --sysroot=$(NDK_SYSROOT) $(NDK_SYSROOT_ARCH_INC) " \
+	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) " \
 	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) -nostdlib -fno-unwind-tables "
 
 ffi:
 	cd $(LIMBO_JNI_ROOT)/libffi && $(MAKE) -j $(BUILD_THREADS) \
-	CFLAGS="$(ARCH_CFLAGS) -I$(NDK_INCLUDE) --sysroot=$(NDK_SYSROOT) $(NDK_SYSROOT_ARCH_INC) " \
+	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) " \
 	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) -nostdlib -fno-unwind-tables "
 	$(INSTALL_FFI_LIBS)
 
-config-glib: ndk
+config-glib: ndk pkg-config-link
 	cd $(LIMBO_JNI_ROOT)/glib && NOCONFIGURE=1 ./autogen.sh
 	cd $(LIMBO_JNI_ROOT)/glib && cp -rf $(LIMBO_JNI_ROOT)/patches/android.cache . \
 	&& chmod a-w android.cache && ./configure --host=$(GNU_HOST) --cache-file=android.cache \
 	--disable-libmount  --disable-dtrace  --disable-systemtap --with-pcre=internal \
 	--with-libiconv=no \
 	--with-sysroot=$(SYSROOT) $(LIBGLIB_DEBUG) \
-	CFLAGS="$(ARCH_CFLAGS) -I$(NDK_INCLUDE) \
-	$(NDK_SYSROOT_INC) \
-	$(NDK_SYSROOT_ARCH_INC) \
-	-I${SYSROOT}/usr/include $(SYS_ROOT) \
+	PKG_CONFIG="$(PKG_CONFIG)" \
+	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) \
 	-I${LIMBO_JNI_ROOT}/compat \
 	-I${LIMBO_JNI_ROOT}/compat/musl -I${LIMBO_JNI_ROOT}/compat/musl/include " \
 	LDFLAGS=" $(ARCH_LD_CLANG_FLAGS) $(ARCH_LD_FLAGS) $(SYS_ROOT) \
@@ -158,14 +159,11 @@ config-glib: ndk
 
 glib: ndk
 	cd $(LIMBO_JNI_ROOT)/glib/glib && $(MAKE) -j $(BUILD_THREADS) CFLAGS="$(ARCH_CFLAGS) \
-	$(NDK_SYSROOT_INC) \
-	$(NDK_SYSROOT_ARCH_INC) \
-	-I$(NDK_INCLUDE)  -I${SYSROOT}/usr/include $(SYS_ROOT) \
-	-I${NDK_ROOT}/sources/android/support/include -I${LIMBO_JNI_ROOT}/compat \
+	$(SYS_ROOT) \
+	-I${LIMBO_JNI_ROOT}/compat \
 	-include ${LIMBO_JNI_ROOT}/compat/musl/compat_iconv.h -I${LIMBO_JNI_ROOT}/compat/musl -I${LIMBO_JNI_ROOT}/compat/musl/include " \
 	LDFLAGS=" $(ARCH_LD_CLANG_FLAGS) $(ARCH_LD_FLAGS) $(SYS_ROOT) -L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) \
-	-lc -lcompat-musl -llog -lcompat-limbo " \
-	-lunwind \
+	-lc -lcompat-musl -llog -lcompat-limbo -lunwind " \
 	LIBFFI_CFLAGS="-I${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/include " \
 	LIBFFI_LIBS="${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/.libs/libffi.a "
 	$(INSTALL_GLIB_LIBS)
@@ -177,15 +175,13 @@ clean-glib:
 	-rm -rf $(LIMBO_JNI_ROOT)/glib/android.cache
 
 
-config-pixman: ndk
+config-pixman: ndk pkg-config-link
 	cd $(LIMBO_JNI_ROOT)/pixman && ./configure --host=$(GNU_HOST) --with-sysroot=$(SYSROOT) \
 	--disable-libtool-lock \
 	$(PIXMAN_DISABLE_OPTIONS) \
 	$(LIBPIXMAN_DEBUG) \
-	CFLAGS="$(ARCH_CFLAGS) -I$(NDK_INCLUDE) \
-	$(NDK_SYSROOT_INC) \
-	$(NDK_SYSROOT_ARCH_INC) \
-	-I${SYSROOT}/usr/include $(SYS_ROOT) -I${NDK_ROOT}/sources/android/support/include \
+	PKG_CONFIG="$(PKG_CONFIG)" \
+	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) \
 	-I${NDK_ROOT}/sources/android/cpufeatures -I${LIMBO_JNI_ROOT}/compat " \
 	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) \
 	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -llog \
@@ -193,10 +189,7 @@ config-pixman: ndk
 
 pixman: ndk
 	cd $(LIMBO_JNI_ROOT)/pixman/pixman && $(MAKE) -j $(BUILD_THREADS) \
-	CFLAGS="$(ARCH_CFLAGS) -I$(NDK_INCLUDE)  -I${SYSROOT}/usr/include \
-	$(SYS_ROOT) -I${NDK_ROOT}/sources/android/support/include \
-	$(NDK_SYSROOT_INC) \
-	$(NDK_SYSROOT_ARCH_INC) \
+	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) \
 	-I${NDK_ROOT}/sources/android/cpufeatures -I${LIMBO_JNI_ROOT}/compat " \
 	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) \
 	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -llog \
@@ -211,7 +204,7 @@ clean-pixman:
 _qemu: ndk
 	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST) CFLAGS="$(ARCH_CFLAGS)"
 
-config-qemu: ndk
+config-qemu: ndk pkg-config-link
 	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak
 
 clean-qemu:

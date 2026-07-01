@@ -5,12 +5,11 @@ ARCH_CFLAGS += -D__ANDROID_API__=$(NDK_PLATFORM_API)
 
 #CLANG ONLY
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)
-    TARGET_PREFIX = armv7-none-linux-androideabi
+    TARGET_PREFIX = armv7a-linux-androideabi
     ARCH_CLANG_FLAGS += -target $(TARGET_PREFIX)$(NDK_PLATFORM_API)
     ARCH_CFLAGS += $(ARCH_CLANG_FLAGS) -D__ANDROID_API__=$(NDK_PLATFORM_API)
     # ARCH_CFLAGS += -fno-integrated-as
-    ARCH_LD_FLAGS += -Wc,-target -Wc,armv7-none-linux-androideabi$(NDK_PLATFORM_API)
-    ARCH_LD_FLAGS += -Wc,$(TOOLCHAIN_DIR)
+    ARCH_LD_FLAGS += -target $(TARGET_PREFIX)$(NDK_PLATFORM_API)
 endif
 
 #LINKER SPECIFIC
@@ -31,7 +30,6 @@ ARCH_CFLAGS += -mfloat-abi=softfp
 
 # Tuning (Optional)
 #ARCH_CFLAGS += -mtune=arm7
-
 
 
 

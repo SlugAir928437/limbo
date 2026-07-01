@@ -38,10 +38,12 @@ config:
     echo NDK ROOT: $(NDK_ROOT)
     echo NDK PLATFORM: $(NDK_PLATFORM)
     echo USR INCLUDE: $(NDK_INCLUDE)
+    echo PKG CONFIG: $(PKG_CONFIG)
     cd ./qemu ; \
     ./configure \
     --cc=$(CC) \
     --cxx=$(CXX) \
+    --pkg-config=$(PKG_CONFIG) \
     --target-list=$(QEMU_TARGET_LIST) \
     --cpu=$(QEMU_HOST_CPU) \
     $(PIXMAN) \

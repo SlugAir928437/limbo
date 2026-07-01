@@ -3,8 +3,11 @@
 LIMBO_JNI_ROOT:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 include $(LIMBO_JNI_ROOT)/android-config/android-limbo-config.mak
 
-# prepend the NDK_ROOT in the path so the ndk-build is the correct one
-PATH  := $(NDK_ROOT):$(PATH)
+# prepend the NDK_ROOT and LLVM toolchain in the path so ndk-build/clang/pkg-config are the correct ones
+TOOLCHAIN_DIR = $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_ENV)
+TOOLCHAIN_CLANG_DIR = $(TOOLCHAIN_DIR)
+TOOLCHAIN_CLANG_PREFIX := $(TOOLCHAIN_CLANG_DIR)/bin
+PATH  := $(TOOLCHAIN_CLANG_PREFIX):$(NDK_ROOT):$(PATH)
 SHELL := env PATH=$(PATH) /bin/bash
 
 #PLATFORM CONFIG
@@ -75,12 +78,8 @@ endif
 # Since we need ndk 11 and above we need to fix some missing calls
 USE_NDK11 = -D__NDK11_FUNC_MISSING__
 
-TOOLCHAIN_DIR = $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_ENV)
-TOOLCHAIN_CLANG_DIR = $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_ENV)
-
 TOOLCHAIN_PREFIX := $(TOOLCHAIN_DIR)/bin/$(HOST_PREFIX)-
 NDK_PROJECT_PATH := $(LIMBO_JNI_ROOT)/..
-TOOLCHAIN_CLANG_PREFIX := $(TOOLCHAIN_CLANG_DIR)/bin
 
 ifneq ($(NDK_TOOLCHAIN_VERSION),clang)
     NDK_SYSROOT_ARCH_INC=-I$(NDK_ROOT)/sysroot/usr/include/$(HOST_PREFIX)
@@ -88,7 +87,8 @@ ifneq ($(NDK_TOOLCHAIN_VERSION),clang)
 endif
 
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)
-    NDK_SYSROOT_INC=-I$(NDK_ROOT)/sysroot/usr/include
+    NDK_SYSROOT=$(TOOLCHAIN_CLANG_DIR)/sysroot
+    NDK_SYSROOT_INC=-I$(NDK_SYSROOT)/usr/include
     ##### CLANG binaries
     CC=$(TOOLCHAIN_CLANG_PREFIX)/clang
 	CPP=$(TOOLCHAIN_CLANG_PREFIX)/clang -E
@@ -113,6 +113,20 @@ else
     OBJ_COPY=$(TOOLCHAIN_PREFIX)objcopy
     STRIP=$(TOOLCHAIN_PREFIX)strip
 endif
+
+PKG_CONFIG_HOST := $(TARGET_PREFIX)$(NDK_PLATFORM_API)
+PKG_CONFIG_LINK := $(TOOLCHAIN_CLANG_PREFIX)/$(PKG_CONFIG_HOST)-pkg-config
+PKG_CONFIG ?= $(PKG_CONFIG_LINK)
+
+CREATE_PKG_CONFIG_LINK = \
+	if [ ! -x "$(PKG_CONFIG_LINK)" ]; then \
+		PKG_CONFIG_BIN=$$(command -v pkg-config); \
+		if [ -z "$$PKG_CONFIG_BIN" ]; then \
+			echo "pkg-config not found in PATH"; \
+			exit 1; \
+		fi; \
+		ln -sf "$$PKG_CONFIG_BIN" "$(PKG_CONFIG_LINK)"; \
+	fi
 
 AR_FLAGS = crs
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)
@@ -155,7 +169,6 @@ COMPATANDROID = $(LIMBO_JNI_ROOT)/compat/limbo_compat.h
 
 SYSTEM_INCLUDE = \
     $(SYS_ROOT) \
-    -I$(TOOLCHAIN_CLANG_DIR)/include \
     -I$(NDK_INCLUDE) \
     -include $(LOGUTILS) \
     -include $(COMPATUTILS_FD) \

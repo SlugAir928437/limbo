@@ -35,7 +35,7 @@ NDK_ENV ?= linux-x86_64
 #NDK_ENV ?= darwin-x86
 
 # Build threads (make -j ?) makes building faster
-BUILD_THREADS ?= 3
+BUILD_THREADS ?= 8
 
 ############## QEMU Host and Guest
 

@@ -188,8 +188,8 @@ CREATE_GLIB_MESON_CROSS_FILE = \
 		'have_unix98_printf = true' \
 		'va_val_copy = true' \
 		'growing_stack = false' \
-		"c_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-Wno-missing-prototypes', '-Wno-missing-include-dirs', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
-		"cpp_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
+		"c_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-Wno-error=missing-prototypes', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
+		"cpp_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-Wno-error=missing-prototypes', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
 		"c_link_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-L$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)', '-lcompat-musl', '-llog', '-lunwind']" \
 		"cpp_link_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-L$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)', '-lcompat-musl', '-llog', '-lunwind']" \
 		> "$(GLIB_CROSS_FILE)"

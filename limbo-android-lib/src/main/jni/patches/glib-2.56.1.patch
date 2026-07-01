@@ -14,3 +14,19 @@ diff -ru --no-dereference ../glib-2.56.1/configure.ac ./configure.ac
              [AC_MSG_RESULT(no)])
          dnl Sets thread names on OS X 10.6, iOS 3.2 (and higher)
          AC_MSG_CHECKING(for pthread_setname_np(const char*))
+
+diff -ru --no-dereference ../glib-2.56.1/glib/libcharset/Makefile.am ./glib/libcharset/Makefile.am
+--- ../glib-2.56.1/glib/libcharset/Makefile.am	2018-04-07 05:35:35.000000000 +0300
++++ ./glib/libcharset/Makefile.am	2026-07-01 12:00:00.000000000 +0800
+@@ -18,8 +18,8 @@
+ libcharset_la_LDFLAGS = \
+ 	$(glib_LDFLAGS)
+ 
+-noinst_PROGRAMS = gtester
+-gtester_SOURCES = gtester.c
+-gtester_LDADD = ../libglib-2.0.la
++#noinst_PROGRAMS = gtester
++#gtester_SOURCES = gtester.c
++#gtester_LDADD = ../libglib-2.0.la
+ 
+ EXTRA_DIST = config.charset ref-add.sin ref-del.sin

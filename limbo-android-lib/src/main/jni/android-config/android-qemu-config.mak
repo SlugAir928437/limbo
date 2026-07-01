@@ -75,7 +75,6 @@ config:
     $(SYSTEM_INCLUDE) \
     -I$(LIMBO_JNI_ROOT)/compat \
     -I$(LIMBO_JNI_ROOT)/qemu/dtc/libfdt \
-    -I$(LIMBO_JNI_ROOT)/png -I$(LIMBO_JNI_ROOT)/jpeg \
     -D__LIMBO_SDL_FORCE_HARDWARE_RENDERING__ \
     $(ENV_EXTRA) \
     -Wno-redundant-decls -Wno-unused-variable \

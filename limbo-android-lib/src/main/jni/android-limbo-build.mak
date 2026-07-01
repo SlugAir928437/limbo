@@ -162,12 +162,6 @@ SYSTEM_INCLUDE = \
     -include $(COMPATUTILS_QEMU) \
     -include $(COMPATMACROS) \
     -include $(COMPATANDROID)
-
-#    -I$(LIMBO_JNI_ROOT)/qemu/linux-headers \
-    -I$(INCLUDE_FIXED) \
-    $(NDK_SYSROOT_INC) \
-    $(NDK_SYSROOT_ARCH_INC) \
-    $(STL_INCLUDE) \
 	
 #info
 $(info VARIABLES)

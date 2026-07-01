@@ -142,7 +142,6 @@ config-glib: ndk
 	cd $(LIMBO_JNI_ROOT)/glib && NOCONFIGURE=1 ./autogen.sh
 	cd $(LIMBO_JNI_ROOT)/glib && cp -rf $(LIMBO_JNI_ROOT)/patches/android.cache . \
 	&& chmod a-w android.cache && ./configure --host=$(GNU_HOST) --cache-file=android.cache \
-	--enable-shared \
 	--disable-libmount  --disable-dtrace  --disable-systemtap --with-pcre=internal \
 	--with-libiconv=no \
 	--with-sysroot=$(SYSROOT) $(LIBGLIB_DEBUG) \
@@ -155,10 +154,7 @@ config-glib: ndk
 	LDFLAGS=" $(ARCH_LD_CLANG_FLAGS) $(ARCH_LD_FLAGS) $(SYS_ROOT) \
 	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -lcompat-musl -llog -lcompat-limbo " \
 	LIBFFI_CFLAGS="-I${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/include " \
-	LIBFFI_LIBS="${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI)/libffi.a" \
-	&& sed -i 's/^noinst_PROGRAMS = gtester$$/noinst_PROGRAMS =/' glib/libcharset/Makefile \
-	&& sed -i 's/^am__EXEEXT_3 = gtester.*$$/am__EXEEXT_3 =/' glib/Makefile \
-	&& sed -i 's/^am__append_25 = gtester.*$$/am__append_25 =/' glib/Makefile
+	LIBFFI_LIBS="${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI)/libffi.a"
 
 glib: ndk
 	cd $(LIMBO_JNI_ROOT)/glib/glib && $(MAKE) -j $(BUILD_THREADS) CFLAGS="$(ARCH_CFLAGS) \

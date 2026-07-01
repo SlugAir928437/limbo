@@ -166,6 +166,9 @@ CREATE_LIBFFI_PC = \
 		'Cflags: -I$${includedir}' \
 		> "$(LIBFFI_PC_FILE)"
 
+FIX_GLIB_MESON_SIZE_T_CHECK = \
+	sed -i 's/size_t f (size_t \*i)/static size_t f (size_t \*i)/g' "$(LIMBO_JNI_ROOT)/glib/meson.build"
+
 CREATE_GLIB_MESON_CROSS_FILE = \
 	printf '%s\n' \
 		'[binaries]' \

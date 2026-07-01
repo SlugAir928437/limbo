@@ -145,6 +145,7 @@ ffi:
 
 config-glib: ndk ffi pkg-config-link
 	$(CREATE_GLIB_MESON_CROSS_FILE)
+	$(FIX_GLIB_MESON_SIZE_T_CHECK)
 	cd $(LIMBO_JNI_ROOT)/glib && rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)"
 	cd $(LIMBO_JNI_ROOT)/glib && PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" meson setup "$(GLIB_BUILD_DIR)" . \
 	--cross-file "$(GLIB_CROSS_FILE)" \

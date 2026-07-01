@@ -135,6 +135,7 @@ PKG_CONFIG ?= $(PKG_CONFIG_LINK)
 GLIB_BUILD_DIR := $(LIMBO_JNI_ROOT)/glib/build-android-$(APP_ABI)
 GLIB_INSTALL_DIR := $(LIMBO_JNI_ROOT)/glib/android-install/$(APP_ABI)
 GLIB_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-android-$(APP_ABI).ini
+GLIB_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-glib-android-cross.ini.in
 GLIB_PKG_CONFIG_DIR := $(GLIB_INSTALL_DIR)/lib/pkgconfig
 LIBFFI_PKG_CONFIG_DIR := $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig
 LIBFFI_PC_FILE := $(LIBFFI_PKG_CONFIG_DIR)/libffi.pc
@@ -167,32 +168,23 @@ CREATE_LIBFFI_PC = \
 		> "$(LIBFFI_PC_FILE)"
 
 CREATE_GLIB_MESON_CROSS_FILE = \
-	printf '%s\n' \
-		'[binaries]' \
-		"c = '$(CC)'" \
-		"cpp = '$(CXX)'" \
-		"ar = '$(AR)'" \
-		"strip = '$(STRIP)'" \
-		"pkgconfig = '$(PKG_CONFIG)'" \
-		'' \
-		'[host_machine]' \
-		"system = 'android'" \
-		"cpu_family = '$(MESON_CPU_FAMILY)'" \
-		"cpu = '$(MESON_CPU)'" \
-		"endian = 'little'" \
-		'' \
-		'[properties]' \
-		'needs_exe_wrapper = true' \
-		'have_c99_vsnprintf = true' \
-		'have_c99_snprintf = true' \
-		'have_unix98_printf = true' \
-		'va_val_copy = true' \
-		'growing_stack = false' \
-		"c_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-Wno-error=missing-prototypes', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
-		"cpp_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-Wno-error=missing-prototypes', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
-		"c_link_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-L$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)', '-lcompat-musl', '-llog', '-lunwind']" \
-		"cpp_link_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-L$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)', '-lcompat-musl', '-llog', '-lunwind']" \
-		> "$(GLIB_CROSS_FILE)"
+	sed \
+		-e 's#@CC@#$(CC)#g' \
+		-e 's#@CXX@#$(CXX)#g' \
+		-e 's#@AR@#$(AR)#g' \
+		-e 's#@STRIP@#$(STRIP)#g' \
+		-e 's#@PKG_CONFIG@#$(PKG_CONFIG)#g' \
+		-e 's#@MESON_CPU_FAMILY@#$(MESON_CPU_FAMILY)#g' \
+		-e 's#@MESON_CPU@#$(MESON_CPU)#g' \
+		-e 's#@GLIB_INSTALL_DIR@#$(GLIB_INSTALL_DIR)#g' \
+		-e 's#@LIBGLIB_BUILDTYPE@#$(LIBGLIB_BUILDTYPE)#g' \
+		-e 's#@TARGET_TRIPLE@#$(TARGET_PREFIX)$(NDK_PLATFORM_API)#g' \
+		-e 's#@SYSROOT@#$(SYSROOT)#g' \
+		-e 's#@ANDROID_API@#$(NDK_PLATFORM_API)#g' \
+		-e 's#@LIMBO_JNI_ROOT@#$(LIMBO_JNI_ROOT)#g' \
+		-e 's#@NDK_PROJECT_PATH@#$(NDK_PROJECT_PATH)#g' \
+		-e 's#@APP_ABI@#$(APP_ABI)#g' \
+		"$(GLIB_CROSS_FILE_TEMPLATE)" > "$(GLIB_CROSS_FILE)"
 
 AR_FLAGS = crs
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)

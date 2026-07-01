@@ -146,28 +146,8 @@ ffi:
 config-glib: ndk ffi pkg-config-link
 	$(CREATE_GLIB_MESON_CROSS_FILE)
 	cd $(LIMBO_JNI_ROOT)/glib && rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)"
-	cd $(LIMBO_JNI_ROOT)/glib && sed -i.bak "s/'-Werror=missing-prototypes'/'-Wno-error=missing-prototypes'/g" meson.build
 	cd $(LIMBO_JNI_ROOT)/glib && PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" meson setup "$(GLIB_BUILD_DIR)" . \
-	--cross-file "$(GLIB_CROSS_FILE)" \
-	--prefix="$(GLIB_INSTALL_DIR)" \
-	--libdir=lib \
-	--buildtype=$(LIBGLIB_BUILDTYPE) \
-	-Ddefault_library=shared \
-	-Dinternal_pcre=true \
-	-Diconv=external \
-	-Dforce_posix_threads=true \
-	-Dlibmount=disabled \
-	-Dselinux=disabled \
-	-Dxattr=false \
-	-Ddtrace=false \
-	-Dsystemtap=false \
-	-Dman=false \
-	-Dgtk_doc=false \
-	-Dinstalled_tests=false \
-	-Dnls=disabled \
-	-Dbsymbolic_functions=false \
-	-Dglib_assert=false \
-	-Dglib_checks=false
+	--cross-file "$(GLIB_CROSS_FILE)"
 
 glib: ndk
 	ninja -C "$(GLIB_BUILD_DIR)" -j $(BUILD_THREADS)

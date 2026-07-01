@@ -52,6 +52,9 @@ BUILD_GUEST?=x86_64-softmmu
 # values: 2.9.1, 5.1.0, 6.2.0
 USE_QEMU_VERSION ?= 6.2.0
 
+# GLib 2.66.x is new enough for QEMU 6.2.0 and uses Meson reliably.
+GLIB_VERSION ?= 2.66.8
+
 # If you want to use SDL interface
 USE_SDL ?= true
 

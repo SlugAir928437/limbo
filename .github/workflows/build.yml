@@ -51,12 +51,12 @@ jobs:
           cd ..
           
           ##### GET glib
-          wget --quiet https://ftp.gnome.org/pub/GNOME/sources/glib/2.56/glib-2.56.1.tar.xz -P /tmp/
-          tar -xJf /tmp/glib-2.56.1.tar.xz
-          mv glib-2.56.1 glib
+          wget --quiet https://download.gnome.org/sources/glib/2.66/glib-2.66.8.tar.xz -P /tmp/
+          tar -xJf /tmp/glib-2.66.8.tar.xz
+          mv glib-2.66.8 glib
           
           cd glib
-          patch -p1 < ../patches/glib-2.56.1.patch
+          patch -p1 < ../patches/glib-2.66.8.patch
           cd ..
           
           ##### GET libffi

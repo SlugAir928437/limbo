@@ -74,6 +74,20 @@ else ifeq ($(APP_ABI),x86_64)
     APP_ABI_DIR=$(APP_ABI)
 endif
 
+ifeq ($(APP_ABI),armeabi-v7a)
+    MESON_CPU_FAMILY = arm
+    MESON_CPU = armv7
+else ifeq ($(APP_ABI),arm64-v8a)
+    MESON_CPU_FAMILY = aarch64
+    MESON_CPU = aarch64
+else ifeq ($(APP_ABI),x86)
+    MESON_CPU_FAMILY = x86
+    MESON_CPU = i686
+else ifeq ($(APP_ABI),x86_64)
+    MESON_CPU_FAMILY = x86_64
+    MESON_CPU = x86_64
+endif
+
 
 # Since we need ndk 11 and above we need to fix some missing calls
 USE_NDK11 = -D__NDK11_FUNC_MISSING__
@@ -118,6 +132,14 @@ PKG_CONFIG_HOST := $(TARGET_PREFIX)$(NDK_PLATFORM_API)
 PKG_CONFIG_LINK := $(TOOLCHAIN_CLANG_PREFIX)/$(PKG_CONFIG_HOST)-pkg-config
 PKG_CONFIG ?= $(PKG_CONFIG_LINK)
 
+GLIB_BUILD_DIR := $(LIMBO_JNI_ROOT)/glib/build-android-$(APP_ABI)
+GLIB_INSTALL_DIR := $(LIMBO_JNI_ROOT)/glib/android-install/$(APP_ABI)
+GLIB_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-android-$(APP_ABI).ini
+GLIB_PKG_CONFIG_DIR := $(GLIB_INSTALL_DIR)/lib/pkgconfig
+LIBFFI_PKG_CONFIG_DIR := $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig
+LIBFFI_PC_FILE := $(LIBFFI_PKG_CONFIG_DIR)/libffi.pc
+PKG_CONFIG_PATH := $(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR):$(PKG_CONFIG_PATH)
+
 CREATE_PKG_CONFIG_LINK = \
 	if [ ! -x "$(PKG_CONFIG_LINK)" ]; then \
 		PKG_CONFIG_BIN=$$(command -v pkg-config); \
@@ -127,6 +149,50 @@ CREATE_PKG_CONFIG_LINK = \
 		fi; \
 		ln -sf "$$PKG_CONFIG_BIN" "$(PKG_CONFIG_LINK)"; \
 	fi
+
+CREATE_LIBFFI_PC = \
+	mkdir -p "$(LIBFFI_PKG_CONFIG_DIR)" && \
+	printf '%s\n' \
+		'prefix=$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)' \
+		'exec_prefix=$${prefix}' \
+		'libdir=$${prefix}' \
+		'includedir=$(LIMBO_JNI_ROOT)/libffi/$(GNU_HOST)/include' \
+		'' \
+		'Name: libffi' \
+		'Description: Foreign Function Interface library' \
+		'Version: 3.4.2' \
+		'Libs: -L$${libdir} -lffi' \
+		'Libs.private: -llog' \
+		'Cflags: -I$${includedir}' \
+		> "$(LIBFFI_PC_FILE)"
+
+CREATE_GLIB_MESON_CROSS_FILE = \
+	printf '%s\n' \
+		'[binaries]' \
+		"c = '$(CC)'" \
+		"cpp = '$(CXX)'" \
+		"ar = '$(AR)'" \
+		"strip = '$(STRIP)'" \
+		"pkgconfig = '$(PKG_CONFIG)'" \
+		'' \
+		'[host_machine]' \
+		"system = 'android'" \
+		"cpu_family = '$(MESON_CPU_FAMILY)'" \
+		"cpu = '$(MESON_CPU)'" \
+		"endian = 'little'" \
+		'' \
+		'[properties]' \
+		'needs_exe_wrapper = true' \
+		'have_c99_vsnprintf = true' \
+		'have_c99_snprintf = true' \
+		'have_unix98_printf = true' \
+		'va_val_copy = true' \
+		'growing_stack = false' \
+		"c_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
+		"cpp_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-D__ANDROID_API__=$(NDK_PLATFORM_API)', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-I$(LIMBO_JNI_ROOT)/compat', '-I$(LIMBO_JNI_ROOT)/compat/musl', '-I$(LIMBO_JNI_ROOT)/compat/musl/include']" \
+		"c_link_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-L$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)', '-lcompat-musl', '-llog', '-lunwind']" \
+		"cpp_link_args = ['-target', '$(TARGET_PREFIX)$(NDK_PLATFORM_API)', '--sysroot=$(SYSROOT)', '-L$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)', '-lcompat-musl', '-llog', '-lunwind']" \
+		> "$(GLIB_CROSS_FILE)"
 
 AR_FLAGS = crs
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)

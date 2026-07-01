@@ -27,7 +27,8 @@ DEL_LIBSDIR=rm -rf $(NDK_PROJECT_PATH)/libs/* \
 	$(LIMBO_APP_LIBS)/jniLibs/* \
 
 
-INSTALL_GLIB_LIBS=cp -f glib/glib/.libs/*.so \
+INSTALL_GLIB_LIBS=cp -Lf glib/android-install/$(APP_ABI)/lib/libglib-2.0.so* \
+    glib/android-install/$(APP_ABI)/lib/libgthread-2.0.so* \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
 
 INSTALL_FFI_LIBS=cp -f libffi/$(GNU_HOST)/.libs/*.a \
@@ -39,7 +40,7 @@ INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.so \
 MOD_QEMU_LIBS=$(OBJCOPY) --redefine-sym open=android_open  \
     qemu/x86_64-softmmu/qemu-system-x86_64
 
-INSTALL_LIBS=cp -f $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/*.so \
+INSTALL_LIBS=cp -Lf $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/*.so* \
 	../libs/$(APP_ABI_DIR)/
 
 REMOVE_GDBSETUP=rm -f ../libs/$(APP_ABI_DIR)/gdb.setup
@@ -85,7 +86,7 @@ COPY_GDB_SETUP_LIBS=-cp -f $(NDK_PROJECT_PATH)/libs/$(APP_ABI)/gdb.setup \
 	$(NDK_PROJECT_PATH)/libs/gdb.setup
 	
 ifneq ($(NDK_DEBUG),1)
-	STRIP_LIBS=$(STRIP) $(NDK_PROJECT_PATH)/libs/$(APP_ABI_DIR)/*.so
+	STRIP_LIBS=$(STRIP) $(NDK_PROJECT_PATH)/libs/$(APP_ABI_DIR)/*.so*
 endif
 
 # we disable for now some options so armv7 host can compile with gcc
@@ -97,11 +98,11 @@ PIXMAN_DISABLE_OPTIONS=--disable-mmx --disable-arm-iwmmxt --disable-arm-iwmmxt2 
 DEBUG =
 ifeq ($(NDK_DEBUG), 1)
 	LIBFFI_DEBUG = --enable-debug
-	LIBGLIB_DEBUG = --enable-debug
+	LIBGLIB_BUILDTYPE = debug
 	LIBPIXMAN_DEBUG =
 else
 	LIBFFI_DEBUG = --disable-debug
-    LIBGLIB_DEBUG = --disable-debug
+    LIBGLIB_BUILDTYPE = release
     LIBPIXMAN_DEBUG =
 endif
 
@@ -140,38 +141,40 @@ ffi:
 	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) " \
 	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) -nostdlib -fno-unwind-tables "
 	$(INSTALL_FFI_LIBS)
+	$(CREATE_LIBFFI_PC)
 
-config-glib: ndk pkg-config-link
-	cd $(LIMBO_JNI_ROOT)/glib && NOCONFIGURE=1 ./autogen.sh
-	cd $(LIMBO_JNI_ROOT)/glib && cp -rf $(LIMBO_JNI_ROOT)/patches/android.cache . \
-	&& chmod a-w android.cache && ./configure --host=$(GNU_HOST) --cache-file=android.cache \
-	--disable-libmount  --disable-dtrace  --disable-systemtap --with-pcre=internal \
-	--with-libiconv=no \
-	--with-sysroot=$(SYSROOT) $(LIBGLIB_DEBUG) \
-	PKG_CONFIG="$(PKG_CONFIG)" \
-	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) \
-	-I${LIMBO_JNI_ROOT}/compat \
-	-I${LIMBO_JNI_ROOT}/compat/musl -I${LIMBO_JNI_ROOT}/compat/musl/include " \
-	LDFLAGS=" $(ARCH_LD_CLANG_FLAGS) $(ARCH_LD_FLAGS) $(SYS_ROOT) \
-	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -lcompat-musl -llog -lcompat-limbo " \
-	LIBFFI_CFLAGS="-I${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/include " \
-	LIBFFI_LIBS="${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI)/libffi.a"
+config-glib: ndk ffi pkg-config-link
+	$(CREATE_GLIB_MESON_CROSS_FILE)
+	cd $(LIMBO_JNI_ROOT)/glib && rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)"
+	cd $(LIMBO_JNI_ROOT)/glib && PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" meson setup "$(GLIB_BUILD_DIR)" . \
+	--cross-file "$(GLIB_CROSS_FILE)" \
+	--prefix="$(GLIB_INSTALL_DIR)" \
+	--libdir=lib \
+	--buildtype=$(LIBGLIB_BUILDTYPE) \
+	-Ddefault_library=shared \
+	-Dinternal_pcre=true \
+	-Diconv=external \
+	-Dforce_posix_threads=true \
+	-Dlibmount=disabled \
+	-Dselinux=disabled \
+	-Dxattr=false \
+	-Ddtrace=false \
+	-Dsystemtap=false \
+	-Dman=false \
+	-Dgtk_doc=false \
+	-Dinstalled_tests=false \
+	-Dnls=disabled \
+	-Dbsymbolic_functions=false \
+	-Dglib_assert=false \
+	-Dglib_checks=false
 
 glib: ndk
-	cd $(LIMBO_JNI_ROOT)/glib/glib && $(MAKE) -j $(BUILD_THREADS) CFLAGS="$(ARCH_CFLAGS) \
-	$(SYS_ROOT) \
-	-I${LIMBO_JNI_ROOT}/compat \
-	-include ${LIMBO_JNI_ROOT}/compat/musl/compat_iconv.h -I${LIMBO_JNI_ROOT}/compat/musl -I${LIMBO_JNI_ROOT}/compat/musl/include " \
-	LDFLAGS=" $(ARCH_LD_CLANG_FLAGS) $(ARCH_LD_FLAGS) $(SYS_ROOT) -L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) \
-	-lc -lcompat-musl -llog -lcompat-limbo -lunwind " \
-	LIBFFI_CFLAGS="-I${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/include " \
-	LIBFFI_LIBS="${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/.libs/libffi.a "
+	ninja -C "$(GLIB_BUILD_DIR)" -j $(BUILD_THREADS)
+	DESTDIR= ninja -C "$(GLIB_BUILD_DIR)" install
 	$(INSTALL_GLIB_LIBS)
 
 clean-glib:
-	-find $(LIMBO_JNI_ROOT)/glib/ -name "*.lo" -exec rm -rf {} \;
-	-cd $(LIMBO_JNI_ROOT)/glib && $(MAKE) distclean
-	-cd $(LIMBO_JNI_ROOT)/glib && $(MAKE) clean
+	-rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)" "$(GLIB_CROSS_FILE)"
 	-rm -rf $(LIMBO_JNI_ROOT)/glib/android.cache
 
 
@@ -216,7 +219,7 @@ clean-qemu:
 
 config-deps: ndk config-ffi config-glib config-pixman
 
-deps: ndk ffi glib pixman 
+deps: ndk glib pixman 
 
 _build-qemu: ndk 
 	make _qemu

@@ -156,7 +156,9 @@ config-glib: ndk
 	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -lcompat-musl -llog -lcompat-limbo " \
 	LIBFFI_CFLAGS="-I${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/include " \
 	LIBFFI_LIBS="${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI)/libffi.a" \
-	&& sed -i 's/^noinst_PROGRAMS = gtester$$/noinst_PROGRAMS =/' glib/libcharset/Makefile
+	&& sed -i 's/^noinst_PROGRAMS = gtester$$/noinst_PROGRAMS =/' glib/libcharset/Makefile \
+	&& sed -i 's/^am__EXEEXT_3 = gtester.*$$/am__EXEEXT_3 =/' glib/Makefile \
+	&& sed -i 's/^am__append_25 = gtester.*$$/am__append_25 =/' glib/Makefile
 
 glib: ndk
 	cd $(LIMBO_JNI_ROOT)/glib/glib && $(MAKE) -j $(BUILD_THREADS) CFLAGS="$(ARCH_CFLAGS) \

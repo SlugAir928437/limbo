@@ -165,7 +165,7 @@ glib: ndk
 	-include ${LIMBO_JNI_ROOT}/compat/musl/compat_iconv.h -I${LIMBO_JNI_ROOT}/compat/musl -I${LIMBO_JNI_ROOT}/compat/musl/include " \
 	LDFLAGS=" $(ARCH_LD_CLANG_FLAGS) $(ARCH_LD_FLAGS) $(SYS_ROOT) -L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) \
 	-lc -lcompat-musl -llog -lcompat-limbo " \
-	-lgcc \
+	-lunwind \
 	LIBFFI_CFLAGS="-I${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/include " \
 	LIBFFI_LIBS="${LIMBO_JNI_ROOT}/libffi/$(GNU_HOST)/.libs/libffi.a "
 	$(INSTALL_GLIB_LIBS)

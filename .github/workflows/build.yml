@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt-get install make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync \
-            gtk-doc-tools
+            gtk-doc-tools python3-pip ninja-build meson
       - name: 克隆代码
         run: |
           #Make sure you're under the jni directory

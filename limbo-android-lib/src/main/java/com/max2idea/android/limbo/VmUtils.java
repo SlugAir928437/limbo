@@ -36,7 +36,7 @@ public class VmUtils {
 
             // 2. 依赖库
             System.loadLibrary("glib-2.0");
-            System.loadLibrary("pixman-1");
+//             System.loadLibrary("pixman-1");
 
             // 3. SDL 相关（按正确顺序）
             if (Config.enable_SDL) {

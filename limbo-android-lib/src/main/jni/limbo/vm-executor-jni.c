@@ -175,27 +175,58 @@ JNIEXPORT jstring JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_start(
 
 	LOGV("Processing params");
 
-	int MAX_PARAMS = 256;
 	int argc = 0;
-	char ** argv;
+	char ** argv = NULL;
 
 	argc = (*env)->GetArrayLength(env, params);
 
 	argv = (char **) malloc((argc + 1) * sizeof(*argv));
+	if (argv == NULL) {
+		LOGE("Failed to allocate argv array\n");
+		return (*env)->NewStringUTF(env, "Memory allocation failed");
+	}
+	memset(argv, 0, (argc + 1) * sizeof(*argv));
 
 	for (int i = 0; i < argc; i++) {
         jstring string = (jstring)((*env)->GetObjectArrayElement(env, params, i));
+        if (string == NULL) {
+            LOGE("Param at index %d is null, skipping\n", i);
+            argv[i] = (char *) malloc(1);
+            if (argv[i]) argv[i][0] = '\0';
+            continue;
+        }
 		const char *param_str = (*env)->GetStringUTFChars(env, string, 0);
+		if (param_str == NULL) {
+			LOGE("GetStringUTFChars failed at index %d\n", i);
+			(*env)->DeleteLocalRef(env, string);
+			// cleanup already allocated args
+			for (int j = 0; j < i; j++) {
+				free(argv[j]);
+			}
+			free(argv);
+			return (*env)->NewStringUTF(env, "Failed to convert Java string");
+		}
 		int length = strlen(param_str)+1;
         argv[i] = (char *) malloc(length * sizeof(char));
-		strcpy(argv[i], param_str);
+		if (argv[i] == NULL) {
+			LOGE("Failed to allocate memory for param %d\n", i);
+			(*env)->ReleaseStringUTFChars(env, string, param_str);
+			(*env)->DeleteLocalRef(env, string);
+			for (int j = 0; j < i; j++) {
+				free(argv[j]);
+			}
+			free(argv);
+			return (*env)->NewStringUTF(env, "Memory allocation failed");
+		}
+		memcpy(argv[i], param_str, length);
 		(*env)->ReleaseStringUTFChars(env, string, param_str);
+		(*env)->DeleteLocalRef(env, string);
 	}
 
-	//XXX: Do not remove
+	// QEMU requires argv[argc] == NULL
 	argv[argc] = NULL;
 
-	printf("Starting VM");
+	printf("Starting VM\n");
     started = 1;
 
     //LOAD LIB
@@ -213,23 +244,33 @@ JNIEXPORT jstring JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_start(
 	if (!handle) {
 		sprintf(res_msg, "Error opening lib: %s :%s", lib_path_str, dlerror());
 		LOGV("%s", res_msg);
+		// cleanup argv
+		for (int i = 0; i < argc; i++) {
+			free(argv[i]);
+		}
+		free(argv);
+		started = 0;
 		return (*env)->NewStringUTF(env, res_msg);
 	}
 
 	setup_jni(env, thiz, storage_dir, base_dir);
     set_qemu_var(env, thiz, "limbo_sdl_scale_hint", sdl_scale_hint);
 
-	typedef void (*main_t)(int argc, char **argv, char **envp);
-    typedef void (*qemu_main_loop_t)();
-	typedef void (*qemu_cleanup_t)();
+	// Use correct function signatures to avoid undefined behavior on ARM64
+	typedef void (*qemu_init_t)(int argc, char **argv);
+	typedef int (*main_t)(int argc, char **argv, char **envp);
+    typedef void (*qemu_main_loop_t)(void);
+	typedef void (*qemu_cleanup_t)(void);
 
+    qemu_init_t qemu_init = NULL;
+    main_t qemu_main = NULL;
     qemu_main_loop_t qemu_main_loop = NULL;
     qemu_cleanup_t qemu_cleanup = NULL;
 
 	dlerror();
-	main_t qemu_main = (main_t) dlsym(handle, "qemu_init");
+	qemu_init = (qemu_init_t) dlsym(handle, "qemu_init");
 	const char *dlsym_error = dlerror();
-	if (dlsym_error) { //older versions of qemu
+	if (dlsym_error) { // older versions of qemu use "main"
 		LOGE("Cannot find qemu symbol 'qemu_init' trying 'main': %s\n", dlsym_error);
 	    qemu_main = (main_t) dlsym(handle, "main");
 	    dlsym_error = dlerror();
@@ -237,16 +278,26 @@ JNIEXPORT jstring JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_start(
         	LOGE("Cannot find qemu symbol 'qemu_init' or 'main': %s\n", dlsym_error);
         	dlclose(handle);
         	handle = NULL;
+        	started = 0;
+        	for (int i = 0; i < argc; i++) {
+        		free(argv[i]);
+        	}
+        	free(argv);
         	return (*env)->NewStringUTF(env, dlsym_error);
         }
         qemu_main(argc, argv, NULL);
-    } else { // new versions of qemu
+    } else { // new versions of qemu: qemu_init takes only 2 args
         qemu_main_loop = (qemu_main_loop_t) dlsym(handle, "qemu_main_loop");
 	    dlsym_error = dlerror();
 	    if (dlsym_error) {
         	LOGE("Cannot find qemu symbol 'qemu_main_loop': %s\n", dlsym_error);
         	dlclose(handle);
         	handle = NULL;
+        	started = 0;
+        	for (int i = 0; i < argc; i++) {
+        		free(argv[i]);
+        	}
+        	free(argv);
         	return (*env)->NewStringUTF(env, dlsym_error);
         }
 
@@ -256,10 +307,15 @@ JNIEXPORT jstring JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_start(
         	LOGE("Cannot find qemu symbol 'qemu_cleanup': %s\n", dlsym_error);
         	dlclose(handle);
         	handle = NULL;
+        	started = 0;
+        	for (int i = 0; i < argc; i++) {
+        		free(argv[i]);
+        	}
+        	free(argv);
         	return (*env)->NewStringUTF(env, dlsym_error);
         }
 
-        qemu_main(argc, argv, NULL);
+        qemu_init(argc, argv);
         qemu_main_loop();
         qemu_cleanup();
 	}
@@ -270,7 +326,14 @@ JNIEXPORT jstring JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_start(
 	handle = NULL;
 	started = 0;
 
-    (*env)->ReleaseStringUTFChars(env, lib_path, lib_path_str);
+    if (lib_path != NULL && lib_path_str != NULL)
+        (*env)->ReleaseStringUTFChars(env, lib_path, lib_path_str);
+
+	// free argv
+	for (int i = 0; i < argc; i++) {
+		free(argv[i]);
+	}
+	free(argv);
 
 	sprintf(res_msg, "VM shutdown");
 	LOGV("%s", res_msg);

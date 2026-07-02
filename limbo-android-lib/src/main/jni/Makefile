@@ -39,8 +39,10 @@ INSTALL_FFI_LIBS=cp -f libffi/.libs/*.a \
 
 INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.a \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
-    cp -Lf pixman/pixman/.libs/libpixman-1.so* \
-    $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
+    if ls pixman/pixman/.libs/libpixman-1.so* >/dev/null 2>&1; then \
+        cp -Lf pixman/pixman/.libs/libpixman-1.so* \
+        $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
+    fi
 
 INSTALL_QEMU_LIBS=for target in x86_64 aarch64; do \
 	if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \

@@ -4,6 +4,16 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
+#if defined(__ANDROID__) && !defined(major)
+#define major(dev) ((unsigned int)((((unsigned long long)(dev)) >> 8) & 0xfff) | \
+                    ((unsigned int)((((unsigned long long)(dev)) >> 32) & ~0xfff)))
+#endif
+
+#if defined(__ANDROID__) && !defined(minor)
+#define minor(dev) ((unsigned int)(((unsigned long long)(dev)) & 0xff) | \
+                    ((unsigned int)((((unsigned long long)(dev)) >> 12) & ~0xff)))
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -1,6 +1,24 @@
-diff -ru --no-dereference ../glib-2.66.8/meson.build ./meson.build
---- glib-orig/meson.build	2021-03-18 21:47:48.374693600 +0800
-+++ glib/meson.build	2026-07-01 19:52:41.396558700 +0800
+diff -ru --no-dereference /tmp/glib/meson.build ./meson.build
+--- /tmp/glib/meson.build	2021-03-18 21:47:48.374693600 +0800
++++ ./meson.build	2026-07-02 11:14:28.656410100 +0800
+@@ -407,7 +407,7 @@
+ endforeach
+ 
+ # Compiler flags
+-if cc.get_id() == 'gcc' or cc.get_id() == 'clang'
++if host_system != 'android' and (cc.get_id() == 'gcc' or cc.get_id() == 'clang')
+   warning_c_args = [
+     '-Wduplicated-branches',
+     '-Wimplicit-fallthrough',
+@@ -1443,7 +1443,7 @@
+ # We can’t simplify these checks using a foreach loop because dictionary keys
+ # have to be string literals.
+ # FIXME: https://github.com/mesonbuild/meson/issues/5231
+-if cc.get_id() == 'gcc' or cc.get_id() == 'clang'
++if host_system != 'android' and (cc.get_id() == 'gcc' or cc.get_id() == 'clang')
+   g_sizet_compatibility += {
+     'short': g_sizet_compatibility['short'] and cc.compiles(
+         '''#include <stddef.h>
 @@ -1828,9 +1828,9 @@
    if cc.has_header_symbol('pthread.h', 'pthread_condattr_setclock')
      glib_conf.set('HAVE_PTHREAD_CONDATTR_SETCLOCK', 1)

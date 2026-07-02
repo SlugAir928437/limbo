@@ -157,7 +157,7 @@ CREATE_LIBFFI_PC = \
 		'prefix=$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)' \
 		'exec_prefix=$${prefix}' \
 		'libdir=$${prefix}' \
-		'includedir=$(LIMBO_JNI_ROOT)/libffi/$(GNU_HOST)/include' \
+		'includedir=$(LIMBO_JNI_ROOT)/libffi/include' \
 		'' \
 		'Name: libffi' \
 		'Description: Foreign Function Interface library' \
@@ -169,21 +169,21 @@ CREATE_LIBFFI_PC = \
 
 CREATE_GLIB_MESON_CROSS_FILE = \
 	sed \
-		-e 's#@CC@#$(CC)#g' \
-		-e 's#@CXX@#$(CXX)#g' \
-		-e 's#@AR@#$(AR)#g' \
-		-e 's#@STRIP@#$(STRIP)#g' \
-		-e 's#@PKG_CONFIG@#$(PKG_CONFIG)#g' \
-		-e 's#@MESON_CPU_FAMILY@#$(MESON_CPU_FAMILY)#g' \
-		-e 's#@MESON_CPU@#$(MESON_CPU)#g' \
-		-e 's#@GLIB_INSTALL_DIR@#$(GLIB_INSTALL_DIR)#g' \
-		-e 's#@LIBGLIB_BUILDTYPE@#$(LIBGLIB_BUILDTYPE)#g' \
-		-e 's#@TARGET_TRIPLE@#$(TARGET_PREFIX)$(NDK_PLATFORM_API)#g' \
-		-e 's#@SYSROOT@#$(SYSROOT)#g' \
-		-e 's#@ANDROID_API@#$(NDK_PLATFORM_API)#g' \
-		-e 's#@LIMBO_JNI_ROOT@#$(LIMBO_JNI_ROOT)#g' \
-		-e 's#@NDK_PROJECT_PATH@#$(NDK_PROJECT_PATH)#g' \
-		-e 's#@APP_ABI@#$(APP_ABI)#g' \
+		-e 's|@CC@|$(CC)|g' \
+		-e 's|@CXX@|$(CXX)|g' \
+		-e 's|@AR@|$(AR)|g' \
+		-e 's|@STRIP@|$(STRIP)|g' \
+		-e 's|@PKG_CONFIG@|$(PKG_CONFIG)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		-e 's|@GLIB_INSTALL_DIR@|$(GLIB_INSTALL_DIR)|g' \
+		-e 's|@LIBGLIB_BUILDTYPE@|$(LIBGLIB_BUILDTYPE)|g' \
+		-e 's|@TARGET_TRIPLE@|$(TARGET_PREFIX)$(NDK_PLATFORM_API)|g' \
+		-e 's|@SYSROOT@|$(SYSROOT)|g' \
+		-e 's|@ANDROID_API@|$(NDK_PLATFORM_API)|g' \
+		-e 's|@LIMBO_JNI_ROOT@|$(LIMBO_JNI_ROOT)|g' \
+		-e 's|@NDK_PROJECT_PATH@|$(NDK_PROJECT_PATH)|g' \
+		-e 's|@APP_ABI@|$(APP_ABI)|g' \
 		"$(GLIB_CROSS_FILE_TEMPLATE)" > "$(GLIB_CROSS_FILE)"
 
 AR_FLAGS = crs

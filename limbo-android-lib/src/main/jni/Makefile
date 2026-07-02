@@ -31,11 +31,18 @@ INSTALL_GLIB_LIBS=cp -Lf glib/android-install/$(APP_ABI)/lib/libglib-2.0.so* \
     glib/android-install/$(APP_ABI)/lib/libgthread-2.0.so* \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
 
-INSTALL_FFI_LIBS=cp -f libffi/$(GNU_HOST)/.libs/*.a \
+INSTALL_FFI_LIBS=cp -f libffi/.libs/*.a \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
 
-INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.so \
+INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.a \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
+
+INSTALL_QEMU_LIBS=for target in x86_64 aarch64; do \
+	if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
+		cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
+			"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \
+	fi; \
+done
 
 MOD_QEMU_LIBS=$(OBJCOPY) --redefine-sym open=android_open  \
     qemu/x86_64-softmmu/qemu-system-x86_64
@@ -132,7 +139,7 @@ clean-ffi:
 	-cd $(LIMBO_JNI_ROOT)/libffi && $(MAKE) clean
 
 config-ffi: pkg-config-link
-	cd $(LIMBO_JNI_ROOT)/libffi && ./configure --host=$(GNU_HOST) $(LIBFFI_DEBUG) --enable-static --disable-shared \
+	cd $(LIMBO_JNI_ROOT)/libffi && ./configure --host=$(GNU_HOST) $(LIBFFI_DEBUG) --disable-builddir --enable-static --disable-shared \
 	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) " \
 	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) -nostdlib -fno-unwind-tables "
 
@@ -146,7 +153,7 @@ ffi:
 config-glib: ndk ffi pkg-config-link
 	$(CREATE_GLIB_MESON_CROSS_FILE)
 	cd $(LIMBO_JNI_ROOT)/glib && rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)"
-	cd $(LIMBO_JNI_ROOT)/glib && PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" meson setup "$(GLIB_BUILD_DIR)" . \
+	cd $(LIMBO_JNI_ROOT)/glib && PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDIR="$(PKG_CONFIG_PATH)" meson setup "$(GLIB_BUILD_DIR)" . \
 	--cross-file "$(GLIB_CROSS_FILE)"
 
 glib: ndk
@@ -179,6 +186,18 @@ pixman: ndk
 	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -llog \
 	-lcompat-limbo "
 	$(INSTALL_PIXMAN_LIBS)
+	mkdir -p "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig" && printf '%s\n' \
+		'prefix=$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)' \
+		'exec_prefix=$${prefix}' \
+		'libdir=$${prefix}' \
+		'includedir=$(LIMBO_JNI_ROOT)/pixman/pixman' \
+		'' \
+		'Name: Pixman' \
+		'Description: The pixman library' \
+		'Version: 0.40.0' \
+		'Libs: -L$${libdir} -lpixman-1' \
+		'Cflags: -I$${includedir}' \
+		> "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig/pixman-1.pc"
 
 clean-pixman:
 	-find $(LIMBO_JNI_ROOT)/pixman -name "*.lo" -exec rm -rf {} \;
@@ -204,6 +223,7 @@ deps: ndk glib pixman
 
 _build-qemu: ndk 
 	make _qemu
+	$(INSTALL_QEMU_LIBS)
 	$(INSTALL_LIBS)
 	$(RENAME_TUNCTL)
 	$(RENAME_PARPROUTED)

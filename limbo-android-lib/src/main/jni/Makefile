@@ -35,7 +35,9 @@ INSTALL_FFI_LIBS=cp -f libffi/.libs/*.a \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
 
 INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.a \
-    $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
+    $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
+    cp -Lf pixman/pixman/.libs/libpixman-1.so* \
+    $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ 2>/dev/null || true
 
 INSTALL_QEMU_LIBS=for target in x86_64 aarch64; do \
 	if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
@@ -169,6 +171,8 @@ clean-glib:
 config-pixman: ndk pkg-config-link
 	cd $(LIMBO_JNI_ROOT)/pixman && ./configure --host=$(GNU_HOST) --with-sysroot=$(SYSROOT) \
 	--disable-libtool-lock \
+	--enable-shared \
+	--enable-static \
 	$(PIXMAN_DISABLE_OPTIONS) \
 	$(LIBPIXMAN_DEBUG) \
 	PKG_CONFIG="$(PKG_CONFIG)" \

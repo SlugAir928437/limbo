@@ -31,11 +31,9 @@ valloc (size_t size)
 }
 
 const char* strchrnul(const char* s, int c) {
-    char *str = strchr(s, c);
-    if(str == NULL) {
-        int length = strlen(s);
-        int endofs = s + length;
-        return endofs;
+    const char *str = strchr(s, c);
+    if (str == NULL) {
+        return s + strlen(s);
     }
     return str;
 }

@@ -29,6 +29,9 @@ DEL_LIBSDIR=rm -rf $(NDK_PROJECT_PATH)/libs/* \
 
 INSTALL_GLIB_LIBS=cp -Lf glib/android-install/$(APP_ABI)/lib/libglib-2.0.so* \
     glib/android-install/$(APP_ABI)/lib/libgthread-2.0.so* \
+    glib/android-install/$(APP_ABI)/lib/libgio-2.0.so* \
+    glib/android-install/$(APP_ABI)/lib/libgobject-2.0.so* \
+    glib/android-install/$(APP_ABI)/lib/libgmodule-2.0.so* \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
 
 INSTALL_FFI_LIBS=cp -f libffi/.libs/*.a \
@@ -37,7 +40,7 @@ INSTALL_FFI_LIBS=cp -f libffi/.libs/*.a \
 INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.a \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
     cp -Lf pixman/pixman/.libs/libpixman-1.so* \
-    $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ 2>/dev/null || true
+    $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
 
 INSTALL_QEMU_LIBS=for target in x86_64 aarch64; do \
 	if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \

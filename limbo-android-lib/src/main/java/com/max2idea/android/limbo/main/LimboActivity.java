@@ -1169,7 +1169,7 @@ public class LimboActivity extends AppCompatActivity
         System.loadLibrary("glib-2.0");
 
         //Pixman for qemu
-        System.loadLibrary("pixman-1");
+        // System.loadLibrary("pixman-1");
 
         // SDL library
         if (Config.enable_SDL) {

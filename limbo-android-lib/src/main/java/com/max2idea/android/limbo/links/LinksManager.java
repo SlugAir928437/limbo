@@ -26,6 +26,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ImageView;
 import android.widget.ListView;
@@ -78,13 +79,17 @@ public class LinksManager extends AlertDialog {
     }
 
     private void setupListeners() {
-        listIsoView = findViewById(R.id.os_list);
-        listIsoView.setOnItemClickListener((parent, v, position, id) -> {
-            int selectionRowID = (int) id;
-            String path = itemsISOs.get(selectionRowID).url;
-            if(path!=null)
-                goToURL(path);
-            dismiss();
+        listIsoView = (ListView) findViewById(R.id.os_list);
+        listIsoView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+
+            @Override
+            public void onItemClick(AdapterView parent, View v, int position, long id) {
+                int selectionRowID = (int) id;
+                String path = itemsISOs.get(selectionRowID).url;
+                if(path!=null)
+                    goToURL(path);
+                dismiss();
+            }
         });
     }
 
@@ -130,17 +135,16 @@ public class LinksManager extends AlertDialog {
             this.files = files;
         }
 
-        @NonNull
         @Override
-        public View getView(int position, View convertView, @NonNull ViewGroup parent) {
+        public View getView(int position, View convertView, ViewGroup parent) {
             LayoutInflater inflater = (LayoutInflater) context
                     .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
 
             @SuppressLint("ViewHolder")
             View rowView = inflater.inflate(R.layout.link_row, parent, false);
-            TextView textView = rowView.findViewById(R.id.LINK_NAME);
-            TextView descrView = rowView.findViewById(R.id.LINK_DESCR);
-            ImageView imageView = rowView.findViewById(R.id.LINK_ICON);
+            TextView textView = (TextView) rowView.findViewById(R.id.LINK_NAME);
+            TextView descrView = (TextView) rowView.findViewById(R.id.LINK_DESCR);
+            ImageView imageView = (ImageView) rowView.findViewById(R.id.LINK_ICON);
             LinkInfo linkInfo = files.get(position);
             textView.setText(linkInfo.title);
             descrView.setText(linkInfo.descr);

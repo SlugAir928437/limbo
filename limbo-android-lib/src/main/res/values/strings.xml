@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="DebianArmLinux">Debian ARM Linux</string>
-    <string name="DebianArmLinuxDescr">A Linux-based light weight OS with Desktop Manager, network, and package manager</string>
+
+
     <string name="DebianLinux">Debian Linux</string>
     <string name="DebianLinuxDescr">An active open source Linux-based OS with desktop gui, audio, network</string>
     <string name="DSLLinux">DSL Linux</string>
@@ -16,6 +16,9 @@
     <string name="SlaxLinuxDescr">An active open source OS with desktop gui, audio, network</string>
     <string name="SlitazLinux">Slitaz Linux</string>
     <string name="SlitazLinuxDescr">An active open source OS with desktop gui, audio, network</string>
+
+    <string name="DebianArmLinux">Debian ARM Linux</string>
+    <string name="DebianArmLinuxDescr">A Linux-based light weight OS with Desktop Manager, network, and package manager</string>
 
     <string name="app_name">Limbo Emulator</string>
     <string name="app_short_name">Limbo</string>
@@ -388,4 +391,60 @@
     <string name="IgnoreBreakpointInvalidationSummary">Ignore Breakpoint Invalidation</string>
     <string name="ImportBIOSFile">Import BIOS</string>
     <string name="importBIOSInstructions">Select a BIOS file (bin, rom, etc..) to import.</string>
+
+    <!-- Hardcoded text extraction - Layout files -->
+    <string name="title_disks">Disks</string>
+    <string name="label_hard_disk_a">Hard Disk A: </string>
+    <string name="label_hard_disk_b">Hard Disk B: </string>
+    <string name="label_hard_disk_c">Hard Disk C: </string>
+    <string name="label_hard_disk_d">Hard Disk D: </string>
+    <string name="label_shared_folder">Shared Folder </string>
+    <string name="title_user_interface">User Interface</string>
+    <string name="label_display">Display </string>
+    <string name="title_keyboard">Keyboard</string>
+    <string name="title_mouse">Mouse</string>
+    <string name="title_removable">Removable</string>
+    <string name="label_cdrom">CDROM: </string>
+    <string name="label_floppy_a">Floppy A: </string>
+    <string name="label_floppy_b">Floppy B: </string>
+    <string name="label_sd_card">SD Card: </string>
+    <string name="label_network">Network</string>
+    <string name="label_network_card">Network Card: </string>
+    <string name="label_dns_server">DNS Server: </string>
+    <string name="label_host_forward">Host Forward: </string>
+    <string name="button_select">Select</string>
+    <string name="title_graphics">Graphics</string>
+    <string name="label_video_display">Video Display: </string>
+    <string name="title_board">Board</string>
+    <string name="label_machine_type">Machine Type:</string>
+    <string name="label_cpu_model">CPU Model: </string>
+    <string name="label_cpu_cores">CPU Cores: </string>
+    <string name="label_ram_memory_mb">RAM Memory (MB) </string>
+    <string name="label_enable_mttcg">Enable  MTTCG</string>
+    <string name="label_enable_kvm">Enable KVM</string>
+    <string name="label_disable_hpet">Disable HPET</string>
+    <string name="label_disable_tsc">Disable TSC</string>
+    <string name="label_disable_acpi">Disable ACPI</string>
+    <string name="title_boot">Boot</string>
+    <string name="label_boot_from_device">Boot from Device: </string>
+    <string name="label_kernel">Kernel: </string>
+    <string name="label_initrd">Initrd: </string>
+    <string name="label_append">Append: </string>
+    <string name="title_advanced">Advanced</string>
+    <string name="label_extra_qemu_params">Extra QEMU Params: </string>
+    <string name="title_audio">Audio</string>
+    <string name="label_sound_card">Sound Card: </string>
+    <!-- Hardcoded text extraction - Settings XML -->
+    <string name="pref_title_files">Files</string>
+    <string name="pref_title_screen">Screen</string>
+    <string name="pref_summary_show_fullscreen">Show Fullscreen</string>
+    <string name="pref_title_fullscreen">Fullscreen</string>
+    <string name="pref_title_advanced">Advanced</string>
+    <string name="pref_title_qmp">QMP</string>
+    <string name="pref_title_vnc">VNC</string>
+    <string name="pref_title_disk">Disk</string>
+    <string name="pref_title_fixes">Fixes</string>
+    <string name="pref_title_updates">Updates</string>
+    <string name="pref_title_audio">Audio</string>
+    <string name="pref_title_screen_immersion">Screen Immersion</string>
 </resources>

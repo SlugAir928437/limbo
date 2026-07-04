@@ -29,8 +29,6 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ApplicationInfo;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 /**
@@ -167,7 +165,11 @@ public class SDLActivity
         String errorMsgBrokenLib = "";
         try {
             loadLibraries();
-        } catch(UnsatisfiedLinkError | Exception e) {
+        } catch(UnsatisfiedLinkError e) {
+            System.err.println(e.getMessage());
+            mBrokenLibraries = true;
+            errorMsgBrokenLib = e.getMessage();
+        } catch(Exception e) {
             System.err.println(e.getMessage());
             mBrokenLibraries = true;
             errorMsgBrokenLib = e.getMessage();
@@ -178,14 +180,17 @@ public class SDLActivity
             mSingleton = this;
             AlertDialog.Builder dlgAlert  = new AlertDialog.Builder(this);
             dlgAlert.setMessage("An error occurred while trying to start the application. Please try again and/or reinstall."
-                    + System.lineSeparator()
-                    + System.lineSeparator()
+                    + System.getProperty("line.separator")
+                    + System.getProperty("line.separator")
                     + "Error: " + errorMsgBrokenLib);
             dlgAlert.setTitle("SDL Error");
             dlgAlert.setPositiveButton("Exit",
-                    (dialog, id) -> {
-                        // if this button is clicked, close current activity
-                        SDLActivity.mSingleton.finish();
+                    new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog,int id) {
+                            // if this button is clicked, close current activity
+                            SDLActivity.mSingleton.finish();
+                        }
                     });
             dlgAlert.setCancelable(false);
             dlgAlert.create().show();
@@ -203,7 +208,12 @@ public class SDLActivity
         mSingleton = this;
         SDL.setContext(this);
 
-        mClipboardHandler = new SDLClipboardHandler_API11();
+        if (Build.VERSION.SDK_INT >= 11) {
+            mClipboardHandler = new SDLClipboardHandler_API11();
+        } else {
+            /* Before API 11, no clipboard notification (eg no SDL_CLIPBOARDUPDATE) */
+            mClipboardHandler = new SDLClipboardHandler_Old();
+        }
 
         // Set up the surface
         // LIMBO:
@@ -435,7 +445,7 @@ public class SDLActivity
      */
     protected static class SDLCommandHandler extends Handler {
         @Override
-        public void handleMessage(@NonNull Message msg) {
+        public void handleMessage(Message msg) {
             Context context = SDL.getContext();
             if (context == null) {
                 Log.e(TAG, "error handling message, getContext() returned null");
@@ -450,7 +460,11 @@ public class SDLActivity
                     }
                     break;
                 case COMMAND_CHANGE_WINDOW_STYLE:
-                    /* This needs more testing, per bug 4096 - Enabling fullscreen on Android causes the app to toggle fullscreen mode continuously in a loop
+                    if (Build.VERSION.SDK_INT < 19) {
+                        // This version of Android doesn't support the immersive fullscreen mode
+                        break;
+                    }
+/* This needs more testing, per bug 4096 - Enabling fullscreen on Android causes the app to toggle fullscreen mode continuously in a loop
  ***
                 if (context instanceof Activity) {
                     Window window = ((Activity) context).getWindow();
@@ -575,7 +589,7 @@ public class SDLActivity
     /**
      * This can be overridden
      */
-    public void setOrientationBis(int w, int h, boolean resizable, @NonNull String hint)
+    public void setOrientationBis(int w, int h, boolean resizable, String hint)
     {
         int orientation = -1;
 
@@ -739,11 +753,13 @@ public class SDLActivity
         return mSingleton.commandHandler.post(new ShowTextInputTask(x, y, w, h));
     }
 
-    public static boolean isTextInputEvent(@NonNull KeyEvent event) {
+    public static boolean isTextInputEvent(KeyEvent event) {
 
         // Key pressed with Ctrl should be sent as SDL_KEYDOWN/SDL_KEYUP and not SDL_TEXTINPUT
-        if (event.isCtrlPressed()) {
-            return false;
+        if (Build.VERSION.SDK_INT >= 11) {
+            if (event.isCtrlPressed()) {
+                return false;
+            }
         }
 
         return event.isPrintingKey() || event.getKeyCode() == KeyEvent.KEYCODE_SPACE;
@@ -752,7 +768,6 @@ public class SDLActivity
     /**
      * This method is called by SDL using JNI.
      */
-    @Nullable
     public static Surface getNativeSurface() {
         if (SDLActivity.mSurface == null) {
             return null;
@@ -766,7 +781,6 @@ public class SDLActivity
      * This method is called by SDL using JNI.
      * @return an array which may be empty but is never null.
      */
-    @NonNull
     public static int[] inputGetInputDeviceIds(int sources) {
         int[] ids = InputDevice.getDeviceIds();
         int[] filtered = new int[ids.length];
@@ -793,7 +807,6 @@ public class SDLActivity
      * @return an InputStream on success or null if no expansion file was used.
      * @throws IOException on errors. Message is set for the SDL error message.
      */
-    @Nullable
     public static InputStream openAPKExpansionInputStream(String fileName) throws IOException {
         // Get a ZipResourceFile representing a merger of both the main and patch files
         if (expansionFile == null) {
@@ -873,8 +886,8 @@ public class SDLActivity
             final int flags,
             final String title,
             final String message,
-            @NonNull final int[] buttonFlags,
-            @NonNull final int[] buttonIds,
+            final int[] buttonFlags,
+            final int[] buttonIds,
             final String[] buttonTexts,
             final int[] colors) {
 
@@ -923,7 +936,7 @@ public class SDLActivity
     }
 
     @Override
-    protected Dialog onCreateDialog(int ignore, @NonNull Bundle args) {
+    protected Dialog onCreateDialog(int ignore, Bundle args) {
 
         // TODO set values from "flags" to messagebox dialog
 
@@ -955,9 +968,12 @@ public class SDLActivity
         final Dialog dialog = new Dialog(this);
         dialog.setTitle(args.getString("title"));
         dialog.setCancelable(false);
-        dialog.setOnDismissListener(unused -> {
-            synchronized (messageboxSelection) {
-                messageboxSelection.notify();
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface unused) {
+                synchronized (messageboxSelection) {
+                    messageboxSelection.notify();
+                }
             }
         });
 
@@ -984,9 +1000,12 @@ public class SDLActivity
         for (int i = 0; i < buttonTexts.length; ++i) {
             Button button = new Button(this);
             final int id = buttonIds[i];
-            button.setOnClickListener(v -> {
-                messageboxSelection[0] = id;
-                dialog.dismiss();
+            button.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    messageboxSelection[0] = id;
+                    dialog.dismiss();
+                }
             });
             if (buttonFlags[i] != 0) {
                 // see SDL_messagebox.h
@@ -1033,15 +1052,18 @@ public class SDLActivity
         // add content to dialog and return
 
         dialog.setContentView(content);
-        dialog.setOnKeyListener((d, keyCode, event) -> {
-            Button button = mapping.get(keyCode);
-            if (button != null) {
-                if (event.getAction() == KeyEvent.ACTION_UP) {
-                    button.performClick();
+        dialog.setOnKeyListener(new Dialog.OnKeyListener() {
+            @Override
+            public boolean onKey(DialogInterface d, int keyCode, KeyEvent event) {
+                Button button = mapping.get(keyCode);
+                if (button != null) {
+                    if (event.getAction() == KeyEvent.ACTION_UP) {
+                        button.performClick();
+                    }
+                    return true; // also for ignored actions
                 }
-                return true; // also for ignored actions
+                return false;
             }
-            return false;
         });
 
         return dialog;
@@ -1133,7 +1155,9 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         mDisplay = ((WindowManager)context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
         mSensorManager = (SensorManager)context.getSystemService(Context.SENSOR_SERVICE);
 
-        setOnGenericMotionListener(new SDLGenericMotionListener_API12());
+        if (Build.VERSION.SDK_INT >= 12) {
+            setOnGenericMotionListener(new SDLGenericMotionListener_API12());
+        }
 
         // Some arbitrary defaults to avoid a potential division by zero
         mWidth = 1.0f;
@@ -1159,7 +1183,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     // Called when we have a valid drawing surface
     @Override
-    public void surfaceCreated(@NonNull SurfaceHolder holder) {
+    public void surfaceCreated(SurfaceHolder holder) {
         Log.v("SDL", "surfaceCreated()");
         holder.setType(SurfaceHolder.SURFACE_TYPE_GPU);
     }
@@ -1280,7 +1304,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     // Key events
     @Override
-    public boolean onKey(View  v, int keyCode, @NonNull KeyEvent event) {
+    public boolean onKey(View  v, int keyCode, KeyEvent event) {
         // Dispatch the different events depending on where they come from
         // Some SOURCE_JOYSTICK, SOURCE_DPAD or SOURCE_GAMEPAD are also SOURCE_KEYBOARD
         // So, we try to process them as JOYSTICK/DPAD/GAMEPAD events first, if that fails we try them as KEYBOARD
@@ -1348,10 +1372,14 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         // !!! FIXME: dump this SDK check after 2.0.4 ships and require API14.
         if (event.getSource() == InputDevice.SOURCE_MOUSE && SDLActivity.mSeparateMouseAndTouch) {
-            try {
-                mouseButton = (Integer) event.getClass().getMethod("getButtonState").invoke(event);
-            } catch (Exception e) {
-                mouseButton = 1;    // oh well.
+            if (Build.VERSION.SDK_INT < 14) {
+                mouseButton = 1; // all mouse buttons are the left button
+            } else {
+                try {
+                    mouseButton = (Integer) event.getClass().getMethod("getButtonState").invoke(event);
+                } catch(Exception e) {
+                    mouseButton = 1;    // oh well.
+                }
             }
             SDLActivity.onNativeMouse(mouseButton, action, event.getX(0), event.getY(0));
         } else {
@@ -1436,7 +1464,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     }
 
     @Override
-    public void onSensorChanged(@NonNull SensorEvent event) {
+    public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             float x, y;
             switch (mDisplay.getRotation()) {
@@ -1483,7 +1511,7 @@ class DummyEdit extends View implements View.OnKeyListener {
     }
 
     @Override
-    public boolean onKey(View v, int keyCode, @NonNull KeyEvent event) {
+    public boolean onKey(View v, int keyCode, KeyEvent event) {
         /*
          * This handles the hardware keyboard input
          */
@@ -1503,7 +1531,7 @@ class DummyEdit extends View implements View.OnKeyListener {
 
     //
     @Override
-    public boolean onKeyPreIme (int keyCode, @NonNull KeyEvent event) {
+    public boolean onKeyPreIme (int keyCode, KeyEvent event) {
         // As seen on StackOverflow: http://stackoverflow.com/questions/7634346/keyboard-hide-event
         // FIXME: Discussion at http://bugzilla.libsdl.org/show_bug.cgi?id=1639
         // FIXME: This is not a 100% effective solution to the problem of detecting if the keyboard is showing or not
@@ -1519,7 +1547,7 @@ class DummyEdit extends View implements View.OnKeyListener {
     }
 
     @Override
-    public InputConnection onCreateInputConnection(@NonNull EditorInfo outAttrs) {
+    public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
         ic = new SDLInputConnection(this, true);
 
         outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD;
@@ -1538,7 +1566,7 @@ class SDLInputConnection extends BaseInputConnection {
     }
 
     @Override
-    public boolean sendKeyEvent(@NonNull KeyEvent event) {
+    public boolean sendKeyEvent(KeyEvent event) {
         /*
          * This used to handle the keycodes from soft keyboard (and IME-translated input from hardkeyboard)
          * However, as of Ice Cream Sandwich and later, almost all soft keyboard doesn't generate key presses
@@ -1568,7 +1596,7 @@ class SDLInputConnection extends BaseInputConnection {
     }
 
     @Override
-    public boolean commitText(@NonNull CharSequence text, int newCursorPosition) {
+    public boolean commitText(CharSequence text, int newCursorPosition) {
 
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
@@ -1581,7 +1609,7 @@ class SDLInputConnection extends BaseInputConnection {
     }
 
     @Override
-    public boolean setComposingText(@NonNull CharSequence text, int newCursorPosition) {
+    public boolean setComposingText(CharSequence text, int newCursorPosition) {
 
         nativeSetComposingText(text.toString(), newCursorPosition);
 

@@ -1,0 +1,180 @@
+package com.example.limbo;
+
+import android.annotation.SuppressLint;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.AssetManager;
+import android.os.Bundle;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+
+import androidx.activity.OnBackPressedCallback;
+import androidx.activity.OnBackPressedDispatcher;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
+
+import com.hjq.permissions.XXPermissions;
+import com.hjq.permissions.permission.PermissionLists;
+import com.max2idea.android.limbo.VmUtils;
+import com.max2idea.android.limbo.main.LimboApplication;
+import com.max2idea.android.limbo.main.LimboSDLActivity;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class ExampleActivity extends AppCompatActivity {
+    private EditText extraArgs;
+
+    @SuppressLint("SetTextI18n")
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.agreement_confirm)
+                .setMessage(readAssetText(this, "LICENSE"))
+                .setPositiveButton(R.string.agreement_accept, (dialog2, which) -> dialog2.dismiss())
+                .setNegativeButton(R.string.agreement_reject, (dialog1, which) -> finish()).show();
+        extraArgs = findViewById(R.id.args);
+        String bootFile="";
+        try {
+            bootFile = copyAssetToFile(this, "boot.bin").getAbsolutePath();
+        } catch (IOException e) {
+            Toast.makeText(this, R.string.file_load_failed, Toast.LENGTH_SHORT).show();
+        }
+        extraArgs.setText("libqemu-system-x86_64.so\n" +
+                "-monitor none\n" +
+                "-serial none\n" +
+                "-parallel none\n" +
+                "-k en-us\n" +
+                "-M pc\n" +
+                "-cpu n270,-tsc\n" +
+                "-m 128\n" +
+                "-drive index=0,if=floppy,file=" + bootFile + "\n" +
+                "-vga std\n" +
+                "-net none\n" +
+                "-L /data/user/0/com.example.limbo/cache/limbo/\n" +
+                "-qmp unix:/data/user/0/com.example.limbo/cache/qmpsocket,server,nowait\n" +
+                "-overcommit mem-lock=off\n" +
+                "-rtc base=localtime\n" +
+                "-nodefaults\n" +
+                "-accel tcg,thread=single");
+        Button startButton = findViewById(R.id.button_start);
+        startButton.setOnClickListener(v -> startVM());
+
+        XXPermissions.with(this)
+                // 申请多个权限
+                .permission(PermissionLists.getManageExternalStoragePermission())
+                // 设置不触发错误检测机制（局部设置）
+                //.unchecked()
+                .request((grantedList, deniedList) -> {
+                    boolean allGranted = deniedList.isEmpty();
+                    if (!allGranted) {
+                        boolean doNotAskAgain = XXPermissions.isDoNotAskAgainPermissions(this, deniedList);
+                        finish();
+                    }
+                    // 在这里处理权限请求成功的逻辑
+                });
+        OnBackPressedDispatcher dispatcher = getOnBackPressedDispatcher();
+        dispatcher.addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                // 自定义返回逻辑
+                Toast.makeText(ExampleActivity.this, R.string.exit, Toast.LENGTH_SHORT).show();
+                ExampleActivity.this.finish();
+            }
+        });
+    }
+    private void startVM() {
+        try {
+            LimboApplication.initialize();
+            String args = extraArgs.getText().toString().trim();
+
+            // ✅ 正确解析 QEMU 参数
+            String[] params = parseCorrectQemuArgs(args);
+
+            VmUtils.init();
+
+            Intent intent = new Intent(this, LimboSDLActivity.class);
+            startActivity(intent);
+
+            new Thread(() -> {
+                try {
+                    Thread.sleep(300);
+                    VmUtils.start(ExampleActivity.this, params);
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(this, "启动失败: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }).start();
+
+        } catch (Exception e) {
+            Toast.makeText(this, "错误: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+    // 复制assets文件到 /data/data/包名/files/
+    @NonNull
+    private File copyAssetToFile(@NonNull Context context, String assetName) throws IOException {
+        File outFile = new File(context.getFilesDir(), assetName);
+        InputStream is = context.getAssets().open(assetName);
+        FileOutputStream fos = new FileOutputStream(outFile);
+
+        byte[] buf = new byte[1024];
+        int len;
+        while ((len = is.read(buf)) > 0) {
+            fos.write(buf, 0, len);
+        }
+        fos.flush();
+        fos.close();
+        is.close();
+        return outFile;
+    }
+    @Nullable
+    public static String readAssetText(@NonNull Context context, String fileName) {
+        StringBuilder sb = new StringBuilder();
+        AssetManager assetManager = context.getAssets();
+        try (InputStream inputStream = assetManager.open(fileName); BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                return null;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return sb.toString();
+    }
+    @NonNull
+    public static String[] parseCorrectQemuArgs(String command) {
+        List<String> tokens = new ArrayList<>();
+        Pattern pattern = Pattern.compile("\"([^\"]*)\"|'([^']*)'|(\\S+)");
+        Matcher matcher = pattern.matcher(command);
+
+        while (matcher.find()) {
+            if (matcher.group(1) != null) {
+                tokens.add(matcher.group(1));
+            } else if (matcher.group(2) != null) {
+                tokens.add(matcher.group(2));
+            } else if (matcher.group(3) != null) {
+                tokens.add(matcher.group(3));
+            }
+        }
+
+        return tokens.toArray(new String[0]);
+    }
+}

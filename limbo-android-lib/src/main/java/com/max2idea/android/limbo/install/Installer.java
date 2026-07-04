@@ -18,26 +18,23 @@ Copyright (C) Max Kastanas 2012
  */
 package com.max2idea.android.limbo.install;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.os.AsyncTask;
-import android.util.Log;
-
-import androidx.annotation.NonNull;
 
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.files.FileInstaller;
+import com.max2idea.android.limbo.toast.ToastUtils;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 
 public class Installer extends AsyncTask<Void, Void, Void> {
     private static final String TAG = "Installer";
 
     private boolean force;
-    @SuppressLint("StaticFieldLeak")
-    private final Activity activity;
+    private Activity activity;
     private ProgressDialog progDialog;
 
     private Installer(Activity activity, boolean force) {
@@ -45,7 +42,6 @@ public class Installer extends AsyncTask<Void, Void, Void> {
         this.force = force;
     }
 
-    @NonNull
     public static String[] getAttrs(Context context, int res) {
         StringBuilder stringBuilder = new StringBuilder();
         try {
@@ -56,7 +52,7 @@ public class Installer extends AsyncTask<Void, Void, Void> {
                 stringBuilder.append(new String(buff, 0, bytesRead));
             }
         } catch(Exception ex) {
-           Log.e(TAG, context.getString(R.string.CouldNotOpenRawFile) +": " + ex);
+            ToastUtils.toastShort(context, context.getString(R.string.CouldNotOpenRawFile) +": " + ex);
         }
         String fileContents = stringBuilder.toString();
         return fileContents.split("\\r\\n|\\n");
@@ -70,16 +66,21 @@ public class Installer extends AsyncTask<Void, Void, Void> {
 
     @Override
     protected Void doInBackground(Void... arg0) {
-        activity.runOnUiThread(() -> progDialog = ProgressDialog.show(activity, activity.getString(R.string.PleaseWait),
-                activity.getString(R.string.InstallingBIOS),
-                true));
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                progDialog = ProgressDialog.show(activity, activity.getString(R.string.PleaseWait),
+                        activity.getString(R.string.InstallingBIOS),
+                        true);
+            }
+        });
         FileInstaller.installFiles(activity, force);
         return null;
     }
 
     @Override
     protected void onPostExecute(Void test) {
-        Log.i(TAG,"BIOS and Keymap files installed");
+        ToastUtils.toastShort(activity, "BIOS and Keymap files installed");
         if (progDialog.isShowing())
             progDialog.dismiss();
     }

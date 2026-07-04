@@ -21,9 +21,8 @@ else
 endif
 
 CREATE_OBJDIR=mkdir -p $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
-CREATE_LIBSDIR=mkdir -p $(NDK_PROJECT_PATH)/libs/$(APP_ABI_DIR)/
-DEL_LIBSDIR=rm -rf $(NDK_PROJECT_PATH)/libs/* \
-	$(NDK_PROJECT_PATH)/jniLibs/* \
+CREATE_LIBSDIR=mkdir -p $(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/
+DEL_LIBSDIR=rm -rf $(NDK_PROJECT_PATH)/jniLibs/* \
 	$(LIMBO_APP_LIBS)/jniLibs/* \
 
 
@@ -55,10 +54,10 @@ MOD_QEMU_LIBS=$(OBJCOPY) --redefine-sym open=android_open  \
     qemu/x86_64-softmmu/qemu-system-x86_64
 
 INSTALL_LIBS=cp -Lf $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/*.so* \
-	../libs/$(APP_ABI_DIR)/
+	../jniLibs/$(APP_ABI_DIR)/
 
-REMOVE_GDBSETUP=rm -f ../libs/$(APP_ABI_DIR)/gdb.setup
-REMOVE_GDBSERVER=rm -f ../libs/$(APP_ABI_DIR)/gdbserver
+REMOVE_GDBSETUP=rm -f ../jniLibs/$(APP_ABI_DIR)/gdb.setup
+REMOVE_GDBSERVER=rm -f ../jniLibs/$(APP_ABI_DIR)/gdbserver
 
 SYNC_LIBS=rsync -av --exclude libqemu-system-* ../libs/* ../jniLibs/
 
@@ -68,12 +67,12 @@ LIMBO_APP_LIBS=$(LIMBO_PRJ_ROOT)/limbo-android-lib/src/main
 SYNC_LIBS_X86=rsync -av --include='libqemu-system-x86*.so' \
     --include='gdbserver' --include='gdb.setup' \
     --include='*/' --exclude='*' \
-    ../libs/ $(LIMBO_APP_LIBS)/jniLibs/
+    ../jniLibs/ $(LIMBO_APP_LIBS)/jniLibs/
 SYNC_LIBS_ARM=rsync -av --include='libqemu-system-arm*.so' \
     --include='libqemu-system-aarch64*.so' \
     --include='gdbserver' --include='gdb.setup' \
     --include='*/' --exclude='*' \
-    ../libs/ $(LIMBO_APP_LIBS)/jniLibs/
+    ../jniLibs/ $(LIMBO_APP_LIBS)/jniLibs/
 
 COPY_ROMS=-mkdir -p ../assets/roms && cp -rf ./qemu/pc-bios/*.rom \
 ./qemu/pc-bios/*.bin \
@@ -95,12 +94,12 @@ COPY_RESOLV_CONF=mkdir -p ../assets/roms/etc/ && printf "nameserver 8.8.8.8\n\n"
 #RENAME_PARPROUTED=mv -f $(NDK_PROJECT_PATH)/libs/$(APP_ABI)/parprouted \
 	$(NDK_PROJECT_PATH)/libs/$(APP_ABI)/libparprouted.so
 	
-#GDB needs the gdb.setup under ./libs
-COPY_GDB_SETUP_LIBS=-cp -f $(NDK_PROJECT_PATH)/libs/$(APP_ABI)/gdb.setup \
-	$(NDK_PROJECT_PATH)/libs/gdb.setup
+#GDB needs the gdb.setup under ./jniLibs
+COPY_GDB_SETUP_LIBS=-cp -f $(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI)/gdb.setup \
+	$(NDK_PROJECT_PATH)/jniLibs/gdb.setup
 	
 ifneq ($(NDK_DEBUG),1)
-	STRIP_LIBS=$(STRIP) $(NDK_PROJECT_PATH)/libs/$(APP_ABI_DIR)/*.so*
+	STRIP_LIBS=$(STRIP) $(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/*.so*
 endif
 
 # we disable for now some options so armv7 host can compile with gcc
@@ -249,7 +248,6 @@ install-common:
 	$(CREATE_LIBSDIR)
 	$(INSTALL_LIBS)
 	$(STRIP_LIBS)
-	$(SYNC_LIBS)
 
 install:
 	make install-common

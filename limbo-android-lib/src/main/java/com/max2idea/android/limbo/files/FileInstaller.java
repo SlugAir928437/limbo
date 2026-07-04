@@ -22,13 +22,13 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.res.AssetManager;
 import android.net.Uri;
-
-import androidx.annotation.Nullable;
 import androidx.documentfile.provider.DocumentFile;
 import android.util.Log;
 
 import com.limbo.emu.lib.R;
+import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.main.LimboApplication;
+import com.max2idea.android.limbo.toast.ToastUtils;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -50,7 +50,7 @@ public class FileInstaller {
         File tmpDir = new File(LimboApplication.getBasefileDir());
         if (!tmpDir.exists()) {
             if(tmpDir.mkdirs()) {
-                Log.e(TAG, activity.getString(R.string.CouldNotCreateBaseDir) + ": " + tmpDir.getPath());
+                ToastUtils.toastShort(activity, activity.getString(R.string.CouldNotCreateBaseDir) + ": " + tmpDir.getPath());
                 return;
             }
         }
@@ -58,7 +58,7 @@ public class FileInstaller {
         File tmpDir1 = new File(LimboApplication.getMachineDir());
         if (!tmpDir1.exists()) {
             if(tmpDir.mkdirs()) {
-                Log.e(TAG, activity.getString(R.string.CouldNotCreateMachineDir) + ": " + tmpDir.getPath());
+                ToastUtils.toastShort(activity, activity.getString(R.string.CouldNotCreateMachineDir) + ": " + tmpDir.getPath());
             }
         }
 
@@ -77,7 +77,7 @@ public class FileInstaller {
 
         //Get each file in assets under ./roms/ and install in SDCARD
         AssetManager am = activity.getResources().getAssets();
-        String[] files;
+        String[] files = null;
         try {
             files = am.list("roms");
         } catch (IOException ex) {
@@ -86,37 +86,37 @@ public class FileInstaller {
             return;
         }
 
-        for (String s : files) {
+        for (int i = 0; i < files.length; i++) {
             String[] subfiles = null;
             try {
-                subfiles = am.list("roms/" + s);
+                subfiles = am.list("roms/" + files[i]);
             } catch (IOException ex) {
                 Logger.getLogger(FileInstaller.class.getName()).log(Level.SEVERE, null, ex);
             }
             if (subfiles != null && subfiles.length > 0) {
                 //Install base dir
-                File dir1 = new File(LimboApplication.getBasefileDir() + s);
+                File dir1 = new File(LimboApplication.getBasefileDir() + files[i]);
                 if (dir1.exists() && dir1.isDirectory()) {
                     //don't create again
                 } else if (dir1.exists() && !dir1.isDirectory()) {
-                    Log.e(TAG, "Could not create Dir, file found: " + LimboApplication.getBasefileDir() + s);
+                    Log.e(TAG, "Could not create Dir, file found: " + LimboApplication.getBasefileDir() + files[i]);
                     return;
                 } else if (!dir1.exists()) {
                     dir1.mkdir();
                 }
-                for (String subfile : subfiles) {
+                for (int k = 0; k < subfiles.length; k++) {
 
-                    File file = new File(destDir, s + "/" + subfile);
-                    if (!file.exists() || force) {
+                    File file = new File(destDir, files[i] + "/" + subfiles[k]);
+                    if(!file.exists() || force) {
                         Log.d(TAG, "Installing file: " + file.getPath());
-                        installAssetFile(activity, s + "/" + subfile, destDir, "roms", null);
+                        installAssetFile(activity, files[i] + "/" + subfiles[k], destDir, "roms", null);
                     }
                 }
             } else {
-                File file = new File(destDir, s);
-                if (!file.exists() || force) {
+                File file = new File(destDir, files[i]);
+                if(!file.exists() || force) {
                     Log.d(TAG, "Installing file: " + file.getPath());
-                    installAssetFile(activity, s, LimboApplication.getBasefileDir(), "roms", null);
+                    installAssetFile(activity, files[i], LimboApplication.getBasefileDir(), "roms", null);
                 }
             }
         }
@@ -131,7 +131,7 @@ public class FileInstaller {
             if (!destDirF.exists()) {
                 boolean res = destDirF.mkdirs();
                 if(!res){
-                    Log.e(TAG, activity.getString(R.string.CouldNotCreateDirForImage));
+                	ToastUtils.toastShort(activity, activity.getString(R.string.CouldNotCreateDirForImage));
                 }
             }
             
@@ -152,11 +152,10 @@ public class FileInstaller {
         }
     }
 
-    @Nullable
     public static Uri installImageTemplateToSDCard(Context context, String srcFile,
                                                    Uri destDir, String assetsDir, String destFile) {
 
-        DocumentFile destFileF;
+        DocumentFile destFileF = null;
         OutputStream os = null;
         InputStream is = null;
         Uri uri = null;
@@ -176,7 +175,7 @@ public class FileInstaller {
                 destFileF = dir.createFile("application/octet-stream", destFile);
             }
             else {
-                Log.e(TAG, context.getString(R.string.FileExistsChooseAnotherFilename));
+                    ToastUtils.toastShort(context, context.getString(R.string.FileExistsChooseAnotherFilename));
                     return null;
             }
 
@@ -215,7 +214,6 @@ public class FileInstaller {
     }
 
 
-    @Nullable
     public static String installImageTemplateToExternalStorage(Context context, String srcFile,
                                                                String destDir, String assetsDir, String destFile) {
 
@@ -236,7 +234,7 @@ public class FileInstaller {
                 file.createNewFile();
             }
             else {
-                Log.e(TAG, context.getString(R.string.FileExistsChooseAnotherFilename));
+                ToastUtils.toastShort(context, context.getString(R.string.FileExistsChooseAnotherFilename));
                 return null;
             }
 

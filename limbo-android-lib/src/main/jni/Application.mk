@@ -2,6 +2,9 @@ LIMBO_JNI_ROOT := $(CURDIR)/jni
 
 include $(LIMBO_JNI_ROOT)/android-limbo-build.mak
 
+# Output .so files directly to jniLibs instead of the default libs/
+NDK_LIBS_OUT := $(NDK_PROJECT_PATH)/jniLibs
+
 #Suppress Format errors from logutils.h macros
 APP_CFLAGS += -Wno-format-security
 

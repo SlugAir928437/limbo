@@ -1,5 +1,5 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
-    <PreferenceCategory android:title="Screen Immersion">
+    <PreferenceCategory android:title="@string/pref_title_screen_immersion">
         <CheckBoxPreference
             android:defaultValue="false"
             android:key="immersiveMode"

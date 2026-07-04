@@ -18,7 +18,6 @@ Copyright (C) Max Kastanas 2012
  */
 package com.max2idea.android.limbo.main;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.util.Log;
 import android.view.InputDevice;
@@ -26,9 +25,8 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.View;
-import android.view.ViewGroup;
 
-import androidx.annotation.NonNull;
+import com.max2idea.android.limbo.machine.MachineAction;
 
 import org.libsdl.app.SDLActivity;
 import org.libsdl.app.SDLControllerManager;
@@ -41,21 +39,9 @@ import java.util.ArrayList;
  * changes, and a usefull keymapper. The trackpad and mouse support is part our custom SDL extensions
  * (see jni/compat/sdl-extensions).
  */
-@SuppressLint("ViewConstructor")
 public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         implements View.OnKeyListener, View.OnTouchListener {
     private static final String TAG = "LimboSDLSurface";
-    // 虚拟机原生分辨率
-    private int mVmWidth = 640;
-    private int mVmHeight = 480;
-    // Surface实际画布尺寸
-    private int mSurfaceWidth = 0;
-    private int mSurfaceHeight = 0;
-
-    // 居中偏移 & 缩放系数（用于坐标转换）
-    private float mOffsetX = 0f;
-    private float mOffsetY = 0f;
-    private float mScale = 1f;
 
     MouseState mouseState = new MouseState();
     private boolean firstTouch = false;
@@ -72,90 +58,36 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         setOnGenericMotionListener(new SDLGenericMotionListener_API12());
     }
 
-    public void setVmNativeSize(int w, int h) {
-        mVmWidth = w;
-        mVmHeight = h;
-        // 分辨率变更后重新计算居中参数
-        calcCenterParams();
-    }
-
-    /**
-     * 计算等比居中的 偏移量、缩放系数（核心居中逻辑）
-     */
-    private void calcCenterParams() {
-        if (mSurfaceWidth <= 0 || mSurfaceHeight <= 0 || mVmWidth <= 0 || mVmHeight <= 0) {
-            mOffsetX = 0f;
-            mOffsetY = 0f;
-            mScale = 1f;
-            return;
-        }
-        // 计算等比缩放比例
-        float scaleX = (float) mSurfaceWidth / mVmWidth;
-        float scaleY = (float) mSurfaceHeight / mVmHeight;
-        mScale = Math.min(scaleX, scaleY);
-
-        // 计算居中偏移
-        float realRenderW = mVmWidth * mScale;
-        float realRenderH = mVmHeight * mScale;
-        mOffsetX = (mSurfaceWidth - realRenderW) / 2f;
-        mOffsetY = (mSurfaceHeight - realRenderH) / 2f;
-
-        Log.d(TAG, String.format("Center calc: scale=%.2f, offsetX=%.2f, offsetY=%.2f",
-                mScale, mOffsetX, mOffsetY));
-
-        // 动态修改当前View布局参数，实现画面物理居中（兼容SDL原生渲染）
-        ViewGroup.LayoutParams params = getLayoutParams();
-        if (params != null) {
-            params.width = (int) realRenderW;
-            params.height = (int) realRenderH;
-            setLayoutParams(params);
-            setX(mOffsetX);
-            setY(mOffsetY);
-        }
-    }
-
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
         Log.d(TAG, "surfaceChanged: " + width + "x" + height);
-        mSurfaceWidth = width;
-        mSurfaceHeight = height;
         super.surfaceChanged(holder, format, width, height);
-        // 尺寸变化 → 重新计算居中
-        calcCenterParams();
         refreshSurfaceView();
     }
 
     @Override
-    public void surfaceCreated(@NonNull SurfaceHolder holder) {
+    public void surfaceCreated(SurfaceHolder holder) {
         Log.d(TAG, "surfaceCreated");
         super.surfaceCreated(holder);
         setWillNotDraw(false);
-        calcCenterParams();
         refreshSurfaceView();
     }
 
     public void refreshSurfaceView() {
-        new Thread(sdlActivity::setFullscreen).start();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                sdlActivity.setFullscreen();
+                // notify the controller that our display has changed
+                sdlActivity.notifyAction(MachineAction.DISPLAY_CHANGED,
+                        new Object[]{getWidth(), getHeight(), getResources().getConfiguration().orientation});
+            }
+        }).start();
     }
 
-    /**
-     * 坐标矫正：安卓触摸坐标 → 虚拟机内部坐标（解决触摸错位）
-     */
-    private float convertTouchX(float rawX) {
-        return (rawX - mOffsetX) / mScale;
-    }
-
-    private float convertTouchY(float rawY) {
-        return (rawY - mOffsetY) / mScale;
-    }
-
-    public boolean onTouchProcess(View v, @NonNull MotionEvent event) {
+    public boolean onTouchProcess(View v, MotionEvent event) {
         int action = event.getActionMasked();
-        // 原始坐标
-        float rawX = event.getX();
-        float rawY = event.getY();
-        // 转换为虚拟机画布坐标
-        mouseState.x = convertTouchX(rawX);
-        mouseState.y = convertTouchY(rawY);
+        mouseState.x = event.getX();
+        mouseState.y = event.getY();
 
         processMouseMovement(action, event.getToolType(0), mouseState.x, mouseState.y);
         processMouseButton(event, action, mouseState.x, mouseState.y);
@@ -176,7 +108,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
                 nx = (x - mouseState.old_x);
                 ny = (y - mouseState.old_y);
             }
-            sdlActivity.sendMouseEvent(MotionEvent.ACTION_MOVE, toolType, nx, ny);
+            sdlActivity.sendMouseEvent(0, MotionEvent.ACTION_MOVE, toolType, nx, ny);
 
             mouseState.old_x = x;
             mouseState.old_y = y;
@@ -191,11 +123,12 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
             mouseState.addAction(event.getToolType(0), System.currentTimeMillis(), event.getActionMasked(), x, y);
             //XXX: The Button state might not be available when the action is UP
             //  we should release all mouse buttons to be safe since we don't know which one fired the event
-            if (sdlMouseButton != 0) {
+            if (sdlMouseButton == Config.SDL_MOUSE_MIDDLE || sdlMouseButton == Config.SDL_MOUSE_RIGHT
+                    || sdlMouseButton != 0) {
                 if (sdlActivity.isRelativeMode(event.getToolType(0)))
-                    sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, event.getToolType(0), 0, 0);
+                    sdlActivity.sendMouseEvent(sdlMouseButton, MotionEvent.ACTION_UP, event.getToolType(0), 0, 0);
                 else
-                    sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, event.getToolType(0), x, y);
+                    sdlActivity.sendMouseEvent(sdlMouseButton, MotionEvent.ACTION_UP, event.getToolType(0), x, y);
 
             } else { // if we don't have information about which button we can make some guesses
                 guessMouseButtonUp(event.getToolType(0), x, y);
@@ -211,13 +144,13 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
             }
             if (sdlActivity.isRelativeMode(event.getToolType(0))) {
                 if (!firstTouch) {
-                    sdlActivity.sendMouseEvent(MotionEvent.ACTION_DOWN, event.getToolType(0), 0, 0);
+                    sdlActivity.sendMouseEvent(sdlMouseButton, MotionEvent.ACTION_DOWN, event.getToolType(0), 0, 0);
                     firstTouch = true;
                 } else {
                     setPendingMouseDown(x, y, sdlMouseButton);
                 }
             } else {
-                sdlActivity.sendMouseEvent(MotionEvent.ACTION_DOWN, event.getToolType(0), x, y);
+                sdlActivity.sendMouseEvent(sdlMouseButton, MotionEvent.ACTION_DOWN, event.getToolType(0), x, y);
             }
             mouseState.lastMouseButtonDown = sdlMouseButton;
 
@@ -230,14 +163,14 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
                 && (Math.abs(x - mouseState.down_x) < 20 && Math.abs(y - mouseState.down_y) < 20)
                 && ((action == MotionEvent.ACTION_MOVE && delta > 400)
                 || action == MotionEvent.ACTION_UP)) {
-            sdlActivity.sendMouseEvent(MotionEvent.ACTION_DOWN, toolType, 0, 0);
+            sdlActivity.sendMouseEvent(mouseState.down_mouse_button, MotionEvent.ACTION_DOWN, toolType, 0, 0);
             mouseState.down_pending = false;
         } else if (System.currentTimeMillis() - mouseState.down_event_time > 400) {
             mouseState.down_pending = false;
         }
     }
 
-    private int getMouseButton(@NonNull MotionEvent event) {
+    private int getMouseButton(MotionEvent event) {
         int sdlMouseButton = 0;
         if (event.getButtonState() == MotionEvent.BUTTON_PRIMARY)
             sdlMouseButton = Config.SDL_MOUSE_LEFT;
@@ -252,18 +185,18 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         //Or only the last one pressed
         if (mouseState.lastMouseButtonDown > 0) {
             if (sdlActivity.isRelativeMode(toolType)) {
-                sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, toolType, 0, 0);
+                sdlActivity.sendMouseEvent(mouseState.lastMouseButtonDown, MotionEvent.ACTION_UP, toolType, 0, 0);
             } else {
-                sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, toolType, x, y);
+                sdlActivity.sendMouseEvent(mouseState.lastMouseButtonDown, MotionEvent.ACTION_UP, toolType, x, y);
             }
         } else {
             //ALl buttons
             if (sdlActivity.isRelativeMode(toolType)) {
-                sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, toolType, 0, 0);
+                sdlActivity.sendMouseEvent(Config.SDL_MOUSE_LEFT, MotionEvent.ACTION_UP, toolType, 0, 0);
             } else {
-                sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, toolType, x, y);
-                sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, toolType, x, y);
-                sdlActivity.sendMouseEvent(MotionEvent.ACTION_UP, toolType, x, y);
+                sdlActivity.sendMouseEvent(Config.SDL_MOUSE_LEFT, MotionEvent.ACTION_UP, toolType, x, y);
+                sdlActivity.sendMouseEvent(Config.SDL_MOUSE_RIGHT, MotionEvent.ACTION_UP, toolType, x, y);
+                sdlActivity.sendMouseEvent(Config.SDL_MOUSE_MIDDLE, MotionEvent.ACTION_UP, toolType, x, y);
             }
         }
     }
@@ -288,9 +221,9 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
      * @param event MotionEvent to be processed
      * @return true if event is consumed
      */
-    private boolean processExternalMouseEvents(View v, @NonNull MotionEvent event) {
+    private boolean processExternalMouseEvents(View v, MotionEvent event) {
         if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER
-                || LimboSDLActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN) {
+                || sdlActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN) {
             onTouchProcess(v, event);
             return true;
         }
@@ -298,14 +231,14 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
     }
 
     @Override
-    public boolean onKey(View v, int keyCode, @NonNull KeyEvent event) {
+    public boolean onKey(View v, int keyCode, KeyEvent event) {
         // if keys are other than keyboard (joystick, etc) we send to the parent SDLSurface
         if (event.getSource() != InputDevice.SOURCE_KEYBOARD)
             return super.onKey(v, keyCode, event);
         return false;
     }
 
-    static class MouseState {
+    class MouseState {
         public float x = 0;
         public float y = 0;
         public float old_x = 0;
@@ -331,21 +264,22 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         }
 
         public boolean isDoubleTap() {
-            return LimboSDLActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN
+            if (LimboSDLActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN
                     && taps.size() >= 3
                     && taps.get(0).toolType == MotionEvent.TOOL_TYPE_FINGER
                     && taps.get(0).action == MotionEvent.ACTION_DOWN
-                    && taps.get(0).x == taps.get(1).x
-                    && taps.get(0).y == taps.get(1).y
                     && taps.get(1).toolType == MotionEvent.TOOL_TYPE_FINGER
                     && taps.get(1).action == MotionEvent.ACTION_UP
-                    && taps.get(1).x == taps.get(2).x
-                    && taps.get(1).y == taps.get(2).y
+                    && taps.get(0).x == taps.get(1).x
+                    && taps.get(0).y == taps.get(1).y
                     && taps.get(2).toolType == MotionEvent.TOOL_TYPE_FINGER
-                    && taps.get(2).action == MotionEvent.ACTION_DOWN;
+                    && taps.get(2).action == MotionEvent.ACTION_DOWN
+            )
+                return true;
+            return false;
         }
 
-        public static class MouseAction {
+        public class MouseAction {
             private final long time;
             int action;
             int toolType;
@@ -384,7 +318,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
                         case MotionEvent.ACTION_SCROLL:
                             x = event.getAxisValue(MotionEvent.AXIS_HSCROLL, 0);
                             y = event.getAxisValue(MotionEvent.AXIS_VSCROLL, 0);
-                            sdlActivity.sendMouseEvent(action, event.getToolType(0), x, y);
+                            sdlActivity.sendMouseEvent(0, action, event.getToolType(0), x, y);
                             return true;
 
                         case MotionEvent.ACTION_HOVER_MOVE:
@@ -394,19 +328,13 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
                                     float ex = event.getHistoricalX(h);
                                     float ey = event.getHistoricalY(h);
                                     float ep = event.getHistoricalPressure(h);
-                                    // 坐标转换
-                                    float cx = convertTouchX(ex);
-                                    float cy = convertTouchY(ey);
-                                    sdlActivity.sendMouseEvent(action, event.getToolType(0), cx, cy);
+                                    sdlActivity.sendMouseEvent(0, action, event.getToolType(0), ex, ey);
                                 }
                             }
                             float ex = event.getX();
                             float ey = event.getY();
                             float ep = event.getPressure();
-                            // 坐标转换
-                            float cx = convertTouchX(ex);
-                            float cy = convertTouchY(ey);
-                            sdlActivity.sendMouseEvent(action, event.getToolType(0), cx, cy);
+                            sdlActivity.sendMouseEvent(0, action, event.getToolType(0), ex, ey);
                             return true;
                         case MotionEvent.ACTION_UP:
                         default:

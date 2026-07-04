@@ -10,8 +10,6 @@ import android.os.*;
 import android.view.*;
 import android.util.Log;
 
-import androidx.annotation.NonNull;
-
 
 public class SDLControllerManager
 {
@@ -142,16 +140,16 @@ class SDLJoystickHandler_API12 extends SDLJoystickHandler {
     }
     static class RangeComparator implements Comparator<InputDevice.MotionRange> {
         @Override
-        public int compare(@NonNull InputDevice.MotionRange arg0, @NonNull InputDevice.MotionRange arg1) {
+        public int compare(InputDevice.MotionRange arg0, InputDevice.MotionRange arg1) {
             return arg0.getAxis() - arg1.getAxis();
         }
     }
 
-    private final ArrayList<SDLJoystick> mJoysticks;
+    private ArrayList<SDLJoystick> mJoysticks;
 
     public SDLJoystickHandler_API12() {
 
-        mJoysticks = new ArrayList<>();
+        mJoysticks = new ArrayList<SDLJoystick>();
     }
 
     @Override
@@ -171,8 +169,8 @@ class SDLJoystickHandler_API12 extends SDLJoystickHandler {
                     joystick.device_id = deviceIds[i];
                     joystick.name = joystickDevice.getName();
                     joystick.desc = getJoystickDescriptor(joystickDevice);
-                    joystick.axes = new ArrayList<>();
-                    joystick.hats = new ArrayList<>();
+                    joystick.axes = new ArrayList<InputDevice.MotionRange>();
+                    joystick.hats = new ArrayList<InputDevice.MotionRange>();
 
                     List<InputDevice.MotionRange> ranges = joystickDevice.getMotionRanges();
                     Collections.sort(ranges, new RangeComparator());
@@ -196,7 +194,7 @@ class SDLJoystickHandler_API12 extends SDLJoystickHandler {
         }
 
         /* Check removed devices */
-        ArrayList<Integer> removedDevices = new ArrayList<>();
+        ArrayList<Integer> removedDevices = new ArrayList<Integer>();
         for(int i=0; i < mJoysticks.size(); i++) {
             int device_id = mJoysticks.get(i).device_id;
             int j;
@@ -230,31 +228,35 @@ class SDLJoystickHandler_API12 extends SDLJoystickHandler {
     }
 
     @Override
-    public boolean handleMotionEvent(@NonNull MotionEvent event) {
+    public boolean handleMotionEvent(MotionEvent event) {
         if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != 0) {
             int actionPointerIndex = event.getActionIndex();
             int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_MOVE) {
-                SDLJoystick joystick = getJoystick(event.getDeviceId());
-                if (joystick != null) {
-                    for (int i = 0; i < joystick.axes.size(); i++) {
-                        InputDevice.MotionRange range = joystick.axes.get(i);
-                        /* Normalize the value to -1...1 */
-                        float value = (event.getAxisValue(range.getAxis(), actionPointerIndex) - range.getMin()) / range.getRange() * 2.0f - 1.0f;
-                        SDLControllerManager.onNativeJoy(joystick.device_id, i, value);
+            switch(action) {
+                case MotionEvent.ACTION_MOVE:
+                    SDLJoystick joystick = getJoystick(event.getDeviceId());
+                    if ( joystick != null ) {
+                        for (int i = 0; i < joystick.axes.size(); i++) {
+                            InputDevice.MotionRange range = joystick.axes.get(i);
+                            /* Normalize the value to -1...1 */
+                            float value = ( event.getAxisValue( range.getAxis(), actionPointerIndex) - range.getMin() ) / range.getRange() * 2.0f - 1.0f;
+                            SDLControllerManager.onNativeJoy(joystick.device_id, i, value );
+                        }
+                        for (int i = 0; i < joystick.hats.size(); i+=2) {
+                            int hatX = Math.round(event.getAxisValue( joystick.hats.get(i).getAxis(), actionPointerIndex ) );
+                            int hatY = Math.round(event.getAxisValue( joystick.hats.get(i+1).getAxis(), actionPointerIndex ) );
+                            SDLControllerManager.onNativeHat(joystick.device_id, i/2, hatX, hatY );
+                        }
                     }
-                    for (int i = 0; i < joystick.hats.size(); i += 2) {
-                        int hatX = Math.round(event.getAxisValue(joystick.hats.get(i).getAxis(), actionPointerIndex));
-                        int hatY = Math.round(event.getAxisValue(joystick.hats.get(i + 1).getAxis(), actionPointerIndex));
-                        SDLControllerManager.onNativeHat(joystick.device_id, i / 2, hatX, hatY);
-                    }
-                }
+                    break;
+                default:
+                    break;
             }
         }
         return true;
     }
 
-    public String getJoystickDescriptor(@NonNull InputDevice joystickDevice) {
+    public String getJoystickDescriptor(InputDevice joystickDevice) {
         return joystickDevice.getName();
     }
 }
@@ -263,7 +265,7 @@ class SDLJoystickHandler_API12 extends SDLJoystickHandler {
 class SDLJoystickHandler_API16 extends SDLJoystickHandler_API12 {
 
     @Override
-    public String getJoystickDescriptor(@NonNull InputDevice joystickDevice) {
+    public String getJoystickDescriptor(InputDevice joystickDevice) {
         String desc = joystickDevice.getDescriptor();
 
         if (desc != null && !desc.isEmpty()) {
@@ -276,16 +278,16 @@ class SDLJoystickHandler_API16 extends SDLJoystickHandler_API12 {
 
 class SDLHapticHandler {
 
-    static class SDLHaptic {
+    class SDLHaptic {
         public int device_id;
         public String name;
         public Vibrator vib;
     }
 
-    private final ArrayList<SDLHaptic> mHaptics;
+    private ArrayList<SDLHaptic> mHaptics;
 
     public SDLHapticHandler() {
-        mHaptics = new ArrayList<>();
+        mHaptics = new ArrayList<SDLHaptic>();
     }
 
     public void run(int device_id, int length) {
@@ -306,18 +308,21 @@ class SDLHapticHandler {
         // so the first controller seen by SDL matches what the receiver
         // considers to be the first controller
 
-        for (int i = deviceIds.length - 1; i > -1; i--) {
-            SDLHaptic haptic = getHaptic(deviceIds[i]);
-            if (haptic == null) {
-                InputDevice device = InputDevice.getDevice(deviceIds[i]);
-                Vibrator vib = device.getVibrator();
-                if (vib.hasVibrator()) {
-                    haptic = new SDLHaptic();
-                    haptic.device_id = deviceIds[i];
-                    haptic.name = device.getName();
-                    haptic.vib = vib;
-                    mHaptics.add(haptic);
-                    SDLControllerManager.nativeAddHaptic(haptic.device_id, haptic.name);
+        if (Build.VERSION.SDK_INT >= 16)
+        {
+            for (int i = deviceIds.length - 1; i > -1; i--) {
+                SDLHaptic haptic = getHaptic(deviceIds[i]);
+                if (haptic == null) {
+                    InputDevice device = InputDevice.getDevice(deviceIds[i]);
+                    Vibrator vib = device.getVibrator();
+                    if (vib.hasVibrator()) {
+                        haptic = new SDLHaptic();
+                        haptic.device_id = deviceIds[i];
+                        haptic.name = device.getName();
+                        haptic.vib = vib;
+                        mHaptics.add(haptic);
+                        SDLControllerManager.nativeAddHaptic(haptic.device_id, haptic.name);
+                    }
                 }
             }
         }
@@ -325,7 +330,11 @@ class SDLHapticHandler {
         /* Check VIBRATOR_SERVICE */
         Vibrator vib = (Vibrator) SDL.getContext().getSystemService(Context.VIBRATOR_SERVICE);
         if (vib != null) {
-            hasVibratorService = vib.hasVibrator();
+            if (Build.VERSION.SDK_INT >= 11) {
+                hasVibratorService = vib.hasVibrator();
+            } else {
+                hasVibratorService = true;
+            }
 
             if (hasVibratorService) {
                 SDLHaptic haptic = getHaptic(deviceId_VIBRATOR_SERVICE);
@@ -341,22 +350,6 @@ class SDLHapticHandler {
         }
 
         /* Check removed devices */
-        ArrayList<Integer> removedDevices = getIntegers(deviceIds, deviceId_VIBRATOR_SERVICE, hasVibratorService);
-
-        for(int i=0; i < removedDevices.size(); i++) {
-            int device_id = removedDevices.get(i);
-            SDLControllerManager.nativeRemoveHaptic(device_id);
-            for (int j=0; j < mHaptics.size(); j++) {
-                if (mHaptics.get(j).device_id == device_id) {
-                    mHaptics.remove(j);
-                    break;
-                }
-            }
-        }
-    }
-
-    @NonNull
-    private ArrayList<Integer> getIntegers(int[] deviceIds, int deviceId_VIBRATOR_SERVICE, boolean hasVibratorService) {
         ArrayList<Integer> removedDevices = new ArrayList<Integer>();
         for(int i=0; i < mHaptics.size(); i++) {
             int device_id = mHaptics.get(i).device_id;
@@ -371,7 +364,17 @@ class SDLHapticHandler {
                 removedDevices.add(device_id);
             }
         }
-        return removedDevices;
+
+        for(int i=0; i < removedDevices.size(); i++) {
+            int device_id = removedDevices.get(i);
+            SDLControllerManager.nativeRemoveHaptic(device_id);
+            for (int j=0; j < mHaptics.size(); j++) {
+                if (mHaptics.get(j).device_id == device_id) {
+                    mHaptics.remove(j);
+                    break;
+                }
+            }
+        }
     }
 
     protected SDLHaptic getHaptic(int device_id) {
@@ -387,7 +390,7 @@ class SDLHapticHandler {
 class SDLGenericMotionListener_API12 implements View.OnGenericMotionListener {
     // Generic Motion (mouse hover, joystick...) events go here
     @Override
-    public boolean onGenericMotion(View v, @NonNull MotionEvent event) {
+    public boolean onGenericMotion(View v, MotionEvent event) {
         float x, y;
         int action;
 

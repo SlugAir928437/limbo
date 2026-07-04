@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.limbo"
-        minSdk 23
+        minSdk 24
         //noinspection OldTargetApi
         targetSdk 36
         versionCode 1
@@ -53,7 +53,7 @@ dependencies {
     androidTestImplementation libs.androidx.junit
     implementation project(':limbo-android-lib')
     // 设备兼容框架：https://github.com/getActivity/DeviceCompat
-    implementation libs.devicecompat
+//    implementation libs.devicecompat
     // 权限请求框架：https://github.com/getActivity/XXPermissions
-    implementation libs.xxpermissions
+//    implementation libs.xxpermissions
 }

@@ -22,12 +22,10 @@ import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 import android.util.Log;
 
-import androidx.annotation.NonNull;
-
 import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.main.LimboApplication;
+import com.max2idea.android.limbo.toast.ToastUtils;
 
-import org.jetbrains.annotations.Contract;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -50,8 +48,9 @@ public class QmpClient {
 	}
 	public synchronized static String sendCommand(String command) {
 		String response = null;
-        Socket pingSocket = null;
-		LocalSocket localSocket;
+		int trial=0;
+		Socket pingSocket = null;
+		LocalSocket localSocket = null;
 		PrintWriter out = null;
 		BufferedReader in = null;
 
@@ -94,9 +93,9 @@ public class QmpClient {
 	}
 
 	private static String tryGetResponse(BufferedReader in) throws Exception {
-		String response;
+		String response = null;
 		int trial = 0;
-		while((response = getResponse(in)).isEmpty() && trial < 3){
+		while((response = getResponse(in)).equals("") && trial < 3){
 			Thread.sleep(1000);
 			trial++;
 		}
@@ -110,10 +109,9 @@ public class QmpClient {
 		out.println(request);
 	}
 
-    @NonNull
-	private static String getResponse(BufferedReader in) {
+    private static String getResponse(BufferedReader in) throws Exception {
         String line;
-        StringBuilder stringBuilder = new StringBuilder();
+        StringBuilder stringBuilder = new StringBuilder("");
         try {
             do {
                 line = in.readLine();
@@ -161,7 +159,6 @@ public class QmpClient {
         return stringBuilder.toString();
     }
 
-	@NonNull
 	private static String getQueryMigrateResponse(BufferedReader in) throws Exception {
 
 		String line;
@@ -179,7 +176,7 @@ public class QmpClient {
 
 					try {
 						returnStr = object.getString("return");
-					} catch (Exception ignored) {
+					} catch (Exception ex) {
 
 					}
 
@@ -189,7 +186,7 @@ public class QmpClient {
 
 					try {
 						errStr = object.getString("error");
-					} catch (Exception ignored) {
+					} catch (Exception ex) {
 
 					}
 					stringBuilder.append(line);
@@ -207,8 +204,6 @@ public class QmpClient {
 		return stringBuilder.toString();
 	}
 
-	@NonNull
-	@Contract(pure = true)
 	public static String getMigrateCommand(boolean block, boolean inc, String uri) {
 		
 		// XXX: Detach should not be used via QMP according to docs
@@ -223,44 +218,30 @@ public class QmpClient {
 				+ "\"},\"id\":\"limbo\"}";
 	}
 
-    @NonNull
-	@Contract(pure = true)
-	public static String getChangeVncPasswdCommand(String passwd) {
+    public static String getChangeVncPasswdCommand(String passwd) {
 		return "{\"execute\": \"change\", \"arguments\": { \"device\": \"vnc\", \"target\": \"password\", \"arg\": \"" + passwd +"\" } }";
     }
 
-    @NonNull
-	@Contract(pure = true)
-	public static String getEjectDeviceCommand(String dev) {
+    public static String getEjectDeviceCommand(String dev) {
         return "{ \"execute\": \"eject\", \"arguments\": { \"device\": \""+ dev +"\" } }";
     }
 
-    @NonNull
-	@Contract(pure = true)
-	public static String getChangeDeviceCommand(String dev, String value) {
+    public static String getChangeDeviceCommand(String dev, String value) {
         return "{ \"execute\": \"change\", \"arguments\": { \"device\": \""+dev+"\", \"target\": \"" + value + "\" } }";
     }
 
-    @NonNull
-	@Contract(pure = true)
-	public static String getQueryMigrationCommand() {
+    public static String getQueryMigrationCommand() {
 		return "{ \"execute\": \"query-migrate\" }";
 	}
 
-	@NonNull
-	@Contract(pure = true)
 	public static String getStopVMCommand() {
 		return "{ \"execute\": \"stop\" }";
 	}
 
-	@NonNull
-	@Contract(pure = true)
 	public static String getContinueVMCommand() {
 		return "{ \"execute\": \"cont\" }";
 	}
 
-	@NonNull
-	@Contract(pure = true)
 	public static String getPowerDownCommand() {
 		return "{ \"execute\": \"system_powerdown\" }";
 	}

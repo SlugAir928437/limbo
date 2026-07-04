@@ -53,7 +53,7 @@ done
 MOD_QEMU_LIBS=$(OBJCOPY) --redefine-sym open=android_open  \
     qemu/x86_64-softmmu/qemu-system-x86_64
 
-INSTALL_LIBS=cp -Lf $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/*.so* \
+INSTALL_LIBS=mkdir -p ../jniLibs/$(APP_ABI_DIR)/ && cp -Lf $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/*.so* \
 	../jniLibs/$(APP_ABI_DIR)/
 
 REMOVE_GDBSETUP=rm -f ../jniLibs/$(APP_ABI_DIR)/gdb.setup

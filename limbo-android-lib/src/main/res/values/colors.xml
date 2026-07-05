@@ -1,6 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#3f51b5</color>
-    <color name="colorPrimaryDark">#303F9F</color>
-    <color name="colorAccent">#FF4081</color>
+    <!-- Primary -->
+    <color name="colorPrimary">#1565C0</color>
+    <color name="colorPrimaryVariant">#0D47A1</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+
+    <!-- Secondary -->
+    <color name="colorSecondary">#00897B</color>
+    <color name="colorSecondaryVariant">#00695C</color>
+    <color name="colorOnSecondary">#FFFFFF</color>
+
+    <!-- Background & Surface -->
+    <color name="colorBackground">#FAFAFA</color>
+    <color name="colorSurface">#FFFFFF</color>
+    <color name="colorOnBackground">#212121</color>
+    <color name="colorOnSurface">#212121</color>
+
+    <!-- Error -->
+    <color name="colorError">#D32F2F</color>
+    <color name="colorOnError">#FFFFFF</color>
+
+    <!-- Legacy aliases (kept for backward compatibility) -->
+    <color name="colorPrimaryDark">#0D47A1</color>
+    <color name="colorAccent">#00897B</color>
+
+    <!-- Card & Section -->
+    <color name="colorCardBackground">#FFFFFF</color>
+    <color name="colorSectionHeaderText">#1565C0</color>
+    <color name="colorSummaryText">#757575</color>
+    <color name="colorDivider">#E0E0E0</color>
 </resources>

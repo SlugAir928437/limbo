@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Spacing -->
+    <dimen name="spacing_xs">4dp</dimen>
+    <dimen name="spacing_sm">8dp</dimen>
+    <dimen name="spacing_md">12dp</dimen>
+    <dimen name="spacing_normal">16dp</dimen>
+    <dimen name="spacing_lg">20dp</dimen>
+    <dimen name="spacing_xl">24dp</dimen>
+
+    <!-- Card -->
+    <dimen name="card_corner_radius">12dp</dimen>
+    <dimen name="card_elevation">2dp</dimen>
+    <dimen name="card_inner_padding">16dp</dimen>
+
+    <!-- Section header -->
+    <dimen name="section_header_icon_size">36dp</dimen>
+    <dimen name="section_header_text_size">18sp</dimen>
+    <dimen name="section_summary_text_size">12sp</dimen>
+
+    <!-- Row item -->
+    <dimen name="row_icon_size">24dp</dimen>
+    <dimen name="row_text_size">14sp</dimen>
+    <dimen name="row_item_height">48dp</dimen>
+
+    <!-- Control button -->
+    <dimen name="control_button_size">48dp</dimen>
+
+    <!-- Divider -->
+    <dimen name="divider_height">1dp</dimen>
+</resources>

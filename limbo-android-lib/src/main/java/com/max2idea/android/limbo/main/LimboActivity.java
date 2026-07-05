@@ -47,7 +47,7 @@ import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.EditText;
-import android.widget.ImageButton;
+import com.google.android.material.button.MaterialButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
@@ -172,10 +172,10 @@ public class LimboActivity extends AppCompatActivity
     private Spinner mMouse;
 
     // buttons
-    private ImageButton mStart;
-    private ImageButton mPause;
-    private ImageButton mStop;
-    private ImageButton mRestart;
+    private MaterialButton mStart;
+    private MaterialButton mPause;
+    private MaterialButton mStop;
+    private MaterialButton mRestart;
 
     //sections
     private LinearLayout mCPUSectionDetails;

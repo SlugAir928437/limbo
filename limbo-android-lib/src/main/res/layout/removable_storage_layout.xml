@@ -1,222 +1,239 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/removablestoragesectionl"
-    android:layout_width="fill_parent"
+    style="@style/Widget.Limbo.SectionCard"
+    android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/border"
-    android:gravity="center|center_vertical"
-    android:orientation="vertical"
-    android:padding="15dp"
+    android:layout_marginBottom="@dimen/spacing_sm"
     tools:showIn="@layout/limbo_main">
 
-
     <LinearLayout
-        android:id="@+id/removablestorageheaderl"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
-        >
-
-        <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/cdrom" />
-
-        <TextView
-            android:id="@+id/removableStoragesectionStr"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center|center_vertical"
-            android:gravity="center|center_vertical"
-            android:padding="10dp"
-            android:text="@string/title_removable"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-
-        <TextView
-            android:id="@+id/removablesectionsummaryStr"
+        <!-- Section Header -->
+        <LinearLayout
+            android:id="@+id/removablestorageheaderl"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="right"
-            android:maxLines="3"
-            android:minLines="2"
-            android:padding="10dp"
-            android:text=""
-            android:textSize="12sp" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/removableStoragesectionDetails"
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"
-        android:orientation="vertical"
-        android:padding="10dp">
-
-        <LinearLayout
-            android:id="@+id/cdromimgl"
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <CheckBox
-                android:id="@+id/cdromimgcheck"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="left|center_vertical"
-                android:gravity="left|center_vertical"
-                android:paddingRight="5dp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="@dimen/spacing_md">
 
             <ImageView
-                android:id="@+id/cdromoptions"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingRight="5dp"
+                android:layout_width="@dimen/section_header_icon_size"
+                android:layout_height="@dimen/section_header_icon_size"
+                android:layout_marginEnd="@dimen/spacing_sm"
                 android:src="@drawable/cdrom" />
 
             <TextView
-                android:id="@+id/cdromimgstr"
-                android:layout_width="wrap_content"
+                android:id="@+id/removableStoragesectionStr"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:text="@string/label_cdrom"
-                android:textSize="15sp" />
-
-            <Spinner
-                android:id="@+id/cdromimgval"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:ellipsize="start"
-                android:gravity="right"
-                android:singleLine="true"
-                android:text=""
-                android:textSize="15sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/floppyimgl"
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <CheckBox
-                android:id="@+id/floppyimgcheck"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="left|center_vertical"
-                android:gravity="left|center_vertical"
-                android:paddingRight="5dp" />
-
-            <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingRight="5dp"
-                android:src="@drawable/floppy" />
+                android:layout_weight="1"
+                android:text="@string/title_removable"
+                android:textColor="@color/colorSectionHeaderText"
+                android:textSize="@dimen/section_header_text_size"
+                android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/floppyimgstr"
+                android:id="@+id/removablesectionsummaryStr"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:text="@string/label_floppy_a"
-                android:textSize="15sp" />
-
-            <Spinner
-                android:id="@+id/floppyimgval"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="right"
-                android:singleLine="true"
+                android:gravity="end"
+                android:maxLines="3"
+                android:minLines="2"
                 android:text=""
-                android:textSize="15sp" />
+                android:textColor="@color/colorSummaryText"
+                android:textSize="@dimen/section_summary_text_size" />
         </LinearLayout>
 
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/divider_height"
+            android:background="@color/colorDivider" />
+
+        <!-- Section Details -->
         <LinearLayout
-            android:id="@+id/floppybimgl"
-            android:layout_width="fill_parent"
+            android:id="@+id/removableStoragesectionDetails"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="vertical"
+            android:padding="@dimen/spacing_normal">
 
-            <CheckBox
-                android:id="@+id/floppybimgcheck"
-                android:layout_width="wrap_content"
+            <!-- CDROM -->
+            <LinearLayout
+                android:id="@+id/cdromimgl"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="left|center_vertical"
-                android:gravity="left|center_vertical"
-                android:paddingRight="5dp" />
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
 
-            <ImageView
-                android:layout_width="wrap_content"
+                <CheckBox
+                    android:id="@+id/cdromimgcheck"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_xs" />
+
+                <ImageView
+                    android:id="@+id/cdromoptions"
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:src="@drawable/cdrom" />
+
+                <TextView
+                    android:id="@+id/cdromimgstr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/label_cdrom"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
+
+                <Spinner
+                    android:id="@+id/cdromimgval"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:ellipsize="start"
+                    android:gravity="end"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <!-- Floppy A -->
+            <LinearLayout
+                android:id="@+id/floppyimgl"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingRight="5dp"
-                android:src="@drawable/floppy" />
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/floppybimgstr"
-                android:layout_width="wrap_content"
+                <CheckBox
+                    android:id="@+id/floppyimgcheck"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_xs" />
+
+                <ImageView
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:src="@drawable/floppy" />
+
+                <TextView
+                    android:id="@+id/floppyimgstr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/label_floppy_a"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
+
+                <Spinner
+                    android:id="@+id/floppyimgval"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="end"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <!-- Floppy B -->
+            <LinearLayout
+                android:id="@+id/floppybimgl"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:text="@string/label_floppy_b"
-                android:textSize="15sp" />
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
 
-            <Spinner
-                android:id="@+id/floppybimgval"
-                android:layout_width="fill_parent"
+                <CheckBox
+                    android:id="@+id/floppybimgcheck"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_xs" />
+
+                <ImageView
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:src="@drawable/floppy" />
+
+                <TextView
+                    android:id="@+id/floppybimgstr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/label_floppy_b"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
+
+                <Spinner
+                    android:id="@+id/floppybimgval"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="end"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <!-- SD Card -->
+            <LinearLayout
+                android:id="@+id/sdcardimgl"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="right"
-                android:singleLine="true"
-                android:text=""
-                android:textSize="15sp" />
-        </LinearLayout>
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
 
-        <LinearLayout
-            android:id="@+id/sdcardimgl"
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+                <CheckBox
+                    android:id="@+id/sdcardimgcheck"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_xs" />
 
-            <CheckBox
-                android:id="@+id/sdcardimgcheck"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="left|center_vertical"
-                android:gravity="left|center_vertical"
-                android:paddingRight="5dp" />
+                <ImageView
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:src="@drawable/sdcard" />
 
-            <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingRight="5dp"
-                android:src="@drawable/sdcard" />
+                <TextView
+                    android:id="@+id/sdcardimgstr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/label_sd_card"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
 
-            <TextView
-                android:id="@+id/sdcardimgstr"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:text="@string/label_sd_card"
-                android:textSize="15sp" />
+                <Spinner
+                    android:id="@+id/sdcardimgval"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="end"
+                    android:singleLine="true" />
+            </LinearLayout>
 
-            <Spinner
-                android:id="@+id/sdcardimgval"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="right"
-                android:singleLine="true"
-                android:text=""
-                android:textSize="15sp" />
         </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

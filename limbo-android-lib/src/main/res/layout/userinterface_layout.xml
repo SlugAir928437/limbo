@@ -1,169 +1,169 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/userInterfaceSectionl"
-    android:layout_width="fill_parent"
+    style="@style/Widget.Limbo.SectionCard"
+    android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/border"
-    android:gravity="center|center_vertical"
-    android:orientation="vertical"
-    android:padding="15dp"
+    android:layout_marginBottom="@dimen/spacing_sm"
     tools:showIn="@layout/limbo_main">
 
-
     <LinearLayout
-        android:id="@+id/userinterfaceheaderl"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-
-        >
-
-        <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ui" />
-
-        <TextView
-            android:id="@+id/userInterfaceSectionStr"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:gravity="center_horizontal"
-            android:padding="10dp"
-            android:text="@string/title_user_interface"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-
-        <TextView
-            android:id="@+id/uisectionsummaryStr"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="right"
-            android:maxLines="3"
-            android:minLines="2"
-            android:padding="10dp"
-            android:text=""
-            android:textSize="12sp" />
-
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/userInterfaceDetails"
-        android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"
-        android:orientation="vertical"
-        android:padding="10dp">
+        android:orientation="vertical">
 
         <LinearLayout
-            android:id="@+id/uil"
-            android:layout_width="fill_parent"
+            android:id="@+id/userinterfaceheaderl"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:orientation="horizontal">
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="@dimen/spacing_md">
 
             <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingRight="5dp"
+                android:layout_width="@dimen/section_header_icon_size"
+                android:layout_height="@dimen/section_header_icon_size"
+                android:layout_marginEnd="@dimen/spacing_sm"
                 android:src="@drawable/ui" />
 
             <TextView
-                android:id="@+id/uiStr"
-                android:layout_width="wrap_content"
+                android:id="@+id/userInterfaceSectionStr"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:text="@string/label_display"
-                android:textSize="15sp" />
-
-            <Spinner
-                android:id="@+id/uival"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="right"
-                android:singleLine="true"
-                android:text=""
-                android:textSize="15sp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/keyboard"
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:orientation="horizontal">
-
-
-            <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingRight="5dp"
-                android:src="@drawable/keyboard" />
+                android:layout_weight="1"
+                android:text="@string/title_user_interface"
+                android:textColor="@color/colorSectionHeaderText"
+                android:textSize="@dimen/section_header_text_size"
+                android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/keyboardstr"
+                android:id="@+id/uisectionsummaryStr"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="right|center_vertical"
-                android:gravity="right|center_vertical"
-                android:text="@string/title_keyboard"
-                android:textSize="15sp" />
-
-            <Spinner
-                android:id="@+id/keyboardval"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="right"
-                android:singleLine="true"
+                android:gravity="end"
+                android:maxLines="3"
+                android:minLines="2"
                 android:text=""
-                android:textSize="15sp" />
-        </LinearLayout>
-
-
-        <LinearLayout
-            android:id="@+id/mouse"
-            android:layout_width="fill_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:orientation="horizontal">
-
-
-            <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:paddingRight="5dp"
-                android:src="@drawable/mouse" />
-
-            <TextView
-                android:id="@+id/mousestr"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="right|center_vertical"
-                android:gravity="right|center_vertical"
-                android:text="@string/title_mouse"
-                android:textSize="15sp" />
-
-            <Spinner
-                android:id="@+id/mouseval"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="right"
-                android:singleLine="true"
-                android:text=""
-                android:textSize="15sp" />
+                android:textColor="@color/colorSummaryText"
+                android:textSize="@dimen/section_summary_text_size" />
         </LinearLayout>
 
         <View
             android:layout_width="match_parent"
-            android:layout_height="8dp" />
+            android:layout_height="@dimen/divider_height"
+            android:background="@color/colorDivider" />
 
+        <LinearLayout
+            android:id="@+id/userInterfaceDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/spacing_normal">
+
+            <LinearLayout
+                android:id="@+id/uil"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:src="@drawable/ui" />
+
+                <TextView
+                    android:id="@+id/uiStr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/label_display"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
+
+                <Spinner
+                    android:id="@+id/uival"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="end"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/keyboard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:src="@drawable/keyboard" />
+
+                <TextView
+                    android:id="@+id/keyboardstr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/title_keyboard"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
+
+                <Spinner
+                    android:id="@+id/keyboardval"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="end"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/mouse"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="@dimen/spacing_sm"
+                    android:src="@drawable/mouse" />
+
+                <TextView
+                    android:id="@+id/mousestr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/title_mouse"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
+
+                <Spinner
+                    android:id="@+id/mouseval"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="end"
+                    android:singleLine="true" />
+            </LinearLayout>
+
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

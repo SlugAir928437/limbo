@@ -1,87 +1,100 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/advancedSectionl"
-    android:layout_width="fill_parent"
+    style="@style/Widget.Limbo.SectionCard"
+    android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/border"
-    android:gravity="center|center_vertical"
-    android:orientation="vertical"
-    android:padding="15dp"
+    android:layout_marginBottom="@dimen/spacing_sm"
     tools:showIn="@layout/limbo_main">
 
-
     <LinearLayout
-        android:id="@+id/advancedheaderl"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-
-        >
-
-        <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/advanced" />
-
-
-        <TextView
-            android:id="@+id/advancedSectionStr"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center|center_vertical"
-            android:gravity="center|center_vertical"
-            android:padding="10dp"
-            android:text="@string/title_advanced"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-
-        <TextView
-            android:id="@+id/advancedsectionsummaryStr"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="right"
-            android:maxLines="3"
-            android:minLines="2"
-            android:padding="10dp"
-            android:text=""
-            android:textSize="12sp" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/advancedSectionDetails"
-        android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="10dp">
+        android:orientation="vertical">
 
         <LinearLayout
-            android:id="@+id/extraparamsl"
-            android:layout_width="fill_parent"
+            android:id="@+id/advancedheaderl"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
+            android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="10dp">
+            android:padding="@dimen/spacing_md">
+
+            <ImageView
+                android:layout_width="@dimen/section_header_icon_size"
+                android:layout_height="@dimen/section_header_icon_size"
+                android:layout_marginEnd="@dimen/spacing_sm"
+                android:src="@drawable/advanced" />
 
             <TextView
-                android:id="@+id/extraparamsStr"
+                android:id="@+id/advancedSectionStr"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/title_advanced"
+                android:textColor="@color/colorSectionHeaderText"
+                android:textSize="@dimen/section_header_text_size"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/advancedsectionsummaryStr"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:text="@string/label_extra_qemu_params"
-                android:textSize="15sp" />
-
-            <EditText
-                android:id="@+id/extraparamsval"
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textFilter|textNoSuggestions"
-                android:singleLine="true"
+                android:gravity="end"
+                android:maxLines="3"
+                android:minLines="2"
                 android:text=""
-                android:textSize="15sp" />
+                android:textColor="@color/colorSummaryText"
+                android:textSize="@dimen/section_summary_text_size" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/divider_height"
+            android:background="@color/colorDivider" />
+
+        <LinearLayout
+            android:id="@+id/advancedSectionDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:orientation="vertical"
+            android:padding="@dimen/spacing_normal">
+
+            <LinearLayout
+                android:id="@+id/extraparamsl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:minHeight="@dimen/row_item_height"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/extraparamsStr"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:text="@string/label_extra_qemu_params"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="@dimen/row_text_size" />
+
+                <EditText
+                    android:id="@+id/extraparamsval"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_weight="1"
+                    android:gravity="end"
+                    android:inputType="textFilter|textNoSuggestions"
+                    android:singleLine="true"
+                    android:text=""
+                    android:textSize="@dimen/row_text_size" />
+            </LinearLayout>
+
         </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

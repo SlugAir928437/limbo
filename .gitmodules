@@ -1,0 +1,3 @@
+[submodule "limbo-android-lib/src/main/jni/qemu"]
+	path = limbo-android-lib/src/main/jni/qemu
+	url = https://github.com/SlugAir928437/qemu-system-ia64

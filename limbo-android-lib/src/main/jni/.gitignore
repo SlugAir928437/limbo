@@ -18,8 +18,6 @@
 /buildlogerr.txt
 
 #Don't check in just provide patches
-/qemu
-!/qemu/LIMBO.README
 qemu-orig
 /glib
 /libffi

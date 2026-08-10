@@ -42,14 +42,6 @@ jobs:
           # Now download the source code for the external libraries and unzip them under the jni directory
           #Note: if some of these file links don't download with wget use your browser to download them
           
-          ##### Get QEMU
-          git clone --branch v6.2.0 --depth 1 https://github.com/qemu/qemu.git /tmp/qemu
-          mv /tmp/qemu qemu
-                
-          cd qemu
-          patch -p1 < ../patches/qemu-6.2.0.patch
-          cd ..
-          
           ##### GET glib
           wget --quiet https://download.gnome.org/sources/glib/2.66/glib-2.66.8.tar.xz -P /tmp/
           tar -xJf /tmp/glib-2.66.8.tar.xz

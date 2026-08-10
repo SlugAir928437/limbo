@@ -73,6 +73,10 @@ SYNC_LIBS_ARM=rsync -av --include='libqemu-system-arm*.so' \
     --include='gdbserver' --include='gdb.setup' \
     --include='*/' --exclude='*' \
     ../jniLibs/ $(LIMBO_APP_LIBS)/jniLibs/
+SYNC_LIBS_IA64=rsync -av --include='libqemu-system-ia64*.so' \
+    --include='gdbserver' --include='gdb.setup' \
+    --include='*/' --exclude='*' \
+    ../jniLibs/ $(LIMBO_APP_LIBS)/jniLibs/
 
 COPY_ROMS=-mkdir -p ../assets/roms && cp -rf ./qemu/pc-bios/*.rom \
 ./qemu/pc-bios/*.bin \
@@ -253,6 +257,7 @@ install:
 	make install-common
 	$(SYNC_LIBS_X86)
 	$(SYNC_LIBS_ARM)
+	$(SYNC_LIBS_IA64)
 
 limbo:
 	make ndk

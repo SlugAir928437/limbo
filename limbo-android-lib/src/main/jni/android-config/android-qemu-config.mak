@@ -71,6 +71,7 @@ config:
 	--disable-virtfs \
 	--disable-vhost-net \
 	--disable-vhost-user --disable-vhost-vdpa --disable-vhost-kernel \
+	--disable-libvduse \
 	--disable-curses --disable-cocoa --disable-gtk \
 	--disable-usb-redir \
 	--disable-libusb \

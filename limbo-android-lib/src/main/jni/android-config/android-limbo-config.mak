@@ -6,7 +6,7 @@
 #NDK_ROOT = /home/dev/tools/ndk/android-ndk-r14b
 #USE_GCC?=true
 # Or use r25c with clang
-NDK_ROOT ?= /home/dev/tools/ndk/android-ndk-r25c
+NDK_ROOT ?= /root/tools/ndk/android-ndk-r25c
 USE_GCC?=false
 
 ### the ndk api should be the same as the minSdkVersion in your AndroidManifest.xml 
@@ -49,8 +49,8 @@ BUILD_HOST?=arm64-v8a
 BUILD_GUEST?=x86_64-softmmu
 
 # QEMU Version
-# values: 2.9.1, 5.1.0, 6.2.0
-USE_QEMU_VERSION ?= 6.2.0
+# values: 2.9.1, 5.1.0, 6.2.0, 10.2.1
+USE_QEMU_VERSION ?= 10.2.1
 
 # GLib 2.66.x is new enough for QEMU 6.2.0 and uses Meson reliably.
 GLIB_VERSION ?= 2.66.8

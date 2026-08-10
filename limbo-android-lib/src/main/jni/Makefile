@@ -43,7 +43,7 @@ INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.a \
         $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
     fi
 
-INSTALL_QEMU_LIBS=for target in x86_64 aarch64; do \
+INSTALL_QEMU_LIBS=for target in x86_64 aarch64 ia64; do \
 	if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
 		cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
 			"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \

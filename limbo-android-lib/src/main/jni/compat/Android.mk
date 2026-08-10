@@ -6,6 +6,7 @@ LOCAL_SRC_FILES := \
 	limbo_compat_filesystem.c \
 	limbo_compat.c \
 	limbo_compat_qemu.c \
+	limbo_compat_stubs.c \
 	limbo_compat_signals.cpp \
 	$(NDK_ROOT)/sources/android/cpufeatures/cpu-features.c
 

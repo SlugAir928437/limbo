@@ -51,8 +51,8 @@ config:
 		'Libs: -L$${libdir} -lSDL2' \
 		'Cflags: -I$${includedir}' \
 		> "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig/sdl2.pc"
-	cd ./qemu ; \
-	PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDIR="$(PKG_CONFIG_PATH)" ./configure \
+	cd ./qemu ; chmod +x ./configure ; \
+PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDIR="$(PKG_CONFIG_PATH)" ./configure \
 	--cc=$(CC) \
 	--cxx=$(CXX) \
 	--host-cc=$(CC) \

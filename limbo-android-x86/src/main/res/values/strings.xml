@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">LimboExample</string>
+    <string name="start">启动</string>
+    <string name="extra_args">附加参数：</string>
+    <string name="agreement_confirm">在使用本软件前，您需要同意以下协议</string>
+    <string name="agreement_accept">我同意以上协议</string>
+    <string name="agreement_reject">我不同意以上协议并退出</string>
+    <string name="file_load_failed">读取文件失败</string>
+    <string name="exit">退出</string>
+</resources>

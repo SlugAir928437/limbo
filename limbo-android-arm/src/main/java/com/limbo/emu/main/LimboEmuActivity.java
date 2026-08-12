@@ -18,10 +18,7 @@ public class LimboEmuActivity extends LimboActivity {
         Config.enableEmulatedFloppy = false;
         Config.enableEmulatedSDCard = true;
         //XXX; only for 64bit hosts, also make sure you have qemu 2.9.1 arm-softmmu and above compiled
-        if(LimboApplication.isHost64Bit() && Config.enableMTTCG)
-            Config.enableMTTCG = true;
-        else
-            Config.enableMTTCG = false;
+        Config.enableMTTCG = LimboApplication.isHost64Bit() && Config.enableMTTCG;
         Config.machineFolder = Config.machineFolder + "other/arm_machines/";
         Config.osImages.put(getString(R.string.DebianArmLinux), new LinksManager.LinkInfo(getString(R.string.DebianArmLinux),
                 getString(R.string.DebianArmLinuxDescr),
@@ -34,12 +31,10 @@ public class LimboEmuActivity extends LimboActivity {
     }
 
     protected void loadQEMULib(){
-
         try {
             System.loadLibrary("qemu-system-arm");
         } catch (Error ex) {
             System.loadLibrary("qemu-system-aarch64");
         }
-
     }
 }

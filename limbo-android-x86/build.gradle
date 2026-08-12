@@ -1,0 +1,59 @@
+plugins {
+    alias(libs.plugins.android.application)
+}
+
+android {
+    namespace 'com.example.limbo'
+    compileSdk {
+        //noinspection GradleDependency
+        version = release(36) {
+            minorApiLevel = 1
+        }
+    }
+
+    defaultConfig {
+        applicationId "com.example.limbo"
+        minSdk 24
+        //noinspection OldTargetApi
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            //noinspection ChromeOsAbiSupport
+            abiFilters 'arm64-v8a'
+        }
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation libs.androidx.appcompat
+    // implementation libs.material
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.espresso.core
+    androidTestImplementation libs.androidx.junit
+    implementation project(':limbo-android-lib')
+    // 设备兼容框架：https://github.com/getActivity/DeviceCompat
+//    implementation libs.devicecompat
+    // 权限请求框架：https://github.com/getActivity/XXPermissions
+//    implementation libs.xxpermissions
+}

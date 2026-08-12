@@ -1,8 +1,7 @@
-package com.limbo.emu.main.arm;
+package com.limbo.emu.main;
 
 import android.os.Bundle;
 
-import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.log.Logger;
 import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.main.LimboActivity;

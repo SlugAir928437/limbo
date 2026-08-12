@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/storageDeviceRowLayout"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/border"
+    android:padding="@dimen/spacing_sm"
+    android:layout_marginBottom="@dimen/spacing_sm">
+
+    <!-- Device type + size value + size unit + remove -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Spinner
+            android:id="@+id/storageDeviceTypeSpinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.4"
+            android:layout_gravity="center_vertical"
+            android:gravity="end"
+            android:singleLine="true" />
+
+        <EditText
+            android:id="@+id/storageDeviceSizeValue"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.6"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:background="@drawable/border"
+            android:gravity="end"
+            android:inputType="number"
+            android:maxLines="1"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:text="4"
+            android:textSize="15sp" />
+
+        <Spinner
+            android:id="@+id/storageDeviceSizeUnit"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.6"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:gravity="end"
+            android:singleLine="true" />
+
+        <ImageButton
+            android:id="@+id/storageDeviceRemoveBtn"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/spacing_sm"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/delete"
+            android:contentDescription="@string/remove_storage_device" />
+    </LinearLayout>
+
+    <!-- Image file spinner -->
+    <Spinner
+        android:id="@+id/storageDeviceImageSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_xs"
+        android:gravity="end"
+        android:ellipsize="start"
+        android:singleLine="true" />
+
+</LinearLayout>

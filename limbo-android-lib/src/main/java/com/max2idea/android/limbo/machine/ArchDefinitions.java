@@ -35,14 +35,12 @@ public class ArchDefinitions {
     private static String TAG = "ArchDefinitions";
 
     public static ArrayList<String> getSoundcards(Context context) {
-        ArrayList<String> commonSoundcards = new ArrayList<>();
-        commonSoundcards.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.common_soundcards)));
+        ArrayList<String> commonSoundcards = new ArrayList<>(Arrays.asList(Installer.getAttrs(context, R.raw.common_soundcards)));
         return commonSoundcards;
     }
 
     public static ArrayList<String> getNetworkDevices(Context context) {
-        ArrayList<String> commonNetworkCards = new ArrayList<>();
-        commonNetworkCards.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.common_nic_cards)));
+        ArrayList<String> commonNetworkCards = new ArrayList<>(Arrays.asList(Installer.getAttrs(context, R.raw.common_nic_cards)));
 
         ArrayList<String> networkCards = new ArrayList<>();
         switch (LimboApplication.arch) {
@@ -56,6 +54,12 @@ public class ArchDefinitions {
                 networkCards.add("Default");
                 networkCards.addAll(commonNetworkCards);
                 networkCards.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.arm_nic_cards)));
+                break;
+            case ia64:
+            case ia64w:
+                networkCards.add("Default");
+                //networkCards.addAll(commonNetworkCards);
+                networkCards.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_nic_cards)));
                 break;
         }
         return networkCards;
@@ -77,6 +81,12 @@ public class ArchDefinitions {
             vgaValues.add("virtio-gpu-pci");
         }
 
+        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+            vgaValues.add("ati-vga");
+            vgaValues.add("secondary-vga");
+            vgaValues.add("VGA");
+        }
+
         //XXX: some archs don't support vga on QEMU like SPARC64
         vgaValues.add("nographic");
 
@@ -93,7 +103,9 @@ public class ArchDefinitions {
 
     public static ArrayList<String> getMouseValues(Context context) {
         ArrayList<String> arrList = new ArrayList<>();
-        arrList.add("ps2");
+        if (LimboApplication.arch != Config.Arch.ia64 && LimboApplication.arch != Config.Arch.ia64w) {
+            arrList.add("ps2");
+        }
         arrList.add("usb-mouse");
         arrList.add("usb-tablet" + " " + context.getString(R.string.fixesMouseParen));
         return arrList;
@@ -127,10 +139,16 @@ public class ArchDefinitions {
                 arrList.add("Default");
                 arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.arm_cpu)));
                 break;
+            case ia64:
+            case ia64w:
+                arrList.add("Default");
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_cpu)));
+                break;
         }
 
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
-                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64)
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64
+                || LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w)
             arrList.add("host");
         return arrList;
     }
@@ -146,6 +164,10 @@ public class ArchDefinitions {
             case arm:
             case arm64:
                 arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.arm_machine_types)));
+                break;
+            case ia64:
+            case ia64w:
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_machine_types)));
                 break;
         }
         return arrList;

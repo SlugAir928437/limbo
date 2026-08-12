@@ -1,0 +1,4 @@
+itanium-vpc
+ia64-vpc
+itanium2-vpc
+none

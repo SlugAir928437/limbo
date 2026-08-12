@@ -34,6 +34,7 @@ import android.os.StrictMode;
 import android.util.Log;
 import android.view.Display;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -48,6 +49,7 @@ import android.widget.CompoundButton;
 import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.EditText;
 import com.google.android.material.button.MaterialButton;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
@@ -88,6 +90,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Observable;
 import java.util.Observer;
 
@@ -133,27 +136,11 @@ public class LimboActivity extends AppCompatActivity
     private Spinner mCPUNum;
     private Spinner mKernel;
     private Spinner mInitrd;
-    // HDD
-    private ImageView mHDAOptions;
-    private Spinner mHDA;
-    private ImageView mHDBOptions;
-    private Spinner mHDB;
-    private ImageView mHDCOptions;
-    private Spinner mHDC;
-    private ImageView mHDDOptions;
-    private Spinner mHDD;
-    private Spinner mSharedFolder;
 
-    //removable
-    private Spinner mCD;
-    private Spinner mFDA;
-    private Spinner mFDB;
-    private Spinner mSD;
-    private CheckBox mCDenable;
-    private CheckBox mFDAenable;
-    private CheckBox mFDBenable;
-    private CheckBox mSDenable;
-    private ImageView mCDOptions;
+    // Storage devices (dynamic rows)
+    private LinearLayout mStorageDevicesContainer;
+    private MaterialButton mAddStorageDeviceBtn;
+    private final List<StorageDeviceEntry> mStorageDeviceEntries = new ArrayList<>();
 
     // misc
     private Spinner mRamSize;
@@ -179,20 +166,18 @@ public class LimboActivity extends AppCompatActivity
 
     //sections
     private LinearLayout mCPUSectionDetails;
-    private LinearLayout mStorageSectionDetails;
+    private LinearLayout mStorageDevicesSectionDetails;
     private LinearLayout mUserInterfaceSectionDetails;
     private LinearLayout mAdvancedSectionDetails;
     private LinearLayout mBootSectionDetails;
     private LinearLayout mGraphicsSectionDetails;
-    private LinearLayout mRemovableStorageSectionDetails;
     private LinearLayout mNetworkSectionDetails;
     private LinearLayout mAudioSectionDetails;
 
     //summary
     private TextView mUISectionSummary;
     private TextView mCPUSectionSummary;
-    private TextView mStorageSectionSummary;
-    private TextView mRemovableStorageSectionSummary;
+    private TextView mStorageDevicesSectionSummary;
     private TextView mGraphicsSectionSummary;
     private TextView mAudioSectionSummary;
     private TextView mNetworkSectionSummary;
@@ -260,73 +245,151 @@ public class LimboActivity extends AppCompatActivity
     public void setUserPressed(boolean pressed) {
         if (pressed) {
             setupMiscOptions();
-            setupNonRemovableDiskListeners();
-            enableRemovableDiskListeners();
+            setupStorageDeviceListeners();
         } else {
             disableListeners();
-            disableRemovableDiskListeners();
+            disableStorageDeviceListeners();
         }
     }
 
-    private void disableRemovableDiskListeners() {
-        disableRemovableDiskListener(mCDenable, mCD);
-        disableRemovableDiskListener(mCDenable, mCD);
-        disableRemovableDiskListener(mCDenable, mCD);
-        disableRemovableDiskListener(mCDenable, mCD);
+    private void disableStorageDeviceListeners() {
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            entry.typeSpinner.setOnItemSelectedListener(null);
+            entry.sizeUnitSpinner.setOnItemSelectedListener(null);
+            entry.imageSpinner.setOnItemSelectedListener(null);
+        }
     }
 
-    private void disableRemovableDiskListener(CheckBox enableDrive, Spinner spinner) {
-        enableDrive.setOnCheckedChangeListener(null);
-        spinner.setOnItemSelectedListener(null);
+    private void setupStorageDeviceListeners() {
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            setupStorageDeviceRowListeners(entry);
+        }
     }
 
-    private void enableRemovableDiskListeners() {
-        enableRemovableDiskListener(mCD, mCDenable, mCDOptions, MachineProperty.CDROM, FileType.CDROM);
-        enableRemovableDiskListener(mFDA, mFDAenable, null, MachineProperty.FDA, FileType.FDA);
-        enableRemovableDiskListener(mFDB, mFDBenable, null, MachineProperty.FDB, FileType.FDB);
-        enableRemovableDiskListener(mSD, mSDenable, null, MachineProperty.SD, FileType.SD);
-    }
-
-    private void enableRemovableDiskListener(final Spinner spinner, final CheckBox driveEnable,
-                                             final ImageView driveOptions,
-                                             final MachineProperty driveName,
-                                             final FileType fileType) {
-        spinner.setOnItemSelectedListener(new OnItemSelectedListener() {
+    private void setupStorageDeviceRowListeners(final StorageDeviceEntry entry) {
+        entry.typeSpinner.setOnItemSelectedListener(new OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
                 if (getMachine() == null)
                     return;
-                String value = (String) ((ArrayAdapter<?>) spinner.getAdapter()).getItem(position);
-                if (position == 1 && driveEnable.isChecked()) {
-                    browseFileType = fileType;
-                    LimboFileManager.browse(LimboActivity.this, browseFileType, Config.OPEN_IMAGE_FILE_REQUEST_CODE);
-                    spinner.setSelection(0);
+                DeviceType[] types = getAvailableDeviceTypes();
+                if (position < 0 || position >= types.length)
+                    return;
+                DeviceType type = types[position];
+                if (type == entry.deviceType)
+                    return;
+                // check if the selected type already reached max count
+                if (countDeviceType(type) >= type.maxCount) {
+                    ToastUtils.toastShort(LimboActivity.this, getString(R.string.device_already_exists));
+                    entry.typeSpinner.setSelection(getTypePosition(entry.deviceType));
+                    return;
+                }
+                if (type == DeviceType.HARD_DISK && getFreeHardDiskSlot() < 0) {
+                    ToastUtils.toastShort(LimboActivity.this, getString(R.string.device_already_exists));
+                    entry.typeSpinner.setSelection(getTypePosition(entry.deviceType));
+                    return;
+                }
+                // release old drive
+                clearDrive(entry);
+                // update disk mapping
+                diskMapping.remove(entry.fileType);
+                entry.deviceType = type;
+                entry.removable = type.removable;
+                entry.createImage = type.createImage;
+                entry.sharedFolder = type.sharedFolder;
+                entry.hardDiskSlot = -1;
+                if (type == DeviceType.HARD_DISK) {
+                    assignHardDiskSlot(entry);
                 } else {
-                    notifyFieldChange(MachineProperty.REMOVABLE_DRIVE, new Object[]{driveName, value});
+                    entry.property = type.property;
+                    entry.fileType = type.fileType;
+                }
+                diskMapping.put(entry.fileType, new DiskInfo(entry.imageSpinner, null, entry.property));
+                if (entry.removable) {
+                    notifyFieldChange(MachineProperty.DRIVE_ENABLED, new Object[]{entry.property, true});
+                }
+                updateStorageDeviceSizeVisibility(entry);
+                reassignHardDiskSlots();
+                populateStorageDeviceImageAdapter(entry, new Runnable() {
+                    @Override
+                    public void run() {
+                        setupStorageDeviceImageListener(entry);
+                    }
+                });
+            }
+
+            public void onNothingSelected(AdapterView<?> parentView) {
+            }
+        });
+
+        setupStorageDeviceImageListener(entry);
+    }
+
+    private void setupStorageDeviceImageListener(final StorageDeviceEntry entry) {
+        entry.imageSpinner.setOnItemSelectedListener(new OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
+                if (getMachine() == null)
+                    return;
+                String value = (String) ((ArrayAdapter<?>) entry.imageSpinner.getAdapter()).getItem(position);
+                if (entry.createImage && position == 1) {
+                    // New -> create image with custom size
+                    long sizeBytes = getSelectedSizeBytes(entry);
+                    promptImageName(LimboActivity.this, entry.fileType, sizeBytes);
+                    entry.imageSpinner.setSelection(0);
+                } else if (position == (entry.createImage ? 2 : 1)) {
+                    // Open...
+                    browseFileType = entry.fileType;
+                    if (entry.sharedFolder) {
+                        LimboFileManager.browse(LimboActivity.this, browseFileType, Config.OPEN_SHARED_DIR_REQUEST_CODE);
+                    } else {
+                        LimboFileManager.browse(LimboActivity.this, browseFileType, Config.OPEN_IMAGE_FILE_REQUEST_CODE);
+                    }
+                    entry.imageSpinner.setSelection(0);
+                } else if (position == 0) {
+                    // None
+                    if (entry.removable) {
+                        notifyFieldChange(MachineProperty.REMOVABLE_DRIVE, new Object[]{entry.property, value});
+                    } else if (entry.property == MachineProperty.SHARED_FOLDER) {
+                        notifyFieldChange(MachineProperty.NON_REMOVABLE_DRIVE,
+                                new Object[]{entry.property, value});
+                    } else {
+                        notifyFieldChange(MachineProperty.NON_REMOVABLE_DRIVE, new Object[]{entry.property, value});
+                    }
+                } else {
+                    // recent files
+                    if (entry.removable) {
+                        notifyFieldChange(MachineProperty.REMOVABLE_DRIVE, new Object[]{entry.property, value});
+                    } else if (entry.property == MachineProperty.SHARED_FOLDER) {
+                        notifyFieldChange(MachineProperty.NON_REMOVABLE_DRIVE,
+                                new Object[]{entry.property, value});
+                    } else {
+                        notifyFieldChange(MachineProperty.NON_REMOVABLE_DRIVE, new Object[]{entry.property, value});
+                    }
                 }
             }
 
             public void onNothingSelected(AdapterView<?> parentView) {
             }
         });
-        driveEnable.setOnCheckedChangeListener(
-                new OnCheckedChangeListener() {
-                    public void onCheckedChanged(CompoundButton viewButton, boolean isChecked) {
-                        spinner.setEnabled(isChecked);
-                        notifyFieldChange(MachineProperty.DRIVE_ENABLED, new Object[]{driveName, isChecked});
-                        triggerUpdateSpinner(spinner);
-                    }
+    }
 
-                }
-        );
-        if(driveOptions!=null) {
-            driveOptions.setOnClickListener(new OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if(driveEnable.isChecked())
-                        promptDriveInterface(driveName);
-                }
-            });
+    private long getSelectedSizeBytes(StorageDeviceEntry entry) {
+        long value = 1;
+        try {
+            value = Long.parseLong(entry.sizeEditText.getText().toString().trim());
+        } catch (NumberFormatException e) {
+            value = 1;
         }
+        if (value < 1)
+            value = 1;
+        String unit = (String) entry.sizeUnitSpinner.getSelectedItem();
+        long multiplier = 1024L * 1024L * 1024L; // default GB
+        if (unit != null) {
+            if (unit.equals(getString(R.string.size_unit_mb)))
+                multiplier = 1024L * 1024L;
+            else if (unit.equals(getString(R.string.size_unit_tb)))
+                multiplier = 1024L * 1024L * 1024L * 1024L;
+        }
+        return value * multiplier;
     }
 
 
@@ -762,47 +825,6 @@ public class LimboActivity extends AppCompatActivity
                 getString(android.R.string.cancel), cancelListener, getString(R.string.vCPUHelp), helpListener);
     }
 
-    private void setupNonRemovableDiskListeners() {
-        setupNonRemovableDiskListener(mHDA, mHDAOptions, MachineProperty.HDA, FileType.HDA);
-        setupNonRemovableDiskListener(mHDB, mHDBOptions, MachineProperty.HDB, FileType.HDB);
-        setupNonRemovableDiskListener(mHDC, mHDCOptions, MachineProperty.HDC, FileType.HDC);
-        setupNonRemovableDiskListener(mHDD, mHDDOptions, MachineProperty.HDD, FileType.HDD);
-        setupSharedFolderDisk();
-    }
-
-    private void setupNonRemovableDiskListener(final Spinner diskSpinner, final ImageView diskImage,
-                                               final MachineProperty machineDriveName,
-                                               final FileType diskFileType) {
-        diskSpinner.setOnItemSelectedListener(new OnItemSelectedListener() {
-            public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
-                if (getMachine() == null)
-                    return;
-
-                String hdName = (String) ((ArrayAdapter<?>) diskSpinner.getAdapter()).getItem(position);
-                if (position == 1) {
-                    promptImageName(LimboActivity.this, diskFileType);
-                    diskSpinner.setSelection(0);
-                } else if (position == 2) {
-                    browseFileType = diskFileType;
-                    LimboFileManager.browse(LimboActivity.this, browseFileType, Config.OPEN_IMAGE_FILE_REQUEST_CODE);
-                    diskSpinner.setSelection(0);
-                } else {
-                    notifyFieldChange(MachineProperty.NON_REMOVABLE_DRIVE, new Object[]{machineDriveName, hdName});
-                }
-            }
-
-            public void onNothingSelected(AdapterView<?> parentView) {
-            }
-        });
-
-        diskImage.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                promptDriveInterface(machineDriveName);
-            }
-        });
-    }
-
     private void promptDriveInterface(final MachineProperty machineDriveName) {
         if(getMachine() == null)
             return;
@@ -852,30 +874,6 @@ public class LimboActivity extends AppCompatActivity
         return 0;
     }
 
-    public void setupSharedFolderDisk() {
-        mSharedFolder.setOnItemSelectedListener(new OnItemSelectedListener() {
-            public void onItemSelected(AdapterView<?> parentView, View selectedItemView, int position, long id) {
-
-                if (getMachine() == null)
-                    return;
-
-                String shared_folder = (String) ((ArrayAdapter<?>) mSharedFolder.getAdapter()).getItem(position);
-                if (position == 0) {
-                    notifyFieldChange(MachineProperty.SHARED_FOLDER, shared_folder);
-                } else if (position == 1) {
-                    browseFileType = FileType.SHARED_DIR;
-                    LimboFileManager.browse(LimboActivity.this, browseFileType, Config.OPEN_SHARED_DIR_REQUEST_CODE);
-                    mSharedFolder.setSelection(0);
-                } else if (position > 1) {
-                    notifyFieldChange(MachineProperty.SHARED_FOLDER, shared_folder);
-                }
-            }
-
-            public void onNothingSelected(AdapterView<?> parentView) {
-            }
-        });
-    }
-
     protected synchronized void setDNSServer(String string) {
 
         File resolvConf = new File(LimboApplication.getBasefileDir() + "/etc/resolv.conf");
@@ -913,11 +911,7 @@ public class LimboActivity extends AppCompatActivity
         mDisableTSC.setOnCheckedChangeListener(null);
         mEnableKVM.setOnCheckedChangeListener(null);
         mEnableMTTCG.setOnCheckedChangeListener(null);
-        mHDA.setOnItemSelectedListener(null);
-        mHDB.setOnItemSelectedListener(null);
-        mHDC.setOnItemSelectedListener(null);
-        mHDD.setOnItemSelectedListener(null);
-        mSharedFolder.setOnItemSelectedListener(null);
+        disableStorageDeviceListeners();
         mBootDevices.setOnItemSelectedListener(null);
         mKernel.setOnItemSelectedListener(null);
         mInitrd.setOnItemSelectedListener(null);
@@ -1004,17 +998,7 @@ public class LimboActivity extends AppCompatActivity
 
     private void setupDiskMapping() {
         diskMapping.clear();
-        addDiskMapping(FileType.HDA, mHDA, null, MachineProperty.HDA);
-        addDiskMapping(FileType.HDB, mHDB, null, MachineProperty.HDB);
-        addDiskMapping(FileType.HDC, mHDC, null, MachineProperty.HDC);
-        addDiskMapping(FileType.HDD, mHDD, null, MachineProperty.HDD);
-        addDiskMapping(FileType.SHARED_DIR, mSharedFolder, null, MachineProperty.SHARED_FOLDER);
-
-        addDiskMapping(FileType.CDROM, mCD, mCDenable, MachineProperty.CDROM);
-        addDiskMapping(FileType.FDA, mFDA, mFDAenable, MachineProperty.FDA);
-        addDiskMapping(FileType.FDB, mFDB, mFDBenable, MachineProperty.FDB);
-        addDiskMapping(FileType.SD, mSD, mSDenable, MachineProperty.SD);
-
+        // Storage devices are mapped dynamically in addStorageDeviceRow
         addDiskMapping(FileType.KERNEL, mKernel, null, MachineProperty.KERNEL);
         addDiskMapping(FileType.INITRD, mInitrd, null, MachineProperty.INITRD);
     }
@@ -1247,19 +1231,7 @@ public class LimboActivity extends AppCompatActivity
 
     private void populateDisks() {
 
-        //disks
-        populateDiskAdapter(mHDA, FileType.HDA, true);
-        populateDiskAdapter(mHDB, FileType.HDB, true);
-        populateDiskAdapter(mHDC, FileType.HDC, true);
-        populateDiskAdapter(mHDD, FileType.HDD, true);
-        populateDiskAdapter(mSharedFolder, FileType.SHARED_DIR, false);
-
-        //removables drives
-        populateDiskAdapter(mCD, FileType.CDROM, false);
-        populateDiskAdapter(mFDA, FileType.FDA, false);
-        populateDiskAdapter(mFDB, FileType.FDB, false);
-        populateDiskAdapter(mSD, FileType.SD, false);
-
+        //disks (dynamic storage device rows are populated by refreshStorageDevices)
         //boot
         populateDiskAdapter(mKernel, FileType.KERNEL, false);
         populateDiskAdapter(mInitrd, FileType.INITRD, false);
@@ -1280,6 +1252,7 @@ public class LimboActivity extends AppCompatActivity
             public void run() {
                 showOperatingSystems();
                 populateMachines(getMachine().getName());
+                refreshStorageDevices();
                 enableNonRemovableDeviceOptions(true);
                 enableRemovableDeviceOptions(true);
                 setArchOptions();
@@ -1307,14 +1280,13 @@ public class LimboActivity extends AppCompatActivity
                     @Override
                     public void run() {
                         disableListeners();
-                        disableRemovableDiskListeners();
+                        disableStorageDeviceListeners();
                         mMachine.setSelection(0);
                         notifyAction(MachineAction.LOAD_VM, null);
                         populateAttributesUI();
                         ToastUtils.toastShort(LimboActivity.this, getString(R.string.MachineDeleted) + ": " + name);
                         setupMiscOptions();
-                        setupNonRemovableDiskListeners();
-                        enableRemovableDiskListeners();
+                        setupStorageDeviceListeners();
                     }
                 });
             }
@@ -1325,7 +1297,7 @@ public class LimboActivity extends AppCompatActivity
 
     public void importMachines(String importFilePath) {
         disableListeners();
-        disableRemovableDiskListeners();
+        disableStorageDeviceListeners();
         mMachine.setSelection(0);
         notifyAction(MachineAction.IMPORT_VMS, importFilePath);
     }
@@ -1357,10 +1329,14 @@ public class LimboActivity extends AppCompatActivity
     }
 
     private void unlockRemovableDevices(boolean flag) {
-        mCDenable.setEnabled(flag);
-        mFDAenable.setEnabled(flag);
-        mFDBenable.setEnabled(flag);
-        mSDenable.setEnabled(flag);
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            if (entry.removable) {
+                entry.typeSpinner.setEnabled(flag);
+                entry.sizeEditText.setEnabled(flag);
+                entry.sizeUnitSpinner.setEnabled(flag);
+                entry.removeBtn.setEnabled(flag);
+            }
+        }
     }
 
     private void enableRemovableDeviceOptions(boolean flag) {
@@ -1369,10 +1345,11 @@ public class LimboActivity extends AppCompatActivity
     }
 
     private void enableRemovableDiskValues(boolean flag) {
-        mCD.setEnabled(flag && mCDenable.isChecked());
-        mFDA.setEnabled(flag && mFDAenable.isChecked());
-        mFDB.setEnabled(flag && mFDBenable.isChecked());
-        mSD.setEnabled(flag && mSDenable.isChecked());
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            if (entry.removable) {
+                entry.imageSpinner.setEnabled(flag);
+            }
+        }
     }
 
     private void enableNonRemovableDeviceOptions(boolean flag) {
@@ -1393,15 +1370,15 @@ public class LimboActivity extends AppCompatActivity
         mEnableMTTCG.setEnabled(flag && Config.enableMTTCG);
 
         //drives
-        mHDA.setEnabled(flag);
-        mHDAOptions.setEnabled(flag);
-        mHDB.setEnabled(flag);
-        mHDBOptions.setEnabled(flag);
-        mHDC.setEnabled(flag);
-        mHDCOptions.setEnabled(flag);
-        mHDD.setEnabled(flag);
-        mHDDOptions.setEnabled(flag);
-        mSharedFolder.setEnabled(flag);
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            if (!entry.removable) {
+                entry.typeSpinner.setEnabled(flag);
+                entry.sizeEditText.setEnabled(flag);
+                entry.sizeUnitSpinner.setEnabled(flag);
+                entry.imageSpinner.setEnabled(flag);
+                entry.removeBtn.setEnabled(flag);
+            }
+        }
 
         //boot
         mBootDevices.setEnabled(flag);
@@ -1596,40 +1573,22 @@ public class LimboActivity extends AppCompatActivity
         mDisableTSC = findViewById(R.id.tscval);
 
         //disks
-        mHDA = findViewById(R.id.hdaimgval);
-        mHDAOptions = findViewById(R.id.hdaoptions);
-        mHDB = findViewById(R.id.hdbimgval);
-        mHDBOptions = findViewById(R.id.hdboptions);
-        mHDC = findViewById(R.id.hdcimgval);
-        mHDCOptions = findViewById(R.id.hdcoptions);
-        mHDD = findViewById(R.id.hddimgval);
-        mHDDOptions = findViewById(R.id.hddoptions);
-
-        LinearLayout sharedFolderLayout = findViewById(R.id.sharedfolderl);
-        if (!Config.enableSharedFolder)
-            sharedFolderLayout.setVisibility(View.GONE);
-        mSharedFolder = findViewById(R.id.sharedfolderval);
-
-        //Removable storage
-        mCD = findViewById(R.id.cdromimgval);
-        mFDA = findViewById(R.id.floppyimgval);
-        mFDB = findViewById(R.id.floppybimgval);
-        mCDOptions = findViewById(R.id.cdromoptions);
-        if (!Config.enableEmulatedFloppy) {
-            LinearLayout mFDALayout = findViewById(R.id.floppyimgl);
-            mFDALayout.setVisibility(View.GONE);
-            LinearLayout mFDBLayout = findViewById(R.id.floppybimgl);
-            mFDBLayout.setVisibility(View.GONE);
-        }
-        mSD = findViewById(R.id.sdcardimgval);
-        if (!Config.enableEmulatedSDCard) {
-            LinearLayout mSDCardLayout = findViewById(R.id.sdcardimgl);
-            mSDCardLayout.setVisibility(View.GONE);
-        }
-        mCDenable = findViewById(R.id.cdromimgcheck);
-        mFDAenable = findViewById(R.id.floppyimgcheck);
-        mFDBenable = findViewById(R.id.floppybimgcheck);
-        mSDenable = findViewById(R.id.sdcardimgcheck);
+        mStorageDevicesContainer = findViewById(R.id.storageDevicesContainer);
+        mAddStorageDeviceBtn = findViewById(R.id.addStorageDeviceBtn);
+        mAddStorageDeviceBtn.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (MachineController.getInstance().isRunning()) {
+                    ToastUtils.toastShort(LimboActivity.this, getString(R.string.VMRunning));
+                    return;
+                }
+                if (getMachine() == null || mMachine.getSelectedItemPosition() < 2) {
+                    ToastUtils.toastShort(LimboActivity.this, getString(R.string.SelectOrCreateVirtualMachineFirst));
+                    return;
+                }
+                addStorageDeviceRow(null);
+            }
+        });
 
         //boot
         mBootDevices = findViewById(R.id.bootfromval);
@@ -1660,7 +1619,7 @@ public class LimboActivity extends AppCompatActivity
 
     private void disableFeatures() {
 
-        LinearLayout mAudioSectionLayout = findViewById(R.id.audiosectionl);
+        View mAudioSectionLayout = findViewById(R.id.audiosectionl);
         if (!Config.enableSDLSound) {
             mAudioSectionLayout.setVisibility(View.GONE);
         }
@@ -1709,21 +1668,21 @@ public class LimboActivity extends AppCompatActivity
             mCPUSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
+                    disableStorageDeviceListeners();
                     toggleSectionVisibility(mCPUSectionDetails);
                     enableListenersDelayed();
                 }
             });
 
-            mStorageSectionDetails = findViewById(R.id.storagesectionDetails);
-            mStorageSectionDetails.setVisibility(View.GONE);
-            mStorageSectionSummary = findViewById(R.id.storagesectionsummaryStr);
-            LinearLayout mStorageSectionHeader = findViewById(R.id.storageheaderl);
-            mStorageSectionHeader.setOnClickListener(new OnClickListener() {
+            mStorageDevicesSectionDetails = findViewById(R.id.storagedevicessectionDetails);
+            mStorageDevicesSectionDetails.setVisibility(View.GONE);
+            mStorageDevicesSectionSummary = findViewById(R.id.storagedevicessummaryStr);
+            LinearLayout mStorageDevicesSectionHeader = findViewById(R.id.storagedevicesheaderl);
+            mStorageDevicesSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
-                    toggleSectionVisibility(mStorageSectionDetails);
+                    disableStorageDeviceListeners();
+                    toggleSectionVisibility(mStorageDevicesSectionDetails);
                     enableListenersDelayed();
                 }
             });
@@ -1735,25 +1694,12 @@ public class LimboActivity extends AppCompatActivity
             mUserInterfaceSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
+                    disableStorageDeviceListeners();
                     toggleSectionVisibility(mUserInterfaceSectionDetails);
                     enableListenersDelayed();
                 }
             });
 
-
-            mRemovableStorageSectionDetails = findViewById(R.id.removableStoragesectionDetails);
-            mRemovableStorageSectionDetails.setVisibility(View.GONE);
-            mRemovableStorageSectionSummary = findViewById(R.id.removablesectionsummaryStr);
-            LinearLayout mRemovableStorageSectionHeader = findViewById(R.id.removablestorageheaderl);
-            mRemovableStorageSectionHeader.setOnClickListener(new OnClickListener() {
-                public void onClick(View view) {
-                    disableListeners();
-                    disableRemovableDiskListeners();
-                    toggleSectionVisibility(mRemovableStorageSectionDetails);
-                    enableListenersDelayed();
-                }
-            });
 
             mGraphicsSectionDetails = findViewById(R.id.graphicssectionDetails);
             mGraphicsSectionDetails.setVisibility(View.GONE);
@@ -1762,7 +1708,7 @@ public class LimboActivity extends AppCompatActivity
             mGraphicsSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
+                    disableStorageDeviceListeners();
                     toggleSectionVisibility(mGraphicsSectionDetails);
                     enableListenersDelayed();
                 }
@@ -1774,7 +1720,7 @@ public class LimboActivity extends AppCompatActivity
             mAudioSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
+                    disableStorageDeviceListeners();
                     toggleSectionVisibility(mAudioSectionDetails);
                     enableListenersDelayed();
                 }
@@ -1787,7 +1733,7 @@ public class LimboActivity extends AppCompatActivity
             mNetworkSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
+                    disableStorageDeviceListeners();
                     toggleSectionVisibility(mNetworkSectionDetails);
                     enableListenersDelayed();
                 }
@@ -1800,7 +1746,7 @@ public class LimboActivity extends AppCompatActivity
             mBootSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
+                    disableStorageDeviceListeners();
                     toggleSectionVisibility(mBootSectionDetails);
                     enableListenersDelayed();
                 }
@@ -1813,7 +1759,7 @@ public class LimboActivity extends AppCompatActivity
             mAdvancedSectionHeader.setOnClickListener(new OnClickListener() {
                 public void onClick(View view) {
                     disableListeners();
-                    disableRemovableDiskListeners();
+                    disableStorageDeviceListeners();
                     toggleSectionVisibility(mAdvancedSectionDetails);
                     enableListenersDelayed();
                 }
@@ -1826,8 +1772,7 @@ public class LimboActivity extends AppCompatActivity
             @Override
             public void run() {
                 setupMiscOptions();
-                setupNonRemovableDiskListeners();
-                enableRemovableDiskListeners();
+                setupStorageDeviceListeners();
             }
         }, 500);
     }
@@ -1877,42 +1822,27 @@ public class LimboActivity extends AppCompatActivity
         }
     }
 
-    public void updateStorageSummary(boolean clear) {
+    public void updateStorageDevicesSummary(boolean clear) {
         if (clear || getMachine() == null || mMachine.getSelectedItemPosition() < 2)
-            mStorageSectionSummary.setText("");
+            mStorageDevicesSectionSummary.setText("");
         else {
             String text = null;
             text = appendDriveFilename(getMachine().getHdaImagePath(), text, "HDA", false);
             text = appendDriveFilename(getMachine().getHdbImagePath(), text, "HDB", false);
             text = appendDriveFilename(getMachine().getHdcImagePath(), text, "HDC", false);
             text = appendDriveFilename(getMachine().getHddImagePath(), text, "HDD", false);
-
-            if (Config.enableSharedFolder)
-                text = appendDriveFilename(getMachine().getSharedFolderPath(), text,
-                        getString(R.string.SharedFolder), false);
-
-            if (text == null || text.equals("'"))
-                text = "None";
-            mStorageSectionSummary.setText(text);
-        }
-    }
-
-    public void updateRemovableStorageSummary(boolean clear) {
-        if (clear || getMachine() == null || mMachine.getSelectedItemPosition() < 2)
-            mRemovableStorageSectionSummary.setText("");
-        else {
-            String text = null;
-
             text = appendDriveFilename(getMachine().getCdImagePath(), text, "CDROM", true);
             text = appendDriveFilename(getMachine().getFdaImagePath(), text, "FDA", true);
             text = appendDriveFilename(getMachine().getFdbImagePath(), text, "FDB", true);
             text = appendDriveFilename(getMachine().getSdImagePath(), text, "SD", true);
 
+            if (Config.enableSharedFolder)
+                text = appendDriveFilename(getMachine().getSharedFolderPath(), text,
+                        getString(R.string.SharedFolder), false);
 
-            if (text == null || text.equals(""))
+            if (text == null || text.equals("'") || text.equals(""))
                 text = "None";
-
-            mRemovableStorageSectionSummary.setText(text);
+            mStorageDevicesSectionSummary.setText(text);
         }
     }
 
@@ -2040,11 +1970,6 @@ public class LimboActivity extends AppCompatActivity
 
     private void postLoadMachineUI() {
 
-        mFDAenable.setChecked(getMachine().getFdaImagePath() != null);
-        mFDBenable.setChecked(getMachine().getFdbImagePath() != null);
-        mCDenable.setChecked(getMachine().getCdImagePath() != null);
-        mSDenable.setChecked(getMachine().getSdImagePath() != null);
-
         changeStatus(MachineController.getInstance().getCurrStatus());
         if (getMachine().getPaused() == 1) {
             enableNonRemovableDeviceOptions(false);
@@ -2081,24 +2006,8 @@ public class LimboActivity extends AppCompatActivity
         else
             mExtraParams.setText("");
 
-        // CDROM
-        seMachineDriveValue(FileType.CDROM, getMachine().getCdImagePath());
-
-        // Floppy
-        seMachineDriveValue(FileType.FDA, getMachine().getFdaImagePath());
-        seMachineDriveValue(FileType.FDB, getMachine().getFdbImagePath());
-
-        // SD Card
-        seMachineDriveValue(FileType.SD, getMachine().getSdImagePath());
-
-        // HDD
-        seMachineDriveValue(FileType.HDA, getMachine().getHdaImagePath());
-        seMachineDriveValue(FileType.HDB, getMachine().getHdbImagePath());
-        seMachineDriveValue(FileType.HDC, getMachine().getHdcImagePath());
-        seMachineDriveValue(FileType.HDD, getMachine().getHddImagePath());
-
-        //sharedfolder
-        seMachineDriveValue(FileType.SHARED_DIR, getMachine().getSharedFolderPath());
+        // Storage devices are loaded dynamically
+        refreshStorageDevices();
 
         // Advance
         SpinnerAdapter.setDiskAdapterValue(mBootDevices, getMachine().getBootDevice());
@@ -2139,8 +2048,7 @@ public class LimboActivity extends AppCompatActivity
     private synchronized void updateSummary() {
         updateUISummary(false);
         updateCPUSummary(false);
-        updateStorageSummary(false);
-        updateRemovableStorageSummary(false);
+        updateStorageDevicesSummary(false);
         updateGraphicsSummary(false);
         updateAudioSummary(false);
         updateNetworkSummary(false);
@@ -2184,6 +2092,14 @@ public class LimboActivity extends AppCompatActivity
     }
 
     public void promptImageName(final Activity activity, final FileType fileType) {
+        promptImageName(activity, fileType, -1L);
+    }
+
+    public void promptImageName(final Activity activity, final FileType fileType, final int sizeIndex) {
+        promptImageName(activity, fileType, -1L);
+    }
+
+    public void promptImageName(final Activity activity, final FileType fileType, final long sizeBytes) {
 
         final AlertDialog alertDialog;
         alertDialog = new AlertDialog.Builder(activity).create();
@@ -2201,21 +2117,32 @@ public class LimboActivity extends AppCompatActivity
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         mLayout.addView(imageNameView, imageNameViewParams);
 
-        final Spinner size = new Spinner(this);
-        LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        // size selection (custom size in MB/GB/TB)
+        LinearLayout sizeLayout = new LinearLayout(this);
+        sizeLayout.setOrientation(LinearLayout.HORIZONTAL);
 
-        String[] arraySpinner = new String[5];
-        arraySpinner[0] = "1GB (Growable)";
-        arraySpinner[1] = "2GB (Growable)";
-        arraySpinner[2] = "4GB (Growable)";
-        arraySpinner[3] = "10 GB (Growable)";
-        arraySpinner[4] = "20 GB (Growable)";
+        final EditText sizeValueView = new EditText(activity);
+        sizeValueView.setEnabled(true);
+        sizeValueView.setSingleLine();
+        sizeValueView.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        LinearLayout.LayoutParams sizeValueParams = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        sizeValueView.setText("4");
+        sizeLayout.addView(sizeValueView, sizeValueParams);
 
-        ArrayAdapter<?> sizeAdapter = new ArrayAdapter<Object>(this, R.layout.custom_spinner_item, arraySpinner);
-        sizeAdapter.setDropDownViewResource(R.layout.custom_spinner_dropdown_item);
-        size.setAdapter(sizeAdapter);
-        mLayout.addView(size, spinnerParams);
+        final Spinner sizeUnit = new Spinner(this);
+        String[] units = {getString(R.string.size_unit_gb), getString(R.string.size_unit_mb),
+                getString(R.string.size_unit_tb)};
+        ArrayAdapter<String> unitAdapter = new ArrayAdapter<>(this, R.layout.custom_spinner_item, units);
+        unitAdapter.setDropDownViewResource(R.layout.custom_spinner_dropdown_item);
+        sizeUnit.setAdapter(unitAdapter);
+        if (sizeBytes > 0) {
+            formatSizeValue(sizeValueView, sizeUnit, sizeBytes);
+        }
+        LinearLayout.LayoutParams unitParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        sizeLayout.addView(sizeUnit, unitParams);
+        mLayout.addView(sizeLayout);
 
         alertDialog.setView(mLayout);
 
@@ -2234,33 +2161,29 @@ public class LimboActivity extends AppCompatActivity
                     return;
                 }
 
-                int sizeSel = size.getSelectedItemPosition();
-                String templateImage = "hd1g.qcow2";
-                if (sizeSel == 0) {
-                    templateImage = "hd1g.qcow2";
-                } else if (sizeSel == 1) {
-                    templateImage = "hd2g.qcow2";
-                } else if (sizeSel == 2) {
-                    templateImage = "hd4g.qcow2";
-                } else if (sizeSel == 3) {
-                    templateImage = "hd10g.qcow2";
-                } else if (sizeSel == 4) {
-                    templateImage = "hd20g.qcow2";
-                }
+                long bytes = parseSizeBytes(sizeValueView, sizeUnit);
 
                 String image = imageNameView.getText().toString();
                 if (image.trim().equals(""))
                     ToastUtils.toastShort(activity, getString(R.string.ImageFilenameCannotBeEmpty));
                 else {
-                    if (!image.endsWith(".qcow2")) {
-                        image += ".qcow2";
+                    String templateImage = getTemplateForSize(bytes);
+                    String filePath = null;
+                    if (templateImage != null) {
+                        if (!image.endsWith(".qcow2")) {
+                            image += ".qcow2";
+                        }
+                        filePath = FileUtils.createImgFromTemplate(LimboActivity.this, templateImage, image, fileType);
+                    } else {
+                        if (!image.endsWith(".img") && !image.endsWith(".raw")) {
+                            image += ".img";
+                        }
+                        filePath = FileUtils.createRawImage(LimboActivity.this, bytes, image, fileType);
                     }
-                    String filePath = FileUtils.createImgFromTemplate(LimboActivity.this, templateImage, image, fileType);
-                    if (filePath!=null) {
+                    if (filePath != null) {
                         updateDrive(fileType, filePath);
                         alertDialog.dismiss();
                     }
-
                 }
             }
         });
@@ -2274,6 +2197,56 @@ public class LimboActivity extends AppCompatActivity
 
             }
         });
+    }
+
+    private void formatSizeValue(EditText sizeValueView, Spinner sizeUnit, long sizeBytes) {
+        long gb = 1024L * 1024L * 1024L;
+        long mb = 1024L * 1024L;
+        if (sizeBytes % gb == 0) {
+            sizeValueView.setText((sizeBytes / gb) + "");
+            sizeUnit.setSelection(0); // GB
+        } else if (sizeBytes % mb == 0) {
+            sizeValueView.setText((sizeBytes / mb) + "");
+            sizeUnit.setSelection(1); // MB
+        } else {
+            sizeValueView.setText((sizeBytes / mb) + "");
+            sizeUnit.setSelection(1); // MB (rounded)
+        }
+    }
+
+    private long parseSizeBytes(EditText sizeValueView, Spinner sizeUnit) {
+        long value = 1;
+        try {
+            value = Long.parseLong(sizeValueView.getText().toString().trim());
+        } catch (NumberFormatException e) {
+            value = 1;
+        }
+        if (value < 1)
+            value = 1;
+        String unit = (String) sizeUnit.getSelectedItem();
+        long multiplier = 1024L * 1024L * 1024L; // GB default
+        if (unit != null) {
+            if (unit.equals(getString(R.string.size_unit_mb)))
+                multiplier = 1024L * 1024L;
+            else if (unit.equals(getString(R.string.size_unit_tb)))
+                multiplier = 1024L * 1024L * 1024L * 1024L;
+        }
+        return value * multiplier;
+    }
+
+    private String getTemplateForSize(long sizeBytes) {
+        long gb = 1024L * 1024L * 1024L;
+        if (sizeBytes == gb)
+            return "hd1g.qcow2";
+        else if (sizeBytes == 2 * gb)
+            return "hd2g.qcow2";
+        else if (sizeBytes == 4 * gb)
+            return "hd4g.qcow2";
+        else if (sizeBytes == 10 * gb)
+            return "hd10g.qcow2";
+        else if (sizeBytes == 20 * gb)
+            return "hd20g.qcow2";
+        return null;
     }
 
     public void changeImagesDir() {
@@ -2586,6 +2559,11 @@ public class LimboActivity extends AppCompatActivity
     }
 
     public void populateDiskAdapter(final Spinner spinner, final FileType fileType, final boolean createOption) {
+        populateDiskAdapter(spinner, fileType, createOption, null);
+    }
+
+    public void populateDiskAdapter(final Spinner spinner, final FileType fileType, final boolean createOption,
+                                    final Runnable onComplete) {
         Thread t = new Thread(new Runnable() {
             public void run() {
                 ArrayList<String> oldHDs = MachineFilePaths.getRecentFilePaths(fileType);
@@ -2608,6 +2586,8 @@ public class LimboActivity extends AppCompatActivity
                         adapter.setDropDownViewResource(R.layout.custom_spinner_dropdown_item);
                         spinner.setAdapter(adapter);
                         spinner.invalidate();
+                        if (onComplete != null)
+                            onComplete.run();
                     }
                 });
             }
@@ -2763,12 +2743,14 @@ public class LimboActivity extends AppCompatActivity
 
     private void updateRemovableDiskValues() {
         if (getMachine() != null) {
-            disableRemovableDiskListeners();
-            updateDrive(FileType.CDROM, getMachine().getCdImagePath());
-            updateDrive(FileType.FDA, getMachine().getFdaImagePath());
-            updateDrive(FileType.FDB, getMachine().getFdbImagePath());
-            updateDrive(FileType.SD, getMachine().getSdImagePath());
-            enableRemovableDiskListeners();
+            disableStorageDeviceListeners();
+            for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+                if (entry.removable) {
+                    String value = getMachineDriveValue(entry.fileType);
+                    seMachineDriveValue(entry.fileType, value);
+                }
+            }
+            setupStorageDeviceListeners();
         }
     }
 
@@ -2834,21 +2816,15 @@ public class LimboActivity extends AppCompatActivity
     private void onMachinesImported(ArrayList<Machine> machines) {
         populateAttributesUI();
         setupMiscOptions();
-        setupNonRemovableDiskListeners();
-        enableRemovableDiskListeners();
+        setupStorageDeviceListeners();
         updateFavAdapters();
         LimboActivityCommon.promptMachinesImported(this, machines);
     }
 
     private void updateFavAdapters() {
-        mHDA.getAdapter().getCount();
-        mHDB.getAdapter().getCount();
-        mHDC.getAdapter().getCount();
-        mHDD.getAdapter().getCount();
-        mCD.getAdapter().getCount();
-        mFDA.getAdapter().getCount();
-        mFDB.getAdapter().getCount();
-        mSD.getAdapter().getCount();
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            entry.imageSpinner.getAdapter().getCount();
+        }
         mKernel.getAdapter().getCount();
         mInitrd.getAdapter().getCount();
     }
@@ -2895,6 +2871,344 @@ public class LimboActivity extends AppCompatActivity
             viewListener.onAction(action, value);
     }
 
+    // ================= Storage Devices (dynamic rows) =================
+
+    private void refreshStorageDevices() {
+        // remove all existing rows
+        for (StorageDeviceEntry entry : new ArrayList<>(mStorageDeviceEntries)) {
+            mStorageDevicesContainer.removeView(entry.rowLayout);
+            diskMapping.remove(entry.fileType);
+        }
+        mStorageDeviceEntries.clear();
+        if (getMachine() == null)
+            return;
+
+        // Hard disks: each non-empty HDA..HDD slot becomes one hard disk row
+        addHardDiskRow(0, getMachine().getHdaImagePath());
+        addHardDiskRow(1, getMachine().getHdbImagePath());
+        addHardDiskRow(2, getMachine().getHdcImagePath());
+        addHardDiskRow(3, getMachine().getHddImagePath());
+
+        addRowForDrive(DeviceType.CDROM, getMachine().getCdImagePath());
+        if (Config.enableEmulatedFloppy) {
+            addRowForDrive(DeviceType.FDA, getMachine().getFdaImagePath());
+            addRowForDrive(DeviceType.FDB, getMachine().getFdbImagePath());
+        }
+        if (Config.enableEmulatedSDCard) {
+            addRowForDrive(DeviceType.SD, getMachine().getSdImagePath());
+        }
+        if (Config.enableSharedFolder) {
+            addRowForDrive(DeviceType.SHARED_DIR, getMachine().getSharedFolderPath());
+        }
+    }
+
+    private void addHardDiskRow(int slot, String path) {
+        if (path != null && !path.equals("") && !path.equals("None")) {
+            addStorageDeviceRow(DeviceType.HARD_DISK, slot);
+        }
+    }
+
+    private void addRowForDrive(DeviceType type, String path) {
+        if (path != null && !path.equals("") && !path.equals("None")) {
+            addStorageDeviceRow(type);
+        }
+    }
+
+    private void addStorageDeviceRow(DeviceType type) {
+        addStorageDeviceRow(type, -1);
+    }
+
+    private void addStorageDeviceRow(DeviceType type, int hardDiskSlot) {
+        if (getMachine() == null)
+            return;
+        if (type == null) {
+            type = getFirstUnusedType();
+            if (type == null) {
+                ToastUtils.toastShort(this, getString(R.string.device_add_failed));
+                return;
+            }
+        }
+        // check if type already reached max count
+        if (countDeviceType(type) >= type.maxCount) {
+            ToastUtils.toastShort(this, getString(R.string.device_already_exists));
+            return;
+        }
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        View row = inflater.inflate(R.layout.storage_device_row_layout, mStorageDevicesContainer, false);
+        Spinner typeSpinner = row.findViewById(R.id.storageDeviceTypeSpinner);
+        EditText sizeEditText = row.findViewById(R.id.storageDeviceSizeValue);
+        Spinner sizeUnitSpinner = row.findViewById(R.id.storageDeviceSizeUnit);
+        Spinner imageSpinner = row.findViewById(R.id.storageDeviceImageSpinner);
+        ImageButton removeBtn = row.findViewById(R.id.storageDeviceRemoveBtn);
+
+        StorageDeviceEntry entry = new StorageDeviceEntry();
+        entry.rowLayout = (LinearLayout) row;
+        entry.typeSpinner = typeSpinner;
+        entry.sizeEditText = sizeEditText;
+        entry.sizeUnitSpinner = sizeUnitSpinner;
+        entry.imageSpinner = imageSpinner;
+        entry.removeBtn = removeBtn;
+        entry.deviceType = type;
+        entry.removable = type.removable;
+        entry.createImage = type.createImage;
+        entry.sharedFolder = type.sharedFolder;
+        if (type == DeviceType.HARD_DISK) {
+            if (hardDiskSlot >= 0) {
+                entry.hardDiskSlot = hardDiskSlot;
+                assignHardDiskSlotProperty(entry, hardDiskSlot);
+            } else {
+                assignHardDiskSlot(entry);
+            }
+        } else {
+            entry.property = type.property;
+            entry.fileType = type.fileType;
+        }
+
+        // type spinner adapter
+        DeviceType[] types = getAvailableDeviceTypes();
+        String[] typeLabels = new String[types.length];
+        for (int i = 0; i < types.length; i++)
+            typeLabels[i] = getString(types[i].labelRes);
+        ArrayAdapter<String> typeAdapter = new ArrayAdapter<>(this, R.layout.custom_spinner_item, typeLabels);
+        typeAdapter.setDropDownViewResource(R.layout.custom_spinner_dropdown_item);
+        typeSpinner.setAdapter(typeAdapter);
+        typeSpinner.setSelection(getTypePosition(type));
+
+        // size unit spinner adapter (MB/GB/TB)
+        String[] units = {getString(R.string.size_unit_gb), getString(R.string.size_unit_mb),
+                getString(R.string.size_unit_tb)};
+        ArrayAdapter<String> unitAdapter = new ArrayAdapter<>(this, R.layout.custom_spinner_item, units);
+        unitAdapter.setDropDownViewResource(R.layout.custom_spinner_dropdown_item);
+        sizeUnitSpinner.setAdapter(unitAdapter);
+        sizeUnitSpinner.setSelection(0); // default GB
+        sizeEditText.setText("4");
+
+        // remove button
+        removeBtn.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                removeStorageDeviceRow(entry);
+            }
+        });
+
+        mStorageDevicesContainer.addView(row);
+        mStorageDeviceEntries.add(entry);
+
+        // register disk mapping
+        diskMapping.put(entry.fileType, new DiskInfo(imageSpinner, null, entry.property));
+
+        // For removable devices: if this is a new (empty) device, enable it so
+        // image selection can be saved. Devices loaded from a machine with an
+        // existing image already have their enable flag set.
+        if (entry.removable) {
+            String existing = getMachineDriveValue(entry.fileType);
+            if (existing == null || existing.equals("") || existing.equals("None")) {
+                notifyFieldChange(MachineProperty.DRIVE_ENABLED, new Object[]{entry.property, true});
+            }
+        }
+
+        updateStorageDeviceSizeVisibility(entry);
+
+        // set value from machine once the image adapter is ready
+        populateStorageDeviceImageAdapter(entry, new Runnable() {
+            @Override
+            public void run() {
+                String value = getMachineDriveValue(entry.fileType);
+                if (value != null && !value.equals("") && !value.equals("None")) {
+                    seMachineDriveValue(entry.fileType, value);
+                }
+                setupStorageDeviceRowListeners(entry);
+            }
+        });
+    }
+
+    private void removeStorageDeviceRow(StorageDeviceEntry entry) {
+        if (entry.removable) {
+            notifyFieldChange(MachineProperty.DRIVE_ENABLED, new Object[]{entry.property, false});
+        } else {
+            clearDrive(entry);
+        }
+        mStorageDevicesContainer.removeView(entry.rowLayout);
+        mStorageDeviceEntries.remove(entry);
+        diskMapping.remove(entry.fileType);
+        // re-compact hard disk slots (HDA..HDD stay contiguous)
+        reassignHardDiskSlots();
+        updateSummary();
+    }
+
+    // Reassigns contiguous HDA..HDD slots to the remaining hard disk rows so
+    // that slots are always compact (e.g. removing HDB shifts HDC->HDB).
+    private void reassignHardDiskSlots() {
+        int slot = 0;
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            if (entry.deviceType == DeviceType.HARD_DISK) {
+                if (entry.hardDiskSlot != slot) {
+                    // keep the image path from the old slot
+                    String oldValue = getMachineDriveValue(entry.fileType);
+                    // release the old slot
+                    diskMapping.remove(entry.fileType);
+                    clearDrive(entry);
+                    // assign the new slot
+                    entry.hardDiskSlot = slot;
+                    assignHardDiskSlotProperty(entry, slot);
+                    diskMapping.put(entry.fileType, new DiskInfo(entry.imageSpinner, null, entry.property));
+                    // move the image path to the new slot
+                    if (oldValue != null && !oldValue.equals("") && !oldValue.equals("None")) {
+                        notifyFieldChange(MachineProperty.NON_REMOVABLE_DRIVE,
+                                new Object[]{entry.property, oldValue});
+                        seMachineDriveValue(entry.fileType, oldValue);
+                    } else {
+                        seMachineDriveValue(entry.fileType, null);
+                    }
+                }
+                slot++;
+            }
+        }
+    }
+
+    private void clearDrive(StorageDeviceEntry entry) {
+        if (entry.removable) {
+            notifyFieldChange(MachineProperty.REMOVABLE_DRIVE, new Object[]{entry.property, "None"});
+        } else {
+            // includes SHARED_FOLDER which goes through NON_REMOVABLE_DRIVE
+            notifyFieldChange(MachineProperty.NON_REMOVABLE_DRIVE, new Object[]{entry.property, "None"});
+        }
+    }
+
+    private String getMachineDriveValue(FileType fileType) {
+        switch (fileType) {
+            case HDA:
+                return getMachine().getHdaImagePath();
+            case HDB:
+                return getMachine().getHdbImagePath();
+            case HDC:
+                return getMachine().getHdcImagePath();
+            case HDD:
+                return getMachine().getHddImagePath();
+            case CDROM:
+                return getMachine().getCdImagePath();
+            case FDA:
+                return getMachine().getFdaImagePath();
+            case FDB:
+                return getMachine().getFdbImagePath();
+            case SD:
+                return getMachine().getSdImagePath();
+            case SHARED_DIR:
+                return getMachine().getSharedFolderPath();
+            default:
+                return null;
+        }
+    }
+
+    private DeviceType[] getAvailableDeviceTypes() {
+        List<DeviceType> types = new ArrayList<>();
+        types.add(DeviceType.HARD_DISK);
+        types.add(DeviceType.CDROM);
+        if (Config.enableEmulatedFloppy) {
+            types.add(DeviceType.FDA);
+            types.add(DeviceType.FDB);
+        }
+        if (Config.enableEmulatedSDCard) {
+            types.add(DeviceType.SD);
+        }
+        if (Config.enableSharedFolder) {
+            types.add(DeviceType.SHARED_DIR);
+        }
+        return types.toArray(new DeviceType[0]);
+    }
+
+    private int getTypePosition(DeviceType type) {
+        DeviceType[] types = getAvailableDeviceTypes();
+        for (int i = 0; i < types.length; i++) {
+            if (types[i] == type)
+                return i;
+        }
+        return 0;
+    }
+
+    private DeviceType getFirstUnusedType() {
+        DeviceType[] types = getAvailableDeviceTypes();
+        for (DeviceType type : types) {
+            int count = countDeviceType(type);
+            if (count < type.maxCount) {
+                if (type == DeviceType.HARD_DISK && getFreeHardDiskSlot() < 0)
+                    continue;
+                return type;
+            }
+        }
+        return null;
+    }
+
+    private int countDeviceType(DeviceType type) {
+        int count = 0;
+        for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+            if (entry.deviceType == type)
+                count++;
+        }
+        return count;
+    }
+
+    // Hard disks are assigned to fixed slots HDA..HDD (0..3), matching the
+    // underlying Machine fields. Returns the first free slot or -1 if full.
+    private int getFreeHardDiskSlot() {
+        for (int slot = 0; slot < 4; slot++) {
+            boolean used = false;
+            for (StorageDeviceEntry entry : mStorageDeviceEntries) {
+                if (entry.deviceType == DeviceType.HARD_DISK && entry.hardDiskSlot == slot) {
+                    used = true;
+                    break;
+                }
+            }
+            if (!used)
+                return slot;
+        }
+        return -1;
+    }
+
+    private void assignHardDiskSlot(StorageDeviceEntry entry) {
+        int slot = getFreeHardDiskSlot();
+        if (slot < 0)
+            return;
+        entry.hardDiskSlot = slot;
+        assignHardDiskSlotProperty(entry, slot);
+    }
+
+    private void assignHardDiskSlotProperty(StorageDeviceEntry entry, int slot) {
+        switch (slot) {
+            case 0:
+                entry.property = MachineProperty.HDA;
+                entry.fileType = FileType.HDA;
+                break;
+            case 1:
+                entry.property = MachineProperty.HDB;
+                entry.fileType = FileType.HDB;
+                break;
+            case 2:
+                entry.property = MachineProperty.HDC;
+                entry.fileType = FileType.HDC;
+                break;
+            case 3:
+                entry.property = MachineProperty.HDD;
+                entry.fileType = FileType.HDD;
+                break;
+        }
+    }
+
+    private void populateStorageDeviceImageAdapter(StorageDeviceEntry entry) {
+        populateStorageDeviceImageAdapter(entry, null);
+    }
+
+    private void populateStorageDeviceImageAdapter(StorageDeviceEntry entry, Runnable onComplete) {
+        populateDiskAdapter(entry.imageSpinner, entry.fileType, entry.createImage, onComplete);
+    }
+
+    private void updateStorageDeviceSizeVisibility(StorageDeviceEntry entry) {
+        int visibility = entry.createImage ? View.VISIBLE : View.GONE;
+        entry.sizeEditText.setVisibility(visibility);
+        entry.sizeUnitSpinner.setVisibility(visibility);
+    }
+
     static class DiskInfo {
         public CheckBox enableCheckBox;
         public Spinner spinner;
@@ -2904,6 +3218,50 @@ public class LimboActivity extends AppCompatActivity
             this.spinner = spinner;
             this.enableCheckBox = enableCheckbox;
             this.colName = dbColName;
+        }
+    }
+
+    static class StorageDeviceEntry {
+        public LinearLayout rowLayout;
+        public Spinner typeSpinner;
+        public EditText sizeEditText;
+        public Spinner sizeUnitSpinner;
+        public Spinner imageSpinner;
+        public ImageButton removeBtn;
+        public DeviceType deviceType;
+        public MachineProperty property;
+        public FileType fileType;
+        public boolean removable;
+        public boolean createImage;
+        public boolean sharedFolder;
+        public int hardDiskSlot = -1; // -1 = not a hard disk, 0..3 = HDA..HDD
+    }
+
+    enum DeviceType {
+        HARD_DISK(null, null, false, true, false, R.string.type_hard_disk, 4),
+        CDROM(MachineProperty.CDROM, Machine.FileType.CDROM, true, false, false, R.string.type_cdrom, 1),
+        FDA(MachineProperty.FDA, Machine.FileType.FDA, true, false, false, R.string.type_floppy_a, 1),
+        FDB(MachineProperty.FDB, Machine.FileType.FDB, true, false, false, R.string.type_floppy_b, 1),
+        SD(MachineProperty.SD, Machine.FileType.SD, true, false, false, R.string.type_sd_card, 1),
+        SHARED_DIR(MachineProperty.SHARED_FOLDER, Machine.FileType.SHARED_DIR, false, false, true, R.string.type_shared_folder, 1);
+
+        public final MachineProperty property;
+        public final Machine.FileType fileType;
+        public final boolean removable;
+        public final boolean createImage;
+        public final boolean sharedFolder;
+        public final int labelRes;
+        public final int maxCount;
+
+        DeviceType(MachineProperty property, Machine.FileType fileType, boolean removable,
+                   boolean createImage, boolean sharedFolder, int labelRes, int maxCount) {
+            this.property = property;
+            this.fileType = fileType;
+            this.removable = removable;
+            this.createImage = createImage;
+            this.sharedFolder = sharedFolder;
+            this.labelRes = labelRes;
+            this.maxCount = maxCount;
         }
     }
 

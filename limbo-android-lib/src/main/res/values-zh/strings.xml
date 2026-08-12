@@ -1,24 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <!-- 操作系统模板 -->
-    <string name="DebianLinux">Debian Linux</string>
-    <string name="DebianLinuxDescr">一个活跃的开源 Linux 操作系统，带桌面环境、音频和网络支持</string>
-    <string name="DSLLinux">DSL Linux</string>
-    <string name="DSLLinuxDescr">一个轻量级开源操作系统，带桌面环境、音频和网络支持</string>
-    <string name="Trinux">Trinux</string>
-    <string name="TrinuxDescr">一个命令行开源操作系统，带命令行、音频和网络支持</string>
-    <string name="Freedos">FreeDOS</string>
-    <string name="FreedosDescr">一个兼容 DOS 的活跃开源操作系统，带命令行、音频和网络支持</string>
-    <string name="KolibriOS">KolibriOS</string>
-    <string name="KolibriOSDescr">一个超轻量级开源操作系统，带桌面环境、音频和网络支持</string>
-    <string name="SlaxLinux">Slax Linux</string>
-    <string name="SlaxLinuxDescr">一个活跃的开源 Linux 操作系统，带桌面环境、音频和网络支持</string>
-    <string name="SlitazLinux">Slitaz Linux</string>
-    <string name="SlitazLinuxDescr">一个活跃的开源 Linux 操作系统，带桌面环境、音频和网络支持</string>
-    <string name="DebianArmLinux">Debian ARM Linux</string>
-    <string name="DebianArmLinuxDescr">一个轻量级 Linux 操作系统，带桌面管理器、网络和包管理器</string>
-
     <!-- 应用名称 -->
     <string name="app_name">Limbo 模拟器</string>
     <string name="app_short_name">Limbo</string>
@@ -399,6 +380,29 @@
     <string name="label_hard_disk_c">硬盘 C：</string>
     <string name="label_hard_disk_d">硬盘 D：</string>
     <string name="label_shared_folder">共享文件夹</string>
+    <string name="title_storage_devices">存储设备</string>
+    <string name="add_storage_device">+ 添加设备</string>
+    <string name="remove_storage_device">移除设备</string>
+    <string name="type_hard_disk">硬盘</string>
+    <string name="type_hard_disk_a">硬盘 A</string>
+    <string name="type_hard_disk_b">硬盘 B</string>
+    <string name="type_hard_disk_c">硬盘 C</string>
+    <string name="type_hard_disk_d">硬盘 D</string>
+    <string name="type_cdrom">光驱</string>
+    <string name="type_floppy_a">软盘 A</string>
+    <string name="type_floppy_b">软盘 B</string>
+    <string name="type_sd_card">SD 卡</string>
+    <string name="type_shared_folder">共享文件夹</string>
+    <string name="size_unit_mb">MB</string>
+    <string name="size_unit_gb">GB</string>
+    <string name="size_unit_tb">TB</string>
+    <string name="size_1gb">1 GB</string>
+    <string name="size_2gb">2 GB</string>
+    <string name="size_4gb">4 GB</string>
+    <string name="size_10gb">10 GB</string>
+    <string name="size_20gb">20 GB</string>
+    <string name="device_already_exists">该设备类型已存在</string>
+    <string name="device_add_failed">添加设备失败</string>
     <string name="title_user_interface">用户界面</string>
     <string name="label_display">显示</string>
     <string name="title_keyboard">键盘</string>

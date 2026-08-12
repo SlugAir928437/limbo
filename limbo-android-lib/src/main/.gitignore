@@ -44,3 +44,6 @@ libs/
 /sh.exe.stackdump
 
 jniLibs
+
+assets/roms
+assets/QEMU_VERSION

@@ -139,6 +139,10 @@ private String getQemuLibrary() {
                 return "libqemu-system-arm.so";
             case arm64:
                 return "libqemu-system-aarch64.so";
+            case ia64:
+                return "libqemu-system-ia64.so";
+            case ia64w:
+                return "libqemu-system-ia64w.so";
             default:
                 throw new IllegalStateException("Unexpected value: " + LimboApplication.arch);
         }
@@ -522,6 +526,11 @@ private String getQemuLibrary() {
         return imgPath;
     }
 
+    private boolean isRawImage(String imagePath) {
+        String lower = imagePath.toLowerCase();
+        return lower.endsWith(".img") || lower.endsWith(".raw");
+    }
+
     public void addDrives(ArrayList<String> paramsList) {
         addHardDisk(paramsList, getDriveFilePath(getMachine().getHdaImagePath()),
                 0, getMachine().getHdaInterface());
@@ -560,6 +569,9 @@ private String getQemuLibrary() {
                 param += ",media=disk";
                 if (!imagePath.equals("")) {
                     param += ",file=" + imagePath;
+                    if (isRawImage(imagePath)) {
+                        param += ",format=raw";
+                    }
                 }
                 String cache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
                 if(cache != null && !cache.equals("default"))
@@ -847,6 +859,8 @@ private String getQemuLibrary() {
                 || LimboApplication.arch == Config.Arch.x86_64
                 || LimboApplication.arch == Config.Arch.arm
                 || LimboApplication.arch == Config.Arch.arm64
+                || LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w
         ) {
             nativeRefreshScreen(1);
         }

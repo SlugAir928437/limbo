@@ -629,6 +629,11 @@ public class Machine extends Observable {
             machineType = "versatilepb";
             cpu = "Default";
             networkCard = "Default";
+        } else if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+            arch = "ia64";
+            machineType = "itanium2-vpc";
+            cpu = "Default";
+            networkCard = "Default";
         }
     }
 

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -6,7 +6,7 @@
     style="@style/Widget.Limbo.SectionCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="@dimen/spacing_sm"
+    android:layout_marginBottom="@dimen/spacing_normal"
     tools:showIn="@layout/limbo_main">
 
     <LinearLayout
@@ -20,47 +20,56 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="@dimen/spacing_md">
+            android:padding="@dimen/card_header_padding">
 
             <ImageView
                 android:layout_width="@dimen/section_header_icon_size"
                 android:layout_height="@dimen/section_header_icon_size"
-                android:layout_marginEnd="@dimen/spacing_sm"
-                android:src="@drawable/drives" />
+                android:layout_marginEnd="@dimen/spacing_md"
+                android:src="@drawable/drives"
+                android:contentDescription="@null" />
 
-            <TextView
-                android:id="@+id/bootsectionStr"
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/title_boot"
-                android:textColor="@color/colorSectionHeaderText"
-                android:textSize="@dimen/section_header_text_size"
-                android:textStyle="bold" />
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/bootsectionsummaryStr"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="end"
-                android:maxLines="3"
-                android:minLines="2"
-                android:text=""
-                android:textColor="@color/colorSummaryText"
-                android:textSize="@dimen/section_summary_text_size" />
+                <TextView
+                    android:id="@+id/bootsectionStr"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/title_boot"
+                    android:textColor="@color/colorOnSurface"
+                    android:textSize="@dimen/section_header_text_size"
+                    android:textStyle="bold"
+                    android:fontFamily="sans-serif-medium" />
+
+                <TextView
+                    android:id="@+id/bootsectionsummaryStr"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="2"
+                    android:text=""
+                    android:textColor="@color/colorSummaryText"
+                    android:textSize="@dimen/section_summary_text_size"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
         </LinearLayout>
 
         <View
             android:layout_width="match_parent"
             android:layout_height="@dimen/divider_height"
-            android:background="@color/colorDivider" />
+            android:background="@color/colorDivider"
+            android:layout_marginHorizontal="@dimen/card_inner_padding" />
 
         <LinearLayout
             android:id="@+id/bootsectionDetails"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="@dimen/spacing_normal">
+            android:paddingHorizontal="@dimen/card_inner_padding"
+            android:paddingVertical="@dimen/spacing_sm">
 
             <LinearLayout
                 android:id="@+id/bootfroml"
@@ -74,8 +83,9 @@
                     android:layout_width="@dimen/row_icon_size"
                     android:layout_height="@dimen/row_icon_size"
                     android:layout_gravity="center_vertical"
-                    android:layout_marginEnd="@dimen/spacing_sm"
-                    android:src="@drawable/drives" />
+                    android:layout_marginEnd="@dimen/spacing_md"
+                    android:src="@drawable/drives"
+                    android:contentDescription="@null" />
 
                 <TextView
                     android:id="@+id/bootfromstr"
@@ -84,7 +94,7 @@
                     android:layout_gravity="center_vertical"
                     android:layout_weight="1"
                     android:text="@string/label_boot_from_device"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="@color/colorOnSurface"
                     android:textSize="@dimen/row_text_size" />
 
                 <Spinner
@@ -108,8 +118,9 @@
                     android:layout_width="@dimen/row_icon_size"
                     android:layout_height="@dimen/row_icon_size"
                     android:layout_gravity="center_vertical"
-                    android:layout_marginEnd="@dimen/spacing_sm"
-                    android:src="@drawable/sysfile" />
+                    android:layout_marginEnd="@dimen/spacing_md"
+                    android:src="@drawable/sysfile"
+                    android:contentDescription="@null" />
 
                 <TextView
                     android:id="@+id/kernelStr"
@@ -118,7 +129,7 @@
                     android:layout_gravity="center_vertical"
                     android:layout_weight="1"
                     android:text="@string/label_kernel"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="@color/colorOnSurface"
                     android:textSize="@dimen/row_text_size" />
 
                 <Spinner
@@ -142,8 +153,9 @@
                     android:layout_width="@dimen/row_icon_size"
                     android:layout_height="@dimen/row_icon_size"
                     android:layout_gravity="center_vertical"
-                    android:layout_marginEnd="@dimen/spacing_sm"
-                    android:src="@drawable/sysfile" />
+                    android:layout_marginEnd="@dimen/spacing_md"
+                    android:src="@drawable/sysfile"
+                    android:contentDescription="@null" />
 
                 <TextView
                     android:id="@+id/initrdStr"
@@ -152,7 +164,7 @@
                     android:layout_gravity="center_vertical"
                     android:layout_weight="1"
                     android:text="@string/label_initrd"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="@color/colorOnSurface"
                     android:textSize="@dimen/row_text_size" />
 
                 <Spinner
@@ -172,6 +184,11 @@
                 android:minHeight="@dimen/row_item_height"
                 android:orientation="horizontal">
 
+                <View
+                    android:layout_width="@dimen/row_icon_size"
+                    android:layout_height="@dimen/row_icon_size"
+                    android:layout_marginEnd="@dimen/spacing_md" />
+
                 <TextView
                     android:id="@+id/appendStr"
                     android:layout_width="0dp"
@@ -179,7 +196,7 @@
                     android:layout_gravity="center_vertical"
                     android:layout_weight="1"
                     android:text="@string/label_append"
-                    android:textColor="?attr/colorOnSurface"
+                    android:textColor="@color/colorOnSurface"
                     android:textSize="@dimen/row_text_size" />
 
                 <EditText
@@ -188,11 +205,15 @@
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_vertical"
                     android:layout_weight="1"
+                    android:background="@drawable/border"
                     android:gravity="end"
                     android:hint="ie: root=/dev/sda1"
                     android:inputType="textFilter|textNoSuggestions"
+                    android:padding="8dp"
                     android:singleLine="true"
                     android:text=""
+                    android:textColor="@color/colorOnSurface"
+                    android:textColorHint="@color/colorHint"
                     android:textSize="@dimen/row_text_size" />
             </LinearLayout>
 

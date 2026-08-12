@@ -267,7 +267,7 @@ limbo:
 	make qemu
 	make install
 
-EXPORT_GUEST_ALL=export BUILD_GUEST=x86_64-softmmu,aarch64-softmmu
+EXPORT_GUEST_ALL=export BUILD_GUEST=x86_64-softmmu,aarch64-softmmu,ia64-softmmu
 
 #most common combinations
 all:

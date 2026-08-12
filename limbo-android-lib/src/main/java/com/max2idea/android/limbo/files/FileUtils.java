@@ -655,4 +655,60 @@ public class FileUtils {
         }
         return null;
     }
+
+    // Creates an empty raw disk image of the given size (bytes).
+    public static String createRawImage(Context context, long sizeBytes, String destImage, FileType imgType) {
+        String imagesDir = LimboSettingsManager.getImagesDir(context);
+        if (imagesDir == null)
+            return null;
+        String displayName = null;
+        String filePath = null;
+        try {
+            if (imagesDir.startsWith("content://")) {
+                Uri imagesDirUri = Uri.parse(imagesDir);
+                DocumentFile dir = DocumentFile.fromTreeUri(context, imagesDirUri);
+                if (dir == null)
+                    return null;
+                DocumentFile file = dir.findFile(destImage);
+                if (file == null) {
+                    file = dir.createFile("application/octet-stream", destImage);
+                } else {
+                    ToastUtils.toastShort(context, context.getString(R.string.FileExistsChooseAnotherFilename));
+                    return null;
+                }
+                if (file != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= 26) {
+                        ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(file.getUri(), "rw");
+                        if (pfd != null) {
+                            FileOutputStream fos = new FileOutputStream(pfd.getFileDescriptor());
+                            fos.getChannel().truncate(sizeBytes);
+                            fos.close();
+                            pfd.close();
+                        }
+                    }
+                    filePath = file.getUri().toString();
+                    displayName = FileUtils.getFullPathFromDocumentFilePath(filePath);
+                }
+            } else {
+                File file = new File(imagesDir, destImage);
+                if (file.exists()) {
+                    ToastUtils.toastShort(context, context.getString(R.string.FileExistsChooseAnotherFilename));
+                    return null;
+                }
+                java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, "rw");
+                raf.setLength(sizeBytes);
+                raf.close();
+                filePath = file.getAbsolutePath();
+                displayName = filePath;
+            }
+        } catch (Exception ex) {
+            Log.e(TAG, "failed to create raw image: " + destImage + ", Error:" + ex.getMessage());
+            return null;
+        }
+        if (displayName != null) {
+            ToastUtils.toastShort(context, context.getString(R.string.ImageCreated) + ": " + displayName);
+            return filePath;
+        }
+        return null;
+    }
 }

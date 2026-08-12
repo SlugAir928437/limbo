@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Base application theme - Material Components -->
-    <style name="AppTheme" parent="Theme.MaterialComponents.Light.DarkActionBar">
+    <!-- Base application theme - Dark Tech Theme -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
         <!-- Primary brand color. -->
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
@@ -19,12 +19,25 @@
         <!-- Error -->
         <item name="colorError">@color/colorError</item>
         <item name="colorOnError">@color/colorOnError</item>
-        <!-- Status bar -->
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <!-- Status bar - Transparent gradient style -->
+        <item name="android:statusBarColor">@color/colorBackground</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <!-- Navigation bar -->
+        <item name="android:navigationBarColor">@color/colorBackground</item>
+        <!-- Window -->
+        <item name="android:windowBackground">@color/colorBackground</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- Material components -->
+        <item name="materialButtonStyle">@style/Widget.Limbo.Button</item>
+        <item name="materialCardViewStyle">@style/Widget.Limbo.SectionCard</item>
+        <!-- Shape appearance -->
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Limbo.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Limbo.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Limbo.Large</item>
     </style>
 
     <!-- NoActionBar variant for emulator activities -->
-    <style name="AppTheme.NoActionBar" parent="Theme.MaterialComponents.Light.NoActionBar">
+    <style name="AppTheme.NoActionBar" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
         <item name="colorOnPrimary">@color/colorOnPrimary</item>
@@ -37,7 +50,25 @@
         <item name="colorOnSurface">@color/colorOnSurface</item>
         <item name="colorError">@color/colorError</item>
         <item name="colorOnError">@color/colorOnError</item>
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/colorBackground</item>
+        <item name="android:windowBackground">@color/colorBackground</item>
+    </style>
+
+    <!-- Shape Appearances -->
+    <style name="ShapeAppearance.Limbo.Small" parent="ShapeAppearance.MaterialComponents.SmallComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">10dp</item>
+    </style>
+
+    <style name="ShapeAppearance.Limbo.Medium" parent="ShapeAppearance.MaterialComponents.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+
+    <style name="ShapeAppearance.Limbo.Large" parent="ShapeAppearance.MaterialComponents.LargeComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
     </style>
 
     <style name="Transparent" parent="@android:style/Theme.Dialog"></style>
@@ -45,28 +76,52 @@
     <style name="leftEllipsisSpinnerDropDownItem" parent="@android:style/Widget.DropDownItem.Spinner">
         <item name="android:ellipsize">start</item>
         <item name="android:singleLine">true</item>
+        <item name="android:textColor">@color/colorOnSurface</item>
+        <item name="android:padding">12dp</item>
     </style>
 
     <style name="leftEllipsisSimpleSpinnerItem" parent="@android:style/Widget.TextView.SpinnerItem">
         <item name="android:ellipsize">start</item>
         <item name="android:singleLine">true</item>
+        <item name="android:textColor">@color/colorOnSurface</item>
+        <item name="android:padding">8dp</item>
     </style>
 
-    <!-- Section Card style -->
-    <style name="Widget.Limbo.SectionCard" parent="Widget.MaterialComponents.CardView.Elevated">
-        <item name="cardCornerRadius">12dp</item>
-        <item name="cardElevation">2dp</item>
+    <!-- Section Card style - Glassmorphism -->
+    <style name="Widget.Limbo.SectionCard" parent="Widget.MaterialComponents.CardView">
+        <item name="cardCornerRadius">@dimen/card_corner_radius</item>
+        <item name="cardElevation">@dimen/card_elevation</item>
         <item name="cardBackgroundColor">@color/colorCardBackground</item>
+        <item name="strokeColor">@color/colorCardStroke</item>
+        <item name="strokeWidth">@dimen/card_stroke_width</item>
         <item name="contentPadding">0dp</item>
     </style>
 
-    <!-- Control Button style -->
+    <!-- Standard Button -->
+    <style name="Widget.Limbo.Button" parent="Widget.MaterialComponents.Button">
+        <item name="cornerRadius">14dp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0.02</item>
+    </style>
+
+    <!-- Control Button style - Large Pill Shape -->
     <style name="Widget.Limbo.ControlButton" parent="Widget.MaterialComponents.Button.Icon">
         <item name="iconPadding">0dp</item>
-        <item name="iconSize">32dp</item>
-        <item name="cornerRadius">16dp</item>
+        <item name="iconSize">@dimen/control_button_icon_size</item>
+        <item name="cornerRadius">@dimen/control_button_corner</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
+        <item name="android:insetLeft">0dp</item>
+        <item name="android:insetRight">0dp</item>
+        <item name="elevation">6dp</item>
+        <item name="rippleColor">@android:color/white</item>
+    </style>
+
+    <!-- Section Header Icon Background -->
+    <style name="Widget.Limbo.IconBg" parent="">
+        <item name="android:background">@drawable/icon_bg_circle</item>
+        <item name="android:padding">8dp</item>
     </style>
 
 </resources>

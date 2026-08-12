@@ -66,20 +66,6 @@ public class Help {
             }
         });
         checkUpdates.setChecked(LimboSettingsManager.getPromptUpdateVersion(activity));
-        mLayout.addView(checkUpdates);
-        alertDialog.setView(mLayout);
-        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, activity.getString(R.string.GoToWiki),
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        NetworkUtils.openURL(activity, Config.guidesLink);
-                    }
-                });
-        alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, activity.getString(android.R.string.ok),
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
 
-                    }
-                });
-        alertDialog.show();
     }
 }

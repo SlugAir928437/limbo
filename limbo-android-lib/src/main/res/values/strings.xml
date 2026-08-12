@@ -1,25 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-
-    <string name="DebianLinux">Debian Linux</string>
-    <string name="DebianLinuxDescr">An active open source Linux-based OS with desktop gui, audio, network</string>
-    <string name="DSLLinux">DSL Linux</string>
-    <string name="DSLLinuxDescr">An old open source light-weight OS with desktop gui, audio, network</string>
-    <string name="Trinux">Trinux</string>
-    <string name="TrinuxDescr">An old open source command line OS with command line, audio, network</string>
-    <string name="Freedos">FreeDOS</string>
-    <string name="FreedosDescr">An active DOS compatible open source OS with command line, audio, network</string>
-    <string name="KolibriOS">KolibriOS</string>
-    <string name="KolibriOSDescr">A ultra light weight open source OS with desktop gui, audio, network</string>
-    <string name="SlaxLinux">Slax Linux</string>
-    <string name="SlaxLinuxDescr">An active open source OS with desktop gui, audio, network</string>
-    <string name="SlitazLinux">Slitaz Linux</string>
-    <string name="SlitazLinuxDescr">An active open source OS with desktop gui, audio, network</string>
-
-    <string name="DebianArmLinux">Debian ARM Linux</string>
-    <string name="DebianArmLinuxDescr">A Linux-based light weight OS with Desktop Manager, network, and package manager</string>
-
     <string name="app_name">Limbo Emulator</string>
     <string name="app_short_name">Limbo</string>
     <string name="address_caption">Address</string>
@@ -399,6 +380,29 @@
     <string name="label_hard_disk_c">Hard Disk C: </string>
     <string name="label_hard_disk_d">Hard Disk D: </string>
     <string name="label_shared_folder">Shared Folder </string>
+    <string name="title_storage_devices">Storage Devices</string>
+    <string name="add_storage_device">+ Add Device</string>
+    <string name="remove_storage_device">Remove device</string>
+    <string name="type_hard_disk">Hard Disk</string>
+    <string name="type_hard_disk_a">Hard Disk A</string>
+    <string name="type_hard_disk_b">Hard Disk B</string>
+    <string name="type_hard_disk_c">Hard Disk C</string>
+    <string name="type_hard_disk_d">Hard Disk D</string>
+    <string name="type_cdrom">CDROM</string>
+    <string name="type_floppy_a">Floppy A</string>
+    <string name="type_floppy_b">Floppy B</string>
+    <string name="type_sd_card">SD Card</string>
+    <string name="type_shared_folder">Shared Folder</string>
+    <string name="size_unit_mb">MB</string>
+    <string name="size_unit_gb">GB</string>
+    <string name="size_unit_tb">TB</string>
+    <string name="size_1gb">1 GB</string>
+    <string name="size_2gb">2 GB</string>
+    <string name="size_4gb">4 GB</string>
+    <string name="size_10gb">10 GB</string>
+    <string name="size_20gb">20 GB</string>
+    <string name="device_already_exists">This device type already exists</string>
+    <string name="device_add_failed">Failed to add device</string>
     <string name="title_user_interface">User Interface</string>
     <string name="label_display">Display </string>
     <string name="title_keyboard">Keyboard</string>
@@ -447,4 +451,9 @@
     <string name="pref_title_updates">Updates</string>
     <string name="pref_title_audio">Audio</string>
     <string name="pref_title_screen_immersion">Screen Immersion</string>
+
+    <string name="button_start">Start</string>
+    <string name="button_pause">Pause</string>
+    <string name="button_stop">Stop</string>
+    <string name="button_restart">Restart</string>
 </resources>

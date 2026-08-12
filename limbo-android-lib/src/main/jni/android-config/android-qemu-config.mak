@@ -97,7 +97,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	$(ENV_EXTRA) \
 	-Wno-redundant-decls -Wno-unused-variable \
 	-Wno-unused-function \
-	-Wunused-but-set-variable -Wno-unknown-warning-option \
+	-Wno-unknown-warning-option \
 	$(ARCH_CFLAGS) \
 	" \
 	--with-coroutine=sigaltstack \

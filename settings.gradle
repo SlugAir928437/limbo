@@ -25,4 +25,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Limbo Emulator"
 include ':limbo-android-lib'
-include ':limbo-android-example'
+include ':limbo-android-x86'
+include ':limbo-android-arm'
+include ':limbo-android-ia64'

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -6,7 +6,7 @@
     style="@style/Widget.Limbo.SectionCard"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="@dimen/spacing_sm"
+    android:layout_marginBottom="@dimen/spacing_normal"
     tools:showIn="@layout/limbo_main">
 
     <LinearLayout
@@ -14,31 +14,36 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="@dimen/spacing_md">
+        android:paddingHorizontal="@dimen/card_inner_padding"
+        android:paddingVertical="@dimen/spacing_md">
 
         <ImageView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:layout_marginEnd="@dimen/spacing_sm"
-            android:src="@drawable/limbo" />
+            android:layout_width="@dimen/section_header_icon_size"
+            android:layout_height="@dimen/section_header_icon_size"
+            android:layout_marginEnd="@dimen/spacing_md"
+            android:src="@drawable/limbo"
+            android:contentDescription="@null" />
 
         <TextView
             android:id="@+id/machineStr"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
+            android:layout_marginEnd="@dimen/spacing_sm"
             android:text="@string/machineHeader"
-            android:textColor="?attr/colorOnSurface"
-            android:textSize="@dimen/row_text_size" />
+            android:textColor="@color/colorOnSurface"
+            android:textSize="@dimen/row_text_size"
+            android:textStyle="bold" />
 
         <Spinner
             android:id="@+id/machineval"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:layout_gravity="center_vertical"
             android:gravity="end"
-            android:singleLine="true" />
+            android:singleLine="true"
+            android:minWidth="120dp" />
 
     </LinearLayout>
 

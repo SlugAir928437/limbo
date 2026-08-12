@@ -5,7 +5,8 @@
     android:id="@+id/controls_layout"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="@dimen/spacing_lg"
+    android:layout_marginBottom="@dimen/spacing_xl"
+    android:layout_marginTop="@dimen/spacing_sm"
     android:gravity="center"
     android:orientation="horizontal"
     tools:showIn="@layout/limbo_main">
@@ -15,33 +16,36 @@
         style="@style/Widget.Limbo.ControlButton"
         android:layout_width="@dimen/control_button_size"
         android:layout_height="@dimen/control_button_size"
-        android:layout_marginEnd="@dimen/spacing_sm"
+        android:layout_marginEnd="@dimen/spacing_normal"
         android:contentDescription="@string/button_start"
         app:icon="@drawable/play"
-        app:iconTint="?attr/colorOnPrimary"
-        app:backgroundTint="#4CAF50" />
+        app:iconGravity="textStart"
+        app:iconTint="@color/colorOnPrimary"
+        app:backgroundTint="@color/colorStart" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/pausevm"
         style="@style/Widget.Limbo.ControlButton"
         android:layout_width="@dimen/control_button_size"
         android:layout_height="@dimen/control_button_size"
-        android:layout_marginEnd="@dimen/spacing_sm"
+        android:layout_marginEnd="@dimen/spacing_normal"
         android:contentDescription="@string/button_pause"
         app:icon="@drawable/pause"
-        app:iconTint="?attr/colorOnPrimary"
-        app:backgroundTint="#FF9800" />
+        app:iconGravity="textStart"
+        app:iconTint="@color/colorOnPrimary"
+        app:backgroundTint="@color/colorPause" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/stopvm"
         style="@style/Widget.Limbo.ControlButton"
         android:layout_width="@dimen/control_button_size"
         android:layout_height="@dimen/control_button_size"
-        android:layout_marginEnd="@dimen/spacing_sm"
+        android:layout_marginEnd="@dimen/spacing_normal"
         android:contentDescription="@string/button_stop"
         app:icon="@drawable/stop"
-        app:iconTint="?attr/colorOnPrimary"
-        app:backgroundTint="#F44336" />
+        app:iconGravity="textStart"
+        app:iconTint="@color/colorOnPrimary"
+        app:backgroundTint="@color/colorStop" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/restartvm"
@@ -50,7 +54,8 @@
         android:layout_height="@dimen/control_button_size"
         android:contentDescription="@string/button_restart"
         app:icon="@drawable/reset"
-        app:iconTint="?attr/colorOnPrimary"
-        app:backgroundTint="#2196F3" />
+        app:iconGravity="textStart"
+        app:iconTint="@color/colorOnPrimary"
+        app:backgroundTint="@color/colorRestart" />
 
 </LinearLayout>

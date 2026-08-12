@@ -2,5 +2,8 @@
     android:id="@+id/customSpinnerItem"
     style="@style/leftEllipsisSimpleSpinnerItem"
     android:textColor="@color/spinner_color"
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="6dp"
+    android:textSize="15sp"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content" />

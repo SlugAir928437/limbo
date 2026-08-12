@@ -2,7 +2,6 @@ package com.limbo.emu.main;
 
 import android.os.Bundle;
 
-import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.log.Logger;
 import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.main.LimboActivity;
@@ -16,10 +15,7 @@ public class LimboEmuActivity extends LimboActivity {
         Config.clientClass = this.getClass();
         Config.enableKVM = true;
         //XXX; only for 64bit hosts, also make sure you have qemu 3.1.0 x86_64-softmmu and above compiled
-        if(LimboApplication.isHost64Bit() && Config.enableMTTCG)
-            Config.enableMTTCG = true;
-        else
-            Config.enableMTTCG = false;
+        Config.enableMTTCG = LimboApplication.isHost64Bit() && Config.enableMTTCG;
         Config.osImages.put(getString(R.string.SlaxLinux), new LinksManager.LinkInfo(getString(R.string.SlaxLinux),
                 getString(R.string.SlaxLinuxDescr),
                 "https://github.com/limboemu/limbo/wiki/Slax",

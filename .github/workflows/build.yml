@@ -7,7 +7,7 @@ on:
       build_guest:
         description: '模拟架构'
         required: true
-        default: 'x86_64-softmmu,aarch64-softmmu'
+        default: 'x86_64-softmmu,aarch64-softmmu,ia64-softmmu'
         type: string
 
 jobs:
@@ -86,7 +86,7 @@ jobs:
           export NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/25.2.9519653
           export PATH=$PATH:$NDK_ROOT
           export BUILD_THREADS=$(nproc)
-          export BUILD_GUEST=${{ github.event.inputs.build_guest || 'x86_64-softmmu,aarch64-softmmu' }}
+          export BUILD_GUEST=${{ github.event.inputs.build_guest || 'x86_64-softmmu,aarch64-softmmu,ia64-softmmu' }}
           make limbo
       - name: 文件
         if: failure()
@@ -100,8 +100,3 @@ jobs:
         with:
           name: build_apk_output.zip
           path: limbo-android-example/build/outputs/apk/**/*.apk
-      - name: Upload a Build Artifact
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: build_aar_output.zip
-          path: limbo-android-lib/build/outputs/aar/*.aar

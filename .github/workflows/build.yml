@@ -99,4 +99,7 @@ jobs:
         uses: actions/upload-artifact@v7.0.1
         with:
           name: build_apk_output.zip
-          path: **/*.apk
+          path: |
+            limbo-android-ia64/build/outputs/apk/**/*.apk
+            limbo-android-arm/build/outputs/apk/**/*.apk
+            limbo-android-x86/build/outputs/apk/**/*.apk

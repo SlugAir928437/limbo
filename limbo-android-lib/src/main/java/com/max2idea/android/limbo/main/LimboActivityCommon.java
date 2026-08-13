@@ -23,17 +23,17 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Spanned;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.dialog.DialogUtils;
 import com.max2idea.android.limbo.files.FileUtils;
-import com.max2idea.android.limbo.help.Help;
 import com.max2idea.android.limbo.install.Installer;
 import com.max2idea.android.limbo.machine.Machine;
 import com.max2idea.android.limbo.machine.MachineAction;
@@ -42,6 +42,8 @@ import com.max2idea.android.limbo.toast.ToastUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
+
+import io.noties.markwon.Markwon;
 
 public class LimboActivityCommon {
     private static final String TAG = "LimboActivityCommon";
@@ -81,7 +83,6 @@ public class LimboActivityCommon {
                                 t.start();
                             }
                         }).show();
-
             }
         });
     }
@@ -129,7 +130,6 @@ public class LimboActivityCommon {
                     public void onClick(DialogInterface dialog, int which) {
                     }
                 }).show();
-
             }
         });
     }
@@ -146,7 +146,6 @@ public class LimboActivityCommon {
                                 viewListener.onAction(MachineAction.STOP_VM, null);
                             }
                         }).show();
-
             }
         });
     }
@@ -186,18 +185,15 @@ public class LimboActivityCommon {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-
                 DialogUtils.UIAlert(activity, activity.getString(R.string.importMachines),
                         activity.getString(R.string.machinesImported)
                                 + ": " + machines.size() + "\n" + activity.getString(R.string.reassignDiskFilesInstructions),
                         16, false,
                         activity.getString(android.R.string.ok), new DialogInterface.OnClickListener() {
-
                             @Override
                             public void onClick(DialogInterface dialogInterface, int i) {
                             }
                         }, null, null, null, null);
-
             }
         });
     }
@@ -224,7 +220,6 @@ public class LimboActivityCommon {
                             public void onClick(DialogInterface dialog, int which) {
                                 if (LimboSettingsManager.isFirstLaunch(activity)) {
                                     Installer.installFiles(activity, true);
-                                    Help.showHelp(activity);
                                     showChangelog(activity);
                                 }
                                 LimboSettingsManager.setFirstLaunch(activity);
@@ -251,10 +246,8 @@ public class LimboActivityCommon {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-
                 DialogUtils.UIAlert(activity, activity.getString(R.string.tapUserId) + ": " + userid,
                         activity.getString(R.string.tapNotSupportInstructions));
-
             }
         });
     }
@@ -319,23 +312,17 @@ public class LimboActivityCommon {
     }
 
 
-    public static void showChangelog(Activity activity) {
+    public static void showChangelog(Context context) {
         try {
-            AlertDialog alertDialog;
-            alertDialog = new AlertDialog.Builder(activity).create();
-            alertDialog.setTitle(activity.getString(R.string.CHANGELOG));
-            alertDialog.setCanceledOnTouchOutside(false);
-            TextView textView = new TextView(activity);
-            textView.setPadding(20, 20, 20, 20);
-            textView.setText(FileUtils.LoadFile(activity, "CHANGELOG", false));
-            textView.setBackgroundColor(Color.WHITE);
-            textView.setTextColor(Color.BLACK);
-            ScrollView view = new ScrollView(activity);
-            view.addView(textView);
-            alertDialog.setView(view);
-            alertDialog.setButton(AlertDialog.BUTTON_POSITIVE, activity.getString(android.R.string.ok),
-                    (DialogInterface.OnClickListener) null);
-            alertDialog.show();
+            Spanned markwon = Markwon.create(context)
+                    .toMarkdown(FileUtils.LoadFile(context, "Changelog.md", false));
+            TextView textView = new TextView(context);
+            textView.setText(markwon);
+            new MaterialAlertDialogBuilder(context)
+                    .setTitle(R.string.this_version)
+                    .setView(textView)
+                    .setPositiveButton(R.string.Ok, null)
+                    .show();
         } catch (IOException e) {
             e.printStackTrace();
         }

@@ -36,6 +36,7 @@ public class Machine extends Observable {
     private int enableVNC;
     private String arch;
     private String machineType;
+    private String nvram;
     private String cpu = "Default";
     private int cpuNum = 1;
     private int memory = 128;
@@ -133,6 +134,19 @@ public class Machine extends Observable {
             this.machineType = machineType;
             setChanged();
             notifyChanged(MachineProperty.MACHINETYPE, machineType);
+        }
+    }
+
+    // NVRAM is an IA-64 only option (passed as -machine <type>,nvram=<path>)
+    public String getNvram() {
+        return nvram;
+    }
+
+    void setNvram(String nvram) {
+        if (this.nvram == null || !this.nvram.equals(nvram)) {
+            this.nvram = nvram;
+            setChanged();
+            notifyChanged(MachineProperty.NVRAM, nvram);
         }
     }
 
@@ -697,7 +711,7 @@ public class Machine extends Observable {
     public enum FileType {
         CDROM, FDA, FDB, SD,
         HDA, HDB, HDC, HDD, SHARED_DIR,
-        KERNEL, INITRD,
+        KERNEL, INITRD, NVRAM,
         EXPORT_DIR, IMAGE_DIR, LOG_DIR, IMPORT_FILE, IMPORT_BIOS_FILE
     }
 

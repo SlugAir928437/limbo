@@ -36,6 +36,7 @@ jobs:
           sudo apt-get install make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync \
             gtk-doc-tools python3-pip ninja-build meson
+
       - name: 克隆代码
         run: |
           #Make sure you're under the jni directory
@@ -71,15 +72,6 @@ jobs:
           cd SDL2
           patch -p1 < ../patches/sdl2-2.0.8.patch
 
-      - name: 上传补丁冲突文件（patch失败专用）
-        if: failure()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: patch_conflict_rej_orig
-          path: |
-            ./limbo-android-lib/src/main/jni/**/*.rej
-            ./limbo-android-lib/src/main/jni/**/*.orig
-
       - name: Build QEMU
         run: |
           cd limbo-android-lib/src/main/jni
@@ -88,9 +80,7 @@ jobs:
           export BUILD_THREADS=$(nproc)
           export BUILD_GUEST=${{ github.event.inputs.build_guest || 'x86_64-softmmu,aarch64-softmmu,ia64-softmmu' }}
           make limbo
-      - name: 文件
-        if: failure()
-        run: cat /home/runner/work/limbo/limbo/limbo-android-lib/src/main/jni/qemu/build/meson-logs/meson-log.txt
+
       - name: Build with Gradle
         run: |
           chmod +x ./gradlew

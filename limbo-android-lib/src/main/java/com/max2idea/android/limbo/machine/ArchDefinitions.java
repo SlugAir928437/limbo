@@ -68,7 +68,8 @@ public class ArchDefinitions {
     public static ArrayList<String> getVGAValues(Context context) {
         ArrayList<String> vgaValues = new ArrayList<>();
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
-                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64
+                || LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
             vgaValues.add("std");
         }
 

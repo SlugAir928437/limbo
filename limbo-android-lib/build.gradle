@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -17,12 +18,15 @@ android {
         targetSdk 36
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles "consumer-rules.pro"
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
     }
     buildTypes {
         release {
@@ -38,9 +42,6 @@ android {
 dependencies {
     implementation libs.androidx.documentfile
 
-    // 本地 jar 包
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-
     // 核心兼容库（版本统一）
     implementation libs.androidx.appcompat
     implementation libs.material
@@ -51,9 +52,24 @@ dependencies {
     // 现代 Lifecycle（替代废弃的 extensions）
     implementation libs.androidx.lifecycle.viewmodel
     implementation libs.androidx.lifecycle.livedata
+    implementation libs.androidx.lifecycle.runtime.compose
+
+    // Compose (Jetpack Compose + Material Design 3)
+    implementation platform(libs.compose.bom)
+    implementation libs.compose.ui
+    implementation libs.compose.ui.graphics
+    implementation libs.compose.ui.tooling.preview
+    implementation libs.compose.material3
+    implementation libs.androidx.activity.compose
+    debugImplementation libs.compose.ui.tooling
 
     // 注解
     implementation libs.annotations
+
+    implementation libs.devicecompat
+    implementation libs.xxpermissions
+
+    implementation libs.markwon.core
 }
 tasks.configureEach { task ->
     if (task.name.startsWith('compile') && task.name.endsWith('Ndk')) {

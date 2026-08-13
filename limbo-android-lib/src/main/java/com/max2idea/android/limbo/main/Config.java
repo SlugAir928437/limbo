@@ -18,9 +18,7 @@ Copyright (C) Max Kastanas 2012
  */
 package com.max2idea.android.limbo.main;
 
-import com.max2idea.android.limbo.links.LinksManager;
-
-import java.util.LinkedHashMap;
+import com.limbo.emu.lib.BuildConfig;
 
 /**
  * Configuration
@@ -77,18 +75,16 @@ public class Config {
     public static final String defaultDNSServer = "8.8.8.8";
     // App Config
     public static final String downloadLink = "https://github.com/limboemu/limbo/wiki/Downloads";
-    public static final String guidesLink = "https://github.com/limboemu/limbo/wiki/Guides";
     public static final String kvmLink = "https://github.com/limboemu/limbo/wiki/KVM";
     public static final String faqLink = "https://github.com/limboemu/limbo/wiki/FAQ";
     public static final String toolsLink = "https://github.com/limboemu/limbo/wiki/Tools";
     public static final String newVersionLink = "https://raw.githubusercontent.com/limboemu/limbo/master/VERSION";
-    public static final String otherOSLink = "https://github.com/limboemu/limbo/wiki/Other-Operating-Systems";
 
     public static final boolean enableKeyboardLayoutOption = true;
     public static final boolean enableMouseOption = true;
 
     // Debug
-    public static final boolean debug = false;
+    public static final boolean debug = BuildConfig.DEBUG;
     public static final boolean debugQmp = false;
     public static final boolean debugStrictMode = false;
 
@@ -170,7 +166,6 @@ public class Config {
     //override this at the app level it dependes on the host arch
     public static boolean enableMTTCG = true;
 
-    public static LinkedHashMap<String, LinksManager.LinkInfo> osImages = new LinkedHashMap<>();
     public static boolean processMouseHistoricalEvents = false;
 
     //Change to true in prod if you want to be notified by default for new versions

@@ -93,7 +93,6 @@
     <string name="username_caption">Username</string>
     <string name="username_hint">For Windows Authentication</string>
     <string name="right_click">Mouse Right Click</string>
-    <string name="help">Help</string>
     <string name="drives">Drives</string>
     <string name="volume">Volume</string>
     <string name="Default" translatable="false">default</string>
@@ -421,6 +420,11 @@
     <string name="label_video_display">Video Display: </string>
     <string name="title_board">Board</string>
     <string name="label_machine_type">Machine Type:</string>
+    <string name="label_nvram">NVRAM File:</string>
+    <string name="hint_nvram">auto or path</string>
+    <string name="help_title">Help</string>
+    <string name="help">Help</string>
+    <string name="help_text">For documentation and support please visit the Limbo emulator project page at https://github.com/limboemu/limbo</string>
     <string name="label_cpu_model">CPU Model: </string>
     <string name="label_cpu_cores">CPU Cores: </string>
     <string name="label_ram_memory_mb">RAM Memory (MB) </string>
@@ -456,4 +460,6 @@
     <string name="button_pause">Pause</string>
     <string name="button_stop">Stop</string>
     <string name="button_restart">Restart</string>
+
+    <string name="this_version">Current Version Changelog</string>
 </resources>

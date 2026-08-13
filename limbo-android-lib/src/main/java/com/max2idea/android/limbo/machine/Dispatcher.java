@@ -210,6 +210,9 @@ public class Dispatcher implements ViewListener {
             case MACHINETYPE:
                 getMachine().setMachineType(convertString(property, value));
                 break;
+            case NVRAM:
+                getMachine().setNvram(convertString(property, value));
+                break;
             case PAUSED:
                 getMachine().setPaused(convertInt(property, value));
                 break;

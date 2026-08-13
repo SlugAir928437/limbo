@@ -24,7 +24,6 @@ import android.util.Log;
 
 import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.main.LimboApplication;
-import com.max2idea.android.limbo.toast.ToastUtils;
 
 import org.json.JSONObject;
 

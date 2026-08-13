@@ -312,8 +312,16 @@ private String getQemuLibrary() {
             paramsList.add(getMachine().getCpuNum() + "");
         }
         if (getMachineType() != null && !getMachineType().equals("Default")) {
+            String machineParams = getMachineType();
+            // NVRAM is an IA-64 only option: -machine <type>,nvram=<path>
+            if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+                String nvram = getMachine().getNvram();
+                if (nvram != null && !nvram.trim().isEmpty()) {
+                    machineParams += ",nvram=" + FileUtils.encodeDocumentFilePath(nvram.trim());
+                }
+            }
             paramsList.add("-M");
-            paramsList.add(getMachineType());
+            paramsList.add(machineParams);
         }
 
         //FIXME: something is wrong with quoting that doesn't let sparc qemu find the cpu def

@@ -25,7 +25,6 @@ import android.view.inputmethod.InputMethodManager;
 
 import com.max2idea.android.limbo.machine.MachineController;
 import com.max2idea.android.limbo.main.Config;
-import com.max2idea.android.limbo.main.LimboActivity;
 
 public class KeyboardUtils {
     private static final String TAG = "KeyboardUtils";

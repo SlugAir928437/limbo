@@ -28,11 +28,9 @@ import com.max2idea.android.limbo.files.FileInstaller;
 import com.max2idea.android.limbo.toast.ToastUtils;
 
 import java.io.InputStream;
-import java.util.ArrayList;
 
 public class Installer extends AsyncTask<Void, Void, Void> {
     private static final String TAG = "Installer";
-
     private boolean force;
     private Activity activity;
     private ProgressDialog progDialog;

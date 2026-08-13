@@ -41,11 +41,11 @@ import java.util.Enumeration;
 public class NetworkUtils {
     private static final String TAG = "NetworkUtils";
 
-    public static void openURL(Activity activity, String url) {
+    public static void openURL(Context context, String url) {
         try {
             Intent fileIntent = new Intent(Intent.ACTION_VIEW);
             fileIntent.setData(Uri.parse(url));
-            activity.startActivity(fileIntent);
+            context.startActivity(fileIntent);
         } catch (Exception ex) {
             ex.printStackTrace();
         }

@@ -18,6 +18,7 @@ Copyright (C) Max Kastanas 2012
  */
 package com.max2idea.android.limbo.files;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -27,13 +28,13 @@ import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.webkit.MimeTypeMap;
 
+import androidx.annotation.NonNull;
 import androidx.documentfile.provider.DocumentFile;
 
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.dialog.DialogUtils;
 import com.max2idea.android.limbo.machine.Machine.FileType;
 import com.max2idea.android.limbo.main.Config;
-import com.max2idea.android.limbo.main.LimboActivity;
 import com.max2idea.android.limbo.main.LimboApplication;
 import com.max2idea.android.limbo.main.LimboSettingsManager;
 import com.max2idea.android.limbo.toast.ToastUtils;
@@ -49,7 +50,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 
 /**
@@ -58,7 +62,7 @@ import java.util.HashMap;
 public class FileUtils {
     private final static String TAG = "FileUtils";
     private static final Object fdsLock = new Object();
-    private static HashMap<Integer, FileInfo> fds = new HashMap<Integer, FileInfo>();
+    private static HashMap<Integer, FileInfo> fds = new HashMap<>();
 
     public static String getNativeLibDir(Context context) {
         return context.getApplicationInfo().nativeLibraryDir;
@@ -533,6 +537,7 @@ public class FileUtils {
     }
 
 
+    @SuppressLint("WrongConstant")
     public static String getFileUriFromIntent(Activity activity, Intent data, boolean write) {
         if (data == null)
             return null;
@@ -710,5 +715,50 @@ public class FileUtils {
             return filePath;
         }
         return null;
+    }
+
+
+    public static String downloadAndRead(String urlString, Context context) throws Exception {
+        URL url = new URL(urlString);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(15000);
+        connection.setReadTimeout(15000);
+
+        try {
+            int responseCode = connection.getResponseCode();
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                throw new Exception("下载失败: " + responseCode);
+            }
+
+            // 保存到缓存目录
+            File file = new File(context.getCacheDir(), "downloaded_temp.txt");
+
+            try (InputStream inputStream = connection.getInputStream();
+                 FileOutputStream outputStream = new FileOutputStream(file)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+            }
+
+            return readFileContent(file);
+
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    @NonNull private static String readFileContent(File file) throws Exception {
+        StringBuilder content = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new java.io.FileInputStream(file), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+        }
+        return content.toString();
     }
 }

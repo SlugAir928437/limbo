@@ -1,38 +1,26 @@
-/*
-Copyright (C) Max Kastanas 2012
-
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- */
 package com.max2idea.android.limbo.updates;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Spanned;
 import android.util.Log;
 import android.widget.TextView;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.lib.R;
+import com.max2idea.android.limbo.files.FileUtils;
 import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.main.LimboApplication;
 import com.max2idea.android.limbo.main.LimboSettingsManager;
 import com.max2idea.android.limbo.network.NetworkUtils;
+
+import java.io.IOException;
+
+import io.noties.markwon.Markwon;
 
 /** Software Update notifier for checking if a new version is published.
   */
@@ -75,33 +63,23 @@ public class UpdateChecker {
         if (versionSegments.length > 1) {
             mic = Integer.parseInt(versionSegments[1]);
         }
-        String versionName = maj + "." + min + "." + mic;
-        return versionName;
+        return maj + "." + min + "." + mic;
     }
 
-    public static void promptNewVersion(final Activity activity, String version) {
-
-        final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
-        alertDialog.setTitle(activity.getString(R.string.NewVersion) + " " + version);
-        TextView stateView = new TextView(activity);
-        stateView.setText(R.string.NewVersionWarning);
-        stateView.setPadding(20, 20, 20, 20);
-        alertDialog.setView(stateView);
-        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, activity.getString(R.string.GenNewVersion),
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        NetworkUtils.openURL(activity, Config.downloadLink);
-                    }
-                });
-        alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, activity.getString(R.string.DoNotShowAgain),
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        LimboSettingsManager.setPromptUpdateVersion(activity, false);
-
-                    }
-                });
-        alertDialog.show();
-
+    public static void promptNewVersion(Context context, String ChangelogLink) {
+        try {
+            Spanned markwon = Markwon.create(context)
+                    .toMarkdown(FileUtils.downloadAndRead(ChangelogLink, context));
+            TextView textView = new TextView(context);
+            textView.setText(markwon);
+            new MaterialAlertDialogBuilder(context)
+                    .setTitle(R.string.NewVersion)
+                    .setView(textView)
+                    .setPositiveButton(R.string.GenNewVersion, (dialog, which) -> NetworkUtils.openURL(context, Config.downloadLink))
+                    .setNegativeButton(R.string.DoNotShowAgain, (dialog, which) -> LimboSettingsManager.setPromptUpdateVersion(context, false))
+                    .show();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

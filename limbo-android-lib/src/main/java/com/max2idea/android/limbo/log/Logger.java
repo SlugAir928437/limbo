@@ -29,12 +29,10 @@ import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.ForegroundColorSpan;
 import android.util.Log;
-import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.limbo.emu.lib.R;
-import com.max2idea.android.limbo.dialog.DialogUtils;
 import com.max2idea.android.limbo.main.LimboApplication;
 import com.max2idea.android.limbo.main.LimboFileManager;
 import com.max2idea.android.limbo.files.FileUtils;
@@ -43,7 +41,6 @@ import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.toast.ToastUtils;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.Scanner;
 
 /** Custom logger for android so users can view the log if something went wrong
@@ -55,7 +52,7 @@ public class Logger {
     public static Spannable formatAndroidLog(String contents) {
         Scanner scanner = null;
         Spannable formattedString = new SpannableString(contents);
-        if (contents.length() == 0)
+        if (contents.isEmpty())
             return formattedString;
 
         try {
@@ -111,15 +108,11 @@ public class Logger {
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, activity.getString(R.string.Yes),
                 new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int which) {
-
                         viewLimboLog(activity);
                     }
                 });
         alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, activity.getString(R.string.Cancel),
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                    }
-                });
+                (dialog, which) -> {});
         alertDialog.show();
     }
 

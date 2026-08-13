@@ -40,7 +40,6 @@ import androidx.core.app.NotificationCompat;
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.files.FileUtils;
 import com.max2idea.android.limbo.main.Config;
-import com.max2idea.android.limbo.main.LimboActivity;
 import com.max2idea.android.limbo.main.LimboSettingsManager;
 import com.max2idea.android.limbo.network.NetworkUtils;
 import com.max2idea.android.limbo.toast.ToastUtils;
@@ -174,7 +173,7 @@ public class MachineService extends Service {
         }
         Intent intent = new Intent(service.getApplicationContext(), Config.clientClass);
         PendingIntent pi = PendingIntent.getActivity(service.getApplicationContext(), 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel chan = new NotificationChannel(Config.notificationChannelID, Config.notificationChannelName, NotificationManager.IMPORTANCE_NONE);
             NotificationManager notifService = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);

@@ -95,7 +95,6 @@
     <string name="username_caption">用户名</string>
     <string name="username_hint">用于 Windows 身份验证</string>
     <string name="right_click">鼠标右键</string>
-    <string name="help">帮助</string>
     <string name="drives">驱动器</string>
     <string name="volume">音量</string>
     <string name="hide_toolbar">隐藏工具栏</string>
@@ -421,6 +420,11 @@
     <string name="label_video_display">视频显示：</string>
     <string name="title_board">主板</string>
     <string name="label_machine_type">机型：</string>
+    <string name="label_nvram">NVRAM 文件：</string>
+    <string name="hint_nvram">auto 或路径</string>
+    <string name="help_title">帮助</string>
+    <string name="help">帮助</string>
+    <string name="help_text">文档与支持请访问 Limbo 模拟器项目主页 https://github.com/limboemu/limbo</string>
     <string name="label_cpu_model">CPU 型号：</string>
     <string name="label_cpu_cores">CPU 核心数：</string>
     <string name="label_ram_memory_mb">内存大小 (MB)：</string>
@@ -452,4 +456,10 @@
     <string name="pref_title_audio">音频</string>
     <string name="pref_title_screen_immersion">屏幕沉浸</string>
 
+    <string name="button_start">开始</string>
+    <string name="button_pause">暂停</string>
+    <string name="button_stop">停止</string>
+    <string name="button_restart">重启</string>
+
+    <string name="this_version">当前版本更新日志</string>
 </resources>

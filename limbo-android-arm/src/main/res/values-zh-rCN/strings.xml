@@ -1,5 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="DebianArmLinux">Debian ARM Linux</string>
-    <string name="DebianArmLinuxDescr">一个轻量级 Linux 操作系统，带桌面管理器、网络和包管理器</string>
-</resources>
+<resources></resources>

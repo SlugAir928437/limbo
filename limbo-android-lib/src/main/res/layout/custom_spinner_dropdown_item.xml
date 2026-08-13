@@ -3,6 +3,6 @@
     style="@style/leftEllipsisSpinnerDropDownItem"
     android:layout_width="match_parent"
     android:layout_height="?android:attr/listPreferredItemHeight"
-    android:textColor="@color/colorOnSurface"
-    android:background="@color/colorCardBackground"
+
+
     android:paddingHorizontal="16dp" />

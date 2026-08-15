@@ -25,6 +25,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.graphics.BitmapFactory;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
@@ -186,7 +187,16 @@ public class MachineService extends Service {
                 .setLargeIcon(BitmapFactory.decodeResource(service.getResources(), R.drawable.limbo)).build();
         mNotification.tickerText = text;
         mNotification.flags |= Notification.FLAG_ONGOING_EVENT;
-        service.startForeground(notifID, mNotification);
+        // API 34+ (Android 14) requires a foreground service type to be specified,
+        // otherwise MissingForegroundServiceTypeException is thrown at runtime.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            service.startForeground(notifID, mNotification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            service.startForeground(notifID, mNotification, 0);
+        } else {
+            service.startForeground(notifID, mNotification);
+        }
     }
 
     public void updateServiceNotification(String text) {

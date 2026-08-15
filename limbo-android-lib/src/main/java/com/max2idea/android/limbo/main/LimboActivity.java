@@ -2213,6 +2213,7 @@ public class LimboActivity extends AppCompatActivity implements
     private void checkAllowedPermission() {
         XXPermissions.with(this)
                 .permission(PermissionLists.getManageExternalStoragePermission())
+                .permission(PermissionLists.getPostNotificationsPermission())
                 .request((permissions, deniedList) -> {
                     boolean allGranted = deniedList.isEmpty();
                     if (!allGranted) {

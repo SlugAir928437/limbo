@@ -21,6 +21,7 @@ package com.max2idea.android.limbo.jni;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -733,7 +734,14 @@ private String getQemuLibrary() {
         Bundle b = new Bundle();
         i.putExtras(b);
         Log.d(TAG, "Starting VM service");
-        LimboApplication.getInstance().startService(i);
+        // API 26+ requires startForegroundService() for services that call
+        // startForeground() (MachineService does). Using startService() there is
+        // subject to background service start restrictions.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            LimboApplication.getInstance().startForegroundService(i);
+        } else {
+            LimboApplication.getInstance().startService(i);
+        }
     }
 
     /**

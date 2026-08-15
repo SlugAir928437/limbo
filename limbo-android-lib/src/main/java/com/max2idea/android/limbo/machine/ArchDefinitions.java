@@ -117,6 +117,7 @@ public class ArchDefinitions {
         arrList.add("VNC");
         if (Config.enable_SDL)
             arrList.add("SDL");
+        arrList.add("GTK");
         return arrList;
     }
 

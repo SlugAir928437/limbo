@@ -72,7 +72,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--disable-vhost-net \
 	--disable-vhost-user --disable-vhost-vdpa --disable-vhost-kernel \
 	--disable-libvduse \
-	--disable-curses --disable-cocoa --disable-gtk \
+	--disable-curses --disable-cocoa --enable-gtk \
 	--disable-usb-redir \
 	--disable-libusb \
 	--enable-sdl \

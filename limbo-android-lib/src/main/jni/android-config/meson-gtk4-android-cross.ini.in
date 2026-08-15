@@ -1,0 +1,65 @@
+# GTK4 (gtk4android) cross-compilation template for Android
+# Generated from this template by the Makefile (android-limbo-build.mak)
+# Modeled on gtk-android-builder (pixiewood) android.cross + glib cross template
+
+[binaries]
+c = '@TOOLCHAIN_CLANG_PREFIX@/@HOST_PREFIX@@GTK_ANDROID_API@-clang'
+cpp = '@TOOLCHAIN_CLANG_PREFIX@/@HOST_PREFIX@@GTK_ANDROID_API@-clang++'
+ar = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ar'
+as = '@TOOLCHAIN_CLANG_PREFIX@/llvm-as'
+ranlib = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ranlib'
+ld = '@TOOLCHAIN_CLANG_PREFIX@/ld'
+strip = '@TOOLCHAIN_CLANG_PREFIX@/llvm-strip'
+
+[built-in options]
+prefix = '@GTK_INSTALL_DIR@'
+libdir = 'lib'
+bindir = 'bin'
+buildtype = '@GTK_BUILDTYPE@'
+default_library = 'shared'
+c_link_args = ['-Wl,--build-id=sha1']
+cpp_link_args = ['-Wl,--build-id=sha1']
+
+# NOTE: no sys_root here on purpose.  Setting it would make pkg-config prefix
+# every -I/-L with the sysroot, which breaks the absolute paths of the jni
+# shared libs (glib/pixman/libffi) that the GTK build consumes.
+[host_machine]
+system = 'android'
+cpu_family = '@MESON_CPU_FAMILY@'
+cpu = '@MESON_CPU@'
+endian = 'little'
+
+# ---- per-subproject options (from pixiewood android.cross) ----
+[glib:built-in options]
+default_library = 'shared'
+
+[glib:project options]
+tests = false
+sysprof = 'disabled'
+
+[cairo:project options]
+tests = 'disabled'
+
+[fribidi:project options]
+bin = false
+tests = false
+
+[harfbuzz:project options]
+tests = 'disabled'
+introspection = 'disabled'
+docs = 'disabled'
+utilities = 'disabled'
+
+[gdk-pixbuf:project options]
+builtin_loaders = ['all']
+glycin = 'disabled'
+documentation = false
+
+[gtk:project options]
+android-backend = true
+introspection = 'disabled'
+media-gstreamer = 'disabled'
+build-demos = false
+build-testsuite = false
+build-examples = false
+build-tests = false

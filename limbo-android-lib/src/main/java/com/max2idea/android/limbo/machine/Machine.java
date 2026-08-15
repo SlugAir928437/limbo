@@ -34,6 +34,7 @@ public class Machine extends Observable {
     private String keyboard = Config.defaultKeyboardLayout;
     private String mouse = "ps2";
     private int enableVNC;
+    private String ui;
     private String arch;
     private String machineType;
     private String nvram;
@@ -108,6 +109,28 @@ public class Machine extends Observable {
     void setEnableVNC(int enableVNC) {
         if (this.enableVNC != enableVNC) {
             this.enableVNC = enableVNC;
+            setChanged();
+            notifyChanged(MachineProperty.UI, enableVNC);
+        }
+    }
+
+    /**
+     * Display backend for this machine: "SDL", "VNC" or "GTK".
+     */
+    public String getUI() {
+        if (ui != null)
+            return ui;
+        return enableVNC == 1 ? "VNC" : "SDL";
+    }
+
+    void setUI(String ui) {
+        if (this.ui == null || !this.ui.equals(ui)) {
+            this.ui = ui;
+            int vnc = "VNC".equals(ui) ? 1 : 0;
+            if (this.enableVNC != vnc) {
+                this.enableVNC = vnc;
+            }
+            // always notify so the UI selection (including GTK) is persisted
             setChanged();
             notifyChanged(MachineProperty.UI, enableVNC);
         }

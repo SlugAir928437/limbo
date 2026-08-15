@@ -191,7 +191,9 @@ private String getQemuLibrary() {
     }
 
     private void addUIOptions(Context context, ArrayList<String> paramsList) {
-        if (MachineController.getInstance().isVNCEnabled()) {
+        String ui = getMachine().getUI();
+        boolean gtk = "GTK".equals(ui);
+        if (MachineController.getInstance().isVNCEnabled() && !gtk) {
             paramsList.add("-vnc");
             String vncParam = "";
             if (LimboSettingsManager.getVNCEnablePassword(context)) {
@@ -223,6 +225,15 @@ private String getQemuLibrary() {
 
             paramsList.add("-parallel");
             paramsList.add("none");
+
+            if (gtk) {
+                // GTK4 android backend (initialized by LimboGtk on the activity side)
+                paramsList.add("-display");
+                paramsList.add("gtk");
+            } else {
+                paramsList.add("-display");
+                paramsList.add("sdl");
+            }
         }
 
         if (getMachine().getKeyboard() != null) {

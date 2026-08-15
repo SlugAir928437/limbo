@@ -30,17 +30,16 @@ c_link_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-L@NDK_PROJ
 cpp_link_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-L@NDK_PROJECT_PATH@/obj/local/@APP_ABI@', '-lcompat-musl', '-llog', '-lunwind']
 
 [project options]
-internal_pcre = true
-iconv = 'libc'
 force_posix_threads = true
 libmount = 'disabled'
 selinux = 'disabled'
 xattr = false
 dtrace = false
 systemtap = false
-man = false
+man-pages = 'disabled'
 gtk_doc = false
 installed_tests = false
+tests = false
 nls = 'disabled'
 bsymbolic_functions = false
 glib_assert = false

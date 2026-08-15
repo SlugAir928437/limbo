@@ -77,8 +77,7 @@ public class MachineImporter {
                                 break;
                             case "UI":
                                 String ui = machineAttr[i].replace("\"", "");
-                                if (ui.equals("VNC"))
-                                    mach.setEnableVNC(1);
+                                mach.setUI(ui);
                                 break;
                             case "PAUSED":
                                 mach.setPaused(Integer.parseInt(machineAttr[i].replace("\"", "")));

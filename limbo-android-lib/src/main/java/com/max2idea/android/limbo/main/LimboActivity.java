@@ -1234,7 +1234,7 @@ public class LimboActivity extends AppCompatActivity implements
                 idx -> uiState.setVgaSel(idx));
         setSpinnerSel(uiState.getSoundOptions(), getMachine() != null ? getMachine().getSoundCard() : null,
                 idx -> uiState.setSoundSel(idx));
-        setSpinnerSel(uiState.getUiOptions(), getMachine() != null && getMachine().getEnableVNC() == 1 ? "VNC" : "SDL",
+        setSpinnerSel(uiState.getUiOptions(), getMachine() != null ? getMachine().getUI() : "SDL",
                 idx -> uiState.setUiSel(idx));
         setSpinnerSel(uiState.getMouseOptions(), fixMouseValue(getMachine() != null ? getMachine().getMouse() : null),
                 idx -> uiState.setMouseSel(idx));
@@ -1456,11 +1456,23 @@ public class LimboActivity extends AppCompatActivity implements
         //XXX: make sure that bios files are installed in case we ran out of space in the last run
         FileInstaller.installFiles(this, false);
 
-        if (getMachine().getEnableVNC() == 1) {
+        String ui = getMachine().getUI();
+        if ("GTK".equals(ui)) {
+            startGtk();
+        } else if (getMachine().getEnableVNC() == 1) {
             startVNC();
         } else {
             startSDL();
         }
+    }
+
+    /**
+     * Starts the GTK Activity which initializes the GTK4 android backend and
+     * starts the native process via the controller.
+     */
+    public void startGtk() {
+        Intent intent = new Intent(this, LimboGtkActivity.class);
+        startActivityForResult(intent, Config.SDL_REQUEST_CODE);
     }
 
     private void createMachineDir(String dir) {

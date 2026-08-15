@@ -291,7 +291,7 @@ public class MachineController {
         return getMachineExecutor().getMachine().getEnableVNC() == 1;
     }
 
-    String start() {
+    public String start() {
         //TODO: figure out when the vm starts successfully and notify
         // to unset the paused flag. For now we just wait a reasonable amount
         // of time

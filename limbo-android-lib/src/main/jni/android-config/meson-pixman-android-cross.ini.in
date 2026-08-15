@@ -1,0 +1,31 @@
+[binaries]
+c = '@CC@'
+cpp = '@CXX@'
+ar = '@AR@'
+strip = '@STRIP@'
+pkgconfig = '@PKG_CONFIG@'
+
+[host_machine]
+system = 'android'
+cpu_family = '@MESON_CPU_FAMILY@'
+cpu = '@MESON_CPU@'
+endian = 'little'
+
+[properties]
+needs_exe_wrapper = true
+
+[built-in options]
+prefix = '@PIXMAN_INSTALL_DIR@'
+libdir = 'lib'
+buildtype = 'release'
+default_library = 'shared'
+c_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-I@LIMBO_JNI_ROOT@/compat', '-I@LIMBO_JNI_ROOT@/compat/musl', '-I@LIMBO_JNI_ROOT@/compat/musl/include']
+c_link_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-L@NDK_PROJECT_PATH@/obj/local/@APP_ABI@', '-lcompat-musl', '-llog']
+
+[project options]
+tests = 'disabled'
+demos = 'disabled'
+gtk = 'disabled'
+libpng = 'disabled'
+timers = false
+gnuplot = false

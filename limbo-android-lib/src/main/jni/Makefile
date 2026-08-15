@@ -8,7 +8,7 @@ else
 	NDK_BUILD = ndk-build
 endif
 
-ndkbuild=cd $(NDK_PROJECT_PATH) && $(NDK_BUILD) -j $(BUILD_THREADS)
+ndkbuild=cd $(NDK_PROJECT_PATH) && GTK_INSTALL_DIR="$(GTK_INSTALL_DIR)" $(NDK_BUILD) -j $(BUILD_THREADS)
 ndkclean=cd $(NDK_PROJECT_PATH) && $(NDK_BUILD) clean
 ndkcleanobj=rm -rf $(NDK_PROJECT_PATH)/obj/
 
@@ -36,10 +36,10 @@ INSTALL_GLIB_LIBS=cp -Lf glib/android-install/$(APP_ABI)/lib/libglib-2.0.so* \
 INSTALL_FFI_LIBS=cp -f libffi/.libs/*.a \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/
 
-INSTALL_PIXMAN_LIBS=cp -f pixman/pixman/.libs/*.a \
+INSTALL_PIXMAN_LIBS=cp -Lf pixman/build-android-$(APP_ABI)/pixman/libpixman-1.so* \
     $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
-    if ls pixman/pixman/.libs/libpixman-1.so* >/dev/null 2>&1; then \
-        cp -Lf pixman/pixman/.libs/libpixman-1.so* \
+    if ls pixman/build-android-$(APP_ABI)/pixman/libpixman-1.a >/dev/null 2>&1; then \
+        cp -f pixman/build-android-$(APP_ABI)/pixman/libpixman-1.a \
         $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
     fi
 
@@ -117,15 +117,17 @@ ifeq ($(NDK_DEBUG), 1)
 	LIBFFI_DEBUG = --enable-debug
 	LIBGLIB_BUILDTYPE = debug
 	LIBPIXMAN_DEBUG =
+	GTK_BUILDTYPE = debug
 else
 	LIBFFI_DEBUG = --disable-debug
     LIBGLIB_BUILDTYPE = release
     LIBPIXMAN_DEBUG =
+    GTK_BUILDTYPE = release
 endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk
 
 default: limbo
 	
@@ -163,40 +165,52 @@ ffi:
 config-glib: ndk ffi pkg-config-link
 	$(CREATE_GLIB_MESON_CROSS_FILE)
 	cd $(LIMBO_JNI_ROOT)/glib && rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)"
-	cd $(LIMBO_JNI_ROOT)/glib && PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDIR="$(PKG_CONFIG_PATH)" meson setup "$(GLIB_BUILD_DIR)" . \
+	# pkg-config sees only the jni libs (glib itself + libffi): GTK's install dir
+	# is intentionally NOT included, so pcre2/zlib resolve through the wrap files
+	# and no stale GTK-built .pc files can leak into this build.
+	cd $(LIMBO_JNI_ROOT)/glib && PKG_CONFIG_PATH="$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" PKG_CONFIG_LIBDIR="$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" meson setup "$(GLIB_BUILD_DIR)" . \
 	--cross-file "$(GLIB_CROSS_FILE)"
 
-glib: ndk
+glib: ndk ffi
 	ninja -C "$(GLIB_BUILD_DIR)" -j $(BUILD_THREADS)
 	DESTDIR= ninja -C "$(GLIB_BUILD_DIR)" install
+	# the installed glib tools are Android ELFs and cannot run on the build
+	# machine; point the pkg-config tool variables at the host tools (GTK
+	# resolves glib-compile-resources/glib-mkenums/glib-genmarshal via these)
+	sed -i -e 's|^glib_compile_resources=.*|glib_compile_resources=/usr/bin/glib-compile-resources|' \
+		-e 's|^glib_compile_schemas=.*|glib_compile_schemas=/usr/bin/glib-compile-schemas|' \
+		-e 's|^glib_mkenums=.*|glib_mkenums=/usr/bin/glib-mkenums|' \
+		"$(GLIB_PKG_CONFIG_DIR)/gio-2.0.pc"
+	sed -i -e 's|^glib_compile_schemas=.*|glib_compile_schemas=/usr/bin/glib-compile-schemas|' \
+		-e 's|^glib_mkenums=.*|glib_mkenums=/usr/bin/glib-mkenums|' \
+		"$(GLIB_PKG_CONFIG_DIR)/glib-2.0.pc"
+	# replace the Android-ELF glib tools with the host ones: meson's
+	# glib_compile_schemas module resolves them via the installed bindir even
+	# in cross builds, and the Android ELFs cannot run on the build machine
+	cp -f /usr/bin/glib-compile-resources /usr/bin/glib-compile-schemas \
+		/usr/bin/glib-genmarshal /usr/bin/glib-mkenums /usr/bin/gdbus-codegen \
+		$(GLIB_INSTALL_DIR)/bin/
 	$(INSTALL_GLIB_LIBS)
 
 clean-glib:
 	-rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)" "$(GLIB_CROSS_FILE)"
 	-rm -rf $(LIMBO_JNI_ROOT)/glib/android.cache
+	# wrap download cache inside the glib tree (the global ~/.cache/meson wrap
+	# cache and the vendored subproject sources are intentionally kept)
+	-rm -rf $(LIMBO_JNI_ROOT)/glib/subprojects/packagecache
 
 
 config-pixman: ndk pkg-config-link
-	cd $(LIMBO_JNI_ROOT)/pixman && ./configure --host=$(GNU_HOST) --with-sysroot=$(SYSROOT) \
-	--disable-libtool-lock \
-	--enable-shared \
-	--enable-static \
-	$(PIXMAN_DISABLE_OPTIONS) \
-	$(LIBPIXMAN_DEBUG) \
-	PKG_CONFIG="$(PKG_CONFIG)" \
-	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) \
-	-I${NDK_ROOT}/sources/android/cpufeatures -I${LIMBO_JNI_ROOT}/compat " \
-	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) \
-	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -llog \
-	-lcompat-limbo "
+	$(CREATE_PIXMAN_MESON_CROSS_FILE)
+	cd $(LIMBO_JNI_ROOT)/pixman && rm -rf "$(PIXMAN_BUILD_DIR)"
+	cd $(LIMBO_JNI_ROOT)/pixman && \
+	PKG_CONFIG_PATH="$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" PKG_CONFIG_LIBDIR="$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
+	meson setup "$(PIXMAN_BUILD_DIR)" . \
+	--cross-file "$(PIXMAN_CROSS_FILE)"
 
 pixman: ndk
-	cd $(LIMBO_JNI_ROOT)/pixman/pixman && $(MAKE) -j $(BUILD_THREADS) \
-	CFLAGS="$(ARCH_CFLAGS) $(SYS_ROOT) \
-	-I${NDK_ROOT}/sources/android/cpufeatures -I${LIMBO_JNI_ROOT}/compat " \
-	LDFLAGS="$(ARCH_LD_FLAGS) $(SYS_ROOT) \
-	-L${LIMBO_JNI_ROOT}/../obj/local/$(APP_ABI) -lc -llog \
-	-lcompat-limbo "
+	ninja -C "$(PIXMAN_BUILD_DIR)" -j $(BUILD_THREADS)
+	DESTDIR= ninja -C "$(PIXMAN_BUILD_DIR)" install
 	$(INSTALL_PIXMAN_LIBS)
 	mkdir -p "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig" && printf '%s\n' \
 		'prefix=$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)' \
@@ -206,15 +220,84 @@ pixman: ndk
 		'' \
 		'Name: Pixman' \
 		'Description: The pixman library' \
-		'Version: 0.40.0' \
+		'Version: 0.43.4' \
 		'Libs: -L$${libdir} -lpixman-1' \
-		'Cflags: -I$${includedir}' \
+		'Cflags: -I$${includedir} -I$(PIXMAN_BUILD_DIR)/pixman' \
 		> "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig/pixman-1.pc"
 
 clean-pixman:
-	-find $(LIMBO_JNI_ROOT)/pixman -name "*.lo" -exec rm -rf {} \;
-	-cd $(LIMBO_JNI_ROOT)/pixman && $(MAKE) distclean
-	-cd $(LIMBO_JNI_ROOT)/pixman && $(MAKE) clean
+	-rm -rf "$(PIXMAN_BUILD_DIR)" "$(PIXMAN_INSTALL_DIR)" "$(PIXMAN_CROSS_FILE)"
+
+# GTK4 (gtk4android) display stack, only built when USE_GTK=true
+# gtk builds against the jni shared libs (glib/pixman/libffi), so they must
+# be built (and their .pc files generated) before we can configure GTK.
+config-gtk: ndk pkg-config-link ffi glib pixman
+	$(CREATE_GTK_MESON_CROSS_FILE)
+	# apply the required glib hack patch (meson skips diff_files for pre-existing dirs)
+	@if ! grep -q 'GLIB_AVAILABLE_IN_ALL' \
+		$(LIMBO_JNI_ROOT)/gtk4android/subprojects/glib/glib/gutilsprivate.h; then \
+		cd $(LIMBO_JNI_ROOT)/gtk4android/subprojects/glib && \
+		git apply ../packagefiles/glib/hack.patch || { echo 'ERROR: failed to apply glib hack.patch'; exit 1; }; \
+	fi
+	# keep the downloaded subproject sources across reconfigures
+	@if [ -d "$(GTK_BUILD_DIR).subprojects-save" ]; then \
+		rm -rf "$(GTK_BUILD_DIR).subprojects-save"; \
+	fi; \
+	if [ -d "$(GTK_BUILD_DIR)/subprojects" ]; then \
+		mv "$(GTK_BUILD_DIR)/subprojects" "$(GTK_BUILD_DIR).subprojects-save"; \
+	fi
+	cd $(LIMBO_JNI_ROOT)/gtk4android && rm -rf "$(GTK_BUILD_DIR)" "$(GTK_INSTALL_DIR)"
+	@if [ -d "$(GTK_BUILD_DIR).subprojects-save" ]; then \
+		mkdir -p "$(GTK_BUILD_DIR)"; mv "$(GTK_BUILD_DIR).subprojects-save" "$(GTK_BUILD_DIR)/subprojects"; \
+	fi
+	# mirror the jni shared-lib trees under the NDK sysroot: pkg-config prefixes
+	# -I/-L with the sysroot when a cross config carries sys_root, and these
+	# symlinks keep those prefixed paths resolvable (needs passwordless sudo)
+	sudo mkdir -p "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))"; \
+	sudo ln -sfn "$(LIMBO_JNI_ROOT)" "$(SYSROOT_JNI_LINK)"; \
+	sudo ln -sfn "$(NDK_PROJECT_PATH)/obj" "$(SYSROOT_OBJ_LINK)"
+	# NOTE: as the top-level project, [gtk:project options] in the cross file does NOT apply,
+	# so the key options must be passed explicitly (see gtk4android README)
+	# glib/pixman/libffi come from the jni builds (shared with QEMU) via pkg-config;
+	# setting PKG_CONFIG_LIBDIR also keeps the host's pcre2/zlib/... out of the picture.
+	cd $(LIMBO_JNI_ROOT)/gtk4android && \
+	PKG_CONFIG_LIBDIR="$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
+	PKG_CONFIG_PATH="$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
+	meson setup "$(GTK_BUILD_DIR)" . \
+		--cross-file "$(GTK_CROSS_FILE)" \
+		-Dandroid-backend=true \
+		-Dx11-backend=false \
+		-Dwayland-backend=false \
+		-Dbroadway-backend=false \
+		-Dwin32-backend=false \
+		-Dmacos-backend=false \
+		-Dmedia-gstreamer=disabled \
+		-Dprint-cups=disabled \
+		-Dprint-cpdb=disabled \
+		-Dcloudproviders=disabled \
+		-Dcolord=disabled \
+		-Dtracker=disabled \
+		-Daccesskit=disabled \
+		-Dsysprof=disabled \
+		-Dintrospection=disabled \
+		-Dbuild-demos=false \
+		-Dbuild-examples=false \
+		-Dbuild-tests=false \
+		-Dbuild-testsuite=false \
+		-Dvulkan=disabled
+
+gtk: ffi glib pixman
+	ninja -C "$(GTK_BUILD_DIR)" -j $(BUILD_THREADS)
+	ninja -C "$(GTK_BUILD_DIR)" install
+	# deploy the GTK4 shared libraries into the APK jniLibs so the app can load them
+	$(CREATE_LIBSDIR)
+	cp -Lf $(GTK_INSTALL_DIR)/lib/*.so $(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/
+
+clean-gtk:
+	-rm -rf "$(GTK_BUILD_DIR)" "$(GTK_INSTALL_DIR)" "$(GTK_CROSS_FILE)" "$(GTK_BUILD_DIR).subprojects-save"
+	# remove the sysroot-prefixed jni symlinks created by config-gtk
+	sudo rm -f "$(SYSROOT_JNI_LINK)" "$(SYSROOT_OBJ_LINK)" || true; \
+	sudo rmdir "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))" 2>/dev/null || true
 
 _qemu: ndk
 	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST) CFLAGS="$(ARCH_CFLAGS)"
@@ -229,9 +312,9 @@ clean-qemu:
 	-rm -rf ../assets/roms/* 
 	-rm -rf $(LIMBO_APP_LIBS)/assets/roms/*
 
-config-deps: ndk config-ffi config-glib config-pixman
+config-deps: ndk config-ffi config-glib config-pixman $(if $(USE_GTK),config-gtk)
 
-deps: ndk glib pixman 
+deps: ndk glib pixman $(if $(USE_GTK),gtk)
 
 _build-qemu: ndk 
 	make _qemu
@@ -281,13 +364,14 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-gtk clean-ndk
 
 clean: 
 	make clean-qemu 
 	make clean-ffi 
 	make clean-glib 
 	make clean-pixman
+	make clean-gtk
 	make clean-ndk
 	-find . -name "*.d" -exec rm -rf {} \;
 	-find . -name "*.a" -exec rm -rf {} \;

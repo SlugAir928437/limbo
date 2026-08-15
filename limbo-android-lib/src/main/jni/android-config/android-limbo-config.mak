@@ -61,9 +61,16 @@ USE_SDL ?= true
 # If you want to use SDL Audio with Android AudioTrack
 USE_SDL_AUDIO ?= true
 
-# if you want to use Android AAudio, it needs version platform API 26
+# If you want to use Android AAudio, it needs version platform API 26
 USE_AAUDIO ?= true
 
 # Enable KVM
 # Note: KVM headers are available only for android-21 platform and above
 USE_KVM ?= true
+
+# Build the GTK4 (gtk4android) display stack for Android and link it into QEMU
+# Set to false to skip the GTK4 build (faster builds, no GTK display support)
+USE_GTK ?= true
+
+# Android API level used for the GTK4 cross build (gtk4android targets API 31)
+GTK_ANDROID_API ?= 31

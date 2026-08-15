@@ -3,11 +3,15 @@
 LIMBO_JNI_ROOT:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 include $(LIMBO_JNI_ROOT)/android-config/android-limbo-config.mak
 
-# prepend the NDK_ROOT and LLVM toolchain in the path so ndk-build/clang/pkg-config are the correct ones
+# prepend the NDK_ROOT and LLVM toolchain in the path so ndk-build/clang/pkg-config are the correct ones.
+# Windows-mounted (/mnt/*) and whitespace-containing dirs are dropped from the
+# inherited PATH first: they break autotools shebangs and script execution
+# (e.g. a 'TRAE SOLO CN' install directory in the Windows PATH).
 TOOLCHAIN_DIR = $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_ENV)
 TOOLCHAIN_CLANG_DIR = $(TOOLCHAIN_DIR)
 TOOLCHAIN_CLANG_PREFIX := $(TOOLCHAIN_CLANG_DIR)/bin
-PATH  := $(TOOLCHAIN_CLANG_PREFIX):$(NDK_ROOT):$(PATH)
+CLEAN_PATH := $(shell printf '%s' "$(PATH)" | awk -F: '{for(i=1;i<=NF;i++){p=$$i; if(p !~ /\/mnt\// && p !~ / /){if(n++)printf ":"; printf "%s", p}}}')
+PATH  := $(TOOLCHAIN_CLANG_PREFIX):$(NDK_ROOT):$(CLEAN_PATH)
 SHELL := env PATH=$(PATH) /bin/bash
 
 #PLATFORM CONFIG
@@ -139,7 +143,22 @@ GLIB_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-glib-android-
 GLIB_PKG_CONFIG_DIR := $(GLIB_INSTALL_DIR)/lib/pkgconfig
 LIBFFI_PKG_CONFIG_DIR := $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig
 LIBFFI_PC_FILE := $(LIBFFI_PKG_CONFIG_DIR)/libffi.pc
-PKG_CONFIG_PATH := $(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR):$(PKG_CONFIG_PATH)
+
+# GTK4 (gtk4android) build dirs - disabled unless USE_GTK=true (see android-limbo-config.mak)
+GTK_BUILD_DIR := $(LIMBO_JNI_ROOT)/gtk4android/build-android-$(APP_ABI)
+GTK_INSTALL_DIR := $(LIMBO_JNI_ROOT)/gtk4android/android-install/$(APP_ABI)
+GTK_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-gtk4-android-cross.ini
+GTK_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-gtk4-android-cross.ini.in
+GTK_PKG_CONFIG_DIR := $(GTK_INSTALL_DIR)/lib/pkgconfig
+
+# pixman (shared with QEMU, meson build)
+PIXMAN_BUILD_DIR := $(LIMBO_JNI_ROOT)/pixman/build-android-$(APP_ABI)
+PIXMAN_INSTALL_DIR := $(LIMBO_JNI_ROOT)/pixman/android-install/$(APP_ABI)
+PIXMAN_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-pixman-android-cross.ini
+PIXMAN_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-pixman-android-cross.ini.in
+
+# NOTE: GTK_PKG_CONFIG_DIR must be defined before this line (:= evaluates immediately)
+PKG_CONFIG_PATH := $(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR):$(PKG_CONFIG_PATH)
 
 CREATE_PKG_CONFIG_LINK = \
 	if [ ! -x "$(PKG_CONFIG_LINK)" ]; then \
@@ -161,7 +180,7 @@ CREATE_LIBFFI_PC = \
 		'' \
 		'Name: libffi' \
 		'Description: Foreign Function Interface library' \
-		'Version: 3.4.2' \
+		'Version: 3.5.2' \
 		'Libs: -L$${libdir} -lffi' \
 		'Libs.private: -llog' \
 		'Cflags: -I$${includedir}' \
@@ -186,12 +205,47 @@ CREATE_GLIB_MESON_CROSS_FILE = \
 		-e 's|@APP_ABI@|$(APP_ABI)|g' \
 		"$(GLIB_CROSS_FILE_TEMPLATE)" > "$(GLIB_CROSS_FILE)"
 
+CREATE_PIXMAN_MESON_CROSS_FILE = \
+	sed \
+		-e 's|@CC@|$(CC)|g' \
+		-e 's|@CXX@|$(CXX)|g' \
+		-e 's|@AR@|$(AR)|g' \
+		-e 's|@STRIP@|$(STRIP)|g' \
+		-e 's|@PKG_CONFIG@|$(PKG_CONFIG)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		-e 's|@PIXMAN_INSTALL_DIR@|$(PIXMAN_INSTALL_DIR)|g' \
+		-e 's|@TARGET_TRIPLE@|$(TARGET_PREFIX)$(NDK_PLATFORM_API)|g' \
+		-e 's|@SYSROOT@|$(SYSROOT)|g' \
+		-e 's|@LIMBO_JNI_ROOT@|$(LIMBO_JNI_ROOT)|g' \
+		-e 's|@NDK_PROJECT_PATH@|$(NDK_PROJECT_PATH)|g' \
+		-e 's|@APP_ABI@|$(APP_ABI)|g' \
+		"$(PIXMAN_CROSS_FILE_TEMPLATE)" > "$(PIXMAN_CROSS_FILE)"
+
+CREATE_GTK_MESON_CROSS_FILE = \
+	sed \
+		-e 's|@TOOLCHAIN_CLANG_PREFIX@|$(TOOLCHAIN_CLANG_PREFIX)|g' \
+		-e 's|@HOST_PREFIX@|$(HOST_PREFIX)|g' \
+		-e 's|@GTK_ANDROID_API@|$(GTK_ANDROID_API)|g' \
+		-e 's|@GTK_INSTALL_DIR@|$(GTK_INSTALL_DIR)|g' \
+		-e 's|@GTK_BUILDTYPE@|$(GTK_BUILDTYPE)|g' \
+		-e 's|@SYSROOT@|$(SYSROOT)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		"$(GTK_CROSS_FILE_TEMPLATE)" > "$(GTK_CROSS_FILE)"
+
 AR_FLAGS = crs
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)
     SYSROOT = $(TOOLCHAIN_CLANG_DIR)/sysroot
 else
     SYSROOT = $(NDK_ROOT)/$(NDK_PLATFORM)/arch-$(TARGET_ARCH)
 endif
+
+# sysroot-prefixed aliases for the jni shared-lib trees.  When a cross
+# configuration carries sys_root, pkg-config prefixes every -I/-L with the
+# NDK sysroot; these symlinks keep those prefixed paths resolvable.
+SYSROOT_JNI_LINK := $(SYSROOT)/$(patsubst /%,%,$(LIMBO_JNI_ROOT))
+SYSROOT_OBJ_LINK := $(SYSROOT)/$(patsubst /%,%,$(NDK_PROJECT_PATH))/obj
 
 SYS_ROOT = --sysroot=$(SYSROOT)
 

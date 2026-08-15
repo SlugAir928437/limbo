@@ -109,10 +109,9 @@ public class Dispatcher implements ViewListener {
 
 
     private void changeUi(String ui) {
-        if (ui.equals("VNC"))
-            getMachine().setEnableVNC(1);
-        else if (ui.equals("SDL"))
-            getMachine().setEnableVNC(0);
+        // setUI() stores the display backend ("SDL", "VNC" or "GTK") and keeps
+        // enableVNC in sync ("VNC" -> 1, anything else -> 0)
+        getMachine().setUI(ui);
     }
 
     private void setCpuNum(int cpuNum) {

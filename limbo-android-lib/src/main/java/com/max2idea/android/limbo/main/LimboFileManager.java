@@ -18,14 +18,12 @@ Copyright (C) Max Kastanas 2012
  */
 package com.max2idea.android.limbo.main;
 
-import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ListActivity;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -44,11 +42,7 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-
 import com.limbo.emu.lib.R;
-import com.max2idea.android.limbo.dialog.DialogUtils;
 import com.max2idea.android.limbo.files.FileUtils;
 import com.max2idea.android.limbo.machine.Machine.FileType;
 import com.max2idea.android.limbo.toast.ToastUtils;
@@ -65,7 +59,6 @@ import java.util.HashMap;
  */
 public class LimboFileManager extends ListActivity {
 
-    private static final int REQUEST_WRITE_PERMISSION = 1001;
     private static String TAG = "FileManager";
     private final int SELECT_DIR = 1;
     private final int CREATE_DIR = 2;
@@ -217,51 +210,11 @@ public class LimboFileManager extends ListActivity {
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
             public void run() {
-                checkPermissionsAndBrowse();
+                // No permission prompt needed here: storage access is granted
+                // at app level (requestLegacyExternalStorage / MANAGE_EXTERNAL_STORAGE).
+                fill(currdir.listFiles());
             }
         }, 500);
-    }
-
-    private void checkPermissionsAndBrowse() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
-                DialogUtils.UIAlert(this, getString(R.string.WriteAccess), getString(R.string.FullAccessWarning), 16, false,
-                        getString(R.string.OkIUnderstand), new DialogInterface.OnClickListener() {
-
-                            @Override
-                            public void onClick(DialogInterface dialogInterface, int i) {
-                                ActivityCompat.requestPermissions(LimboFileManager.this,
-                                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                                        REQUEST_WRITE_PERMISSION);
-                            }
-                        }, null, null, null, null);
-            } else {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                        REQUEST_WRITE_PERMISSION);
-            }
-        } else {
-            fill(currdir.listFiles());
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           String permissions[], int[] grantResults) {
-        switch (requestCode) {
-            case REQUEST_WRITE_PERMISSION: {
-                if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    fill(currdir.listFiles());
-                } else {
-                    ToastUtils.toastShort(this, getString(R.string.FeaturDisabled));
-                    finish();
-                }
-                return;
-            }
-        }
     }
 
     private void fill(File[] files) {

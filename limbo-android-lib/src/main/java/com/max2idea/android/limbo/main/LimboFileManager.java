@@ -26,12 +26,10 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.DocumentsContract;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -62,9 +60,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 
 /**
- * Legacy File Manager Activity for older devices and devices that don't support
- * Android Storage Framework. This requires android:requestLegacyExternalStorage="true" in
- * AndroidManifest.xml.
+ * Built-in file manager Activity used for all file selection and save operations.
+ * This requires android:requestLegacyExternalStorage="true" in AndroidManifest.xml.
  */
 public class LimboFileManager extends ListActivity {
 
@@ -106,21 +103,9 @@ public class LimboFileManager extends ListActivity {
             return;
         }
 
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.LOLLIPOP // device is old
-                || LimboSettingsManager.getEnableLegacyFileManager(activity) // app configuration ASF is disallowed
-                || fileType == FileType.SHARED_DIR //TODO: allow sd card access for SHARED DIR (called from c-jni and create the readdir() dirent structs)
-        ) {
-            LimboFileManager.promptLegacyStorageAccess(activity, fileType, requestCode, lastDir);
-        } else { // we use Android ASF to open the file (sd card supported)
-            try {
-                LimboFileManager.promptOpenFileASF(activity, fileType, getASFFileManagerRequestCode(requestCode), lastDir);
-
-            } catch (Exception ex) {
-                Log.e(TAG, "Using Legacy File Manager due to exception :" + ex.getMessage());
-                //XXX; some device vendors don't have proper Android Storage Framework so we fallback to legacy file manager (sd card not supported)
-                LimboFileManager.promptLegacyStorageAccess(activity, fileType, requestCode, lastDir);
-            }
-        }
+        // Always use the built-in LimboFileManager for file selection/save operations
+        // instead of the Android Storage Access Framework picker.
+        LimboFileManager.promptLegacyStorageAccess(activity, fileType, requestCode, lastDir);
     }
 
     private static String getLastDir(Context context, FileType fileType) {
@@ -132,27 +117,6 @@ public class LimboFileManager extends ListActivity {
             return LimboSettingsManager.getImagesDir(context);
         }
         return LimboSettingsManager.getLastDir(context);
-    }
-
-    private static int getASFFileManagerRequestCode(int requestCode) {
-        switch (requestCode) {
-            case Config.OPEN_IMAGE_FILE_REQUEST_CODE:
-                return Config.OPEN_IMAGE_FILE_ASF_REQUEST_CODE;
-            case Config.OPEN_IMAGE_DIR_REQUEST_CODE:
-                return Config.OPEN_IMAGE_DIR_ASF_REQUEST_CODE;
-            case Config.OPEN_SHARED_DIR_REQUEST_CODE:
-                return Config.OPEN_SHARED_DIR_ASF_REQUEST_CODE;
-            case Config.OPEN_EXPORT_DIR_REQUEST_CODE:
-                return Config.OPEN_EXPORT_DIR_ASF_REQUEST_CODE;
-            case Config.OPEN_IMPORT_FILE_REQUEST_CODE:
-                return Config.OPEN_IMPORT_FILE_ASF_REQUEST_CODE;
-            case Config.OPEN_IMPORT_BIOS_FILE_REQUEST_CODE:
-                return Config.OPEN_IMPORT_BIOS_FILE_ASF_REQUEST_CODE;
-            case Config.OPEN_LOG_FILE_DIR_REQUEST_CODE:
-                return Config.OPEN_LOG_FILE_DIR_ASF_REQUEST_CODE;
-            default:
-                return requestCode;
-        }
     }
 
     public static void promptLegacyStorageAccess(Activity activity, FileType fileType, int requestCode, String lastDir) {
@@ -180,50 +144,10 @@ public class LimboFileManager extends ListActivity {
         return new Intent(activity, LimboFileManager.class);
     }
 
-    protected static void promptOpenFileASF(Activity context, FileType fileType, int requestCode, String lastDir) {
-        Intent intent = null;
-        if (isFileTypeDirectory(fileType))
-            intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        else
-            intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-
-        intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-
-        intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
-
-        intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
-
-        if (!isFileTypeDirectory(fileType)) {
-            String[] fileMimeTypes = getFileMimeTypes(fileType);
-            if (fileMimeTypes != null) {
-                for (String fileMimeType : fileMimeTypes) {
-                    intent.setType(fileMimeType);
-                }
-            }
-        }
-
-
-        if (lastDir != null && lastDir.startsWith("content://")) {
-            Uri uri = Uri.parse(lastDir);
-            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, uri);
-        }
-
-        context.startActivityForResult(intent, requestCode);
-    }
-
     private static boolean isFileTypeDirectory(FileType fileType) {
         return (fileType == FileType.SHARED_DIR || fileType == FileType.EXPORT_DIR
                 || fileType == FileType.IMAGE_DIR || fileType == FileType.LOG_DIR);
 
-    }
-
-    private static String[] getFileMimeTypes(FileType fileType) {
-        if (fileType == FileType.IMPORT_FILE)
-            return new String[]{MimeTypeMap.getSingleton().getMimeTypeFromExtension("csv")};
-        else
-            return new String[]{"*/*"};
     }
 
     private static HashMap<String, String> getFileExt(FileType fileType) {

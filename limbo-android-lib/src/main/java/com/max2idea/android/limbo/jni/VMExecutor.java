@@ -180,14 +180,13 @@ private String getQemuLibrary() {
      */
     private void addStateOptions(ArrayList<String> paramsList) {
         if (MachineController.getInstance().isPaused() && !getSaveStateName().isEmpty()) {
-            int fd_tmp = FileUtils.get_fd(getSaveStateName());
-            if (fd_tmp < 0) {
-                Log.e(TAG, "Error while getting fd for: " + getSaveStateName());
-            } else {
-                Log.d(TAG, "Retrieved fd: " + fd_tmp + " for: " + getSaveStateName());
-                paramsList.add("-incoming");
-                paramsList.add("fd:" + fd_tmp);
-            }
+            // Use the "file:" scheme for -incoming so QEMU opens and owns the
+            // state file itself. Passing "fd:N" makes QEMU close the fd when
+            // the incoming migration finishes, which trips Android's fdsan
+            // (SIGABRT) because the fd is owned by a ParcelFileDescriptor
+            // opened by FileUtils.get_fd().
+            paramsList.add("-incoming");
+            paramsList.add("file:" + getSaveStateName());
         }
     }
 
@@ -841,18 +840,17 @@ private String getQemuLibrary() {
         // guest display doesn't fit inside the Android Surface which is pretty much all the time.
         // we could use SurfaceHolder.setFixedSize() to bound the surfaceview but it creates
         // problems with refreshing the surfaceview plus we would still need this fix for trackpad
-        if (mouse != null && mouse.equals("usb-tablet")) {
-            int xmin = 0;
-            int xmax = width;
-            int ymin = 0;
-            int ymax = height;
-            if (orientation == Configuration.ORIENTATION_PORTRAIT) {
-                ymin = (int) (height - width * vm_height / (float) vm_width) / 2;
-                ymax = (int) (height + width * vm_height / (float) vm_width) / 2;
-            } else {
-                xmin = (int) (width - height * vm_width / (float) vm_height) / 2;
-                xmax = (int) (width + height * vm_width / (float) vm_height) / 2;
-            }
+        if (mouse != null && mouse.equals("usb-tablet") && vm_width > 0 && vm_height > 0) {
+            // Compute the letterboxed (aspect-ratio-preserving) display region the
+            // same way the QEMU SDL backend does (scale = MIN(w/vm_w, h/vm_h),
+            // centered), so the mouse bounds always match the on-screen guest image.
+            double scale = Math.min((double) width / vm_width, (double) height / vm_height);
+            double dispW = vm_width * scale;
+            double dispH = vm_height * scale;
+            int xmin = (int) Math.round((width - dispW) / 2.0);
+            int xmax = (int) Math.round((width + dispW) / 2.0);
+            int ymin = (int) Math.round((height - dispH) / 2.0);
+            int ymax = (int) Math.round((height + dispH) / 2.0);
             nativeMouseBounds(xmin, xmax, ymin, ymax);
         }
     }
@@ -989,8 +987,11 @@ private String getQemuLibrary() {
         if (Config.showToast)
             ToastUtils.toastShort(LimboApplication.getInstance(), LimboApplication.getInstance().getString(R.string.PleaseWaitSavingVMState));
 
-        int currentFd = get_fd(getSaveStateName());
-        String uri = "fd:" + currentFd;
+        // QEMU 10.x no longer resolves numeric "fd:" migration URIs from the
+        // QMP monitor (monitor_get_fd only finds named fds registered via the
+        // getfd command), so use the "file:" scheme which opens the state file
+        // path directly.
+        String uri = "file:" + getSaveStateName();
         String command = QmpClient.getStopVMCommand();
         String msg = QmpClient.sendCommand(command);
         command = QmpClient.getMigrateCommand(false, false, uri);
@@ -1018,7 +1019,11 @@ private String getQemuLibrary() {
                 JSONObject resObj = new JSONObject(res);
                 String resInfo = resObj.getString("return");
                 JSONObject resInfoObj = new JSONObject(resInfo);
-                pauseState = resInfoObj.getString("status");
+                // QEMU omits the "status" member when no migration is in
+                // progress (state MIGRATION_STATUS_NONE); don't throw on that,
+                // just leave pauseState empty so the poller can retry.
+                if (resInfoObj.has("status"))
+                    pauseState = resInfoObj.getString("status");
             } catch (JSONException e) {
                 if (Config.debug)
                     Log.e(TAG, "Error while checking saving vm: " + e.getMessage());
@@ -1027,11 +1032,13 @@ private String getQemuLibrary() {
                 Log.e(TAG, "Error: " + res);
             }
         }
-        if (pauseState.toUpperCase().equals("ACTIVE")) {
+        if (pauseState.toUpperCase().equals("ACTIVE")
+                || pauseState.toUpperCase().equals("SETUP")) {
             return MachineController.MachineStatus.Saving;
         } else if (pauseState.toUpperCase().equals("COMPLETED")) {
             return MachineController.MachineStatus.SaveCompleted;
-        } else if (pauseState.toUpperCase().equals("FAILED")) {
+        } else if (pauseState.toUpperCase().equals("FAILED")
+                || pauseState.toUpperCase().equals("CANCELLED")) {
             return MachineController.MachineStatus.SaveFailed;
         }
         //TODO: proper error handling with user messages

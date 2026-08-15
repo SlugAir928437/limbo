@@ -589,7 +589,13 @@ public class ToplevelActivity extends Activity {
 	@Override
 	public void onWindowFocusChanged(boolean hasFocus) {
 		super.onWindowFocusChanged(hasFocus);
-		updateToplevelState();
+		// Guard against the case where the GTK surface has not been bound
+		// yet (nativeIdentifier == 0): calling updateToplevelState() would
+		// dispatch a notifyStateChange JNI call whose native side performs
+		// a hash table lookup that returns NULL, leading to a NULL pointer
+		// dereference in gdk_synthesize_surface_state (SIGSEGV).
+		if (this.nativeIdentifier != 0)
+			updateToplevelState();
 	}
 
 	@Override

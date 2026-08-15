@@ -39,6 +39,9 @@ import java.util.concurrent.Executors;
 public class MachineController {
     private static final String TAG = "MachineController";
     private static MachineController mSingleton;
+    // Number of consecutive Unknown (no migration status reported) polls
+    // tolerated while waiting for the save state to complete, before giving up.
+    private static final int MAX_UNKNOWN_SAVE_STATUS_RETRIES = 30;
     private final ExecutorService saveVmStatusExecutor = Executors.newFixedThreadPool(1);
     private final MachineExecutor machineExecutor;
     private final HashSet<OnMachineStatusChangeListener> onMachineStatusChangeListeners = new HashSet<>();
@@ -169,16 +172,26 @@ public class MachineController {
     }
 
     private void checkSaveStatus() {
+        // QEMU only reports the migration status once the migrate command has
+        // been processed and the migration state machine has left NONE, so a
+        // transient Unknown (no "status" in query-migrate) is expected right
+        // after the command is issued. Retry for a while before giving up.
+        int unknownRetries = 0;
         while (!saveVmStatusTimerQuit) {
             MachineStatus status = checkSaveVMStatus();
             Log.d(TAG, "State Status: " + status);
-            if (status == MachineStatus.Unknown
-                    || status == MachineStatus.SaveCompleted
-                    || status == MachineStatus.SaveFailed
-            ) {
+            if (status == MachineStatus.SaveCompleted
+                    || status == MachineStatus.SaveFailed) {
                 Log.d(TAG, "Saving state is done: " + status);
                 stopSaveVmStatusTimer();
                 return;
+            }
+            if (status == MachineStatus.Unknown) {
+                if (++unknownRetries >= MAX_UNKNOWN_SAVE_STATUS_RETRIES) {
+                    Log.d(TAG, "Giving up waiting for save state: " + status);
+                    stopSaveVmStatusTimer();
+                    return;
+                }
             }
             try {
                 Thread.sleep(1000);

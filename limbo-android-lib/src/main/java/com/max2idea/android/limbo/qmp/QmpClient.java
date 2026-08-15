@@ -204,17 +204,17 @@ public class QmpClient {
 	}
 
 	public static String getMigrateCommand(boolean block, boolean inc, String uri) {
-		
+
 		// XXX: Detach should not be used via QMP according to docs
 		// return "{\"execute\":\"migrate\",\"arguments\":{\"detach\":" + detach
 		// + ",\"blk\":" + block + ",\"inc\":" + inc
 		// + ",\"uri\":\"" + uri + "\"},\"id\":\"limbo\"}";
 
-		// its better not to use block (full disk copy) cause its slow (though
-		// safer)
-		// see qmp-commands.hx for more info
-		return "{\"execute\":\"migrate\",\"arguments\":{\"blk\":" + block + ",\"inc\":" + inc + ",\"uri\":\"" + uri
-				+ "\"},\"id\":\"limbo\"}";
+		// QEMU 10.x removed the "blk"/"inc" arguments from the migrate
+		// command; sending them now makes QEMU reject the command with
+		// "Invalid parameter" so the migration never starts. The "uri"
+		// argument alone is sufficient for saving the vm state.
+		return "{\"execute\":\"migrate\",\"arguments\":{\"uri\":\"" + uri + "\"},\"id\":\"limbo\"}";
 	}
 
     public static String getChangeVncPasswdCommand(String passwd) {

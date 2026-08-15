@@ -100,7 +100,8 @@ public class LimboGtkActivity extends ToplevelActivity
 
     private int getToolbarHeight() {
         TypedValue tv = new TypedValue();
-        if (getTheme().resolveAttribute(androidx.appcompat.R.attr.actionBarSize, tv, true)) {
+        if (getTheme().resolveAttribute(androidx.appcompat.R.attr.actionBarSize, tv, true)
+                || getTheme().resolveAttribute(android.R.attr.actionBarSize, tv, true)) {
             return TypedValue.complexToDimensionPixelSize(tv.data, getResources().getDisplayMetrics());
         }
         return (int) (48 * getResources().getDisplayMetrics().density + 0.5f);
@@ -296,7 +297,7 @@ public class LimboGtkActivity extends ToplevelActivity
     }
 
     @Override
-    public void onMachineStatusChanged(Machine machine, MachineController.MachineStatus status, Object o) {
+    public void onMachineStatusChanged(Machine machine, @NonNull MachineController.MachineStatus status, Object o) {
         switch (status) {
             case SaveFailed:
                 LimboActivityCommon.promptPausedErrorVM(this, (String) o, viewListener);

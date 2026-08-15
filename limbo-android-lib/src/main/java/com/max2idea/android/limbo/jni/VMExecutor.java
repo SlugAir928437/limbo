@@ -352,11 +352,27 @@ private String getQemuLibrary() {
             cpu += ",-tsc";
         }
 
-        if (getMachine().getDisableAcpi() != 0) {
-            paramsList.add("-no-acpi"); //disable ACPI
-        }
-        if (getMachine().getDisableHPET() != 0) {
-            paramsList.add("-no-hpet"); //        disable HPET
+        // ACPI/HPET disabling is an x86-only concept. QEMU 9.0 removed the
+        // -no-acpi/-no-hpet switches and turned them into machine properties
+        // (acpi=off / hpet=off); those properties only exist on x86 machines,
+        // so other targets (ia64, arm, ...) must not receive them at all.
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64) {
+            if (getMachine().getDisableAcpi() != 0) {
+                if (LimboApplication.getQemuVersion() >= 90000) {
+                    paramsList.add("-machine");
+                    paramsList.add("acpi=off");
+                } else {
+                    paramsList.add("-no-acpi");
+                }
+            }
+            if (getMachine().getDisableHPET() != 0) {
+                if (LimboApplication.getQemuVersion() >= 90000) {
+                    paramsList.add("-machine");
+                    paramsList.add("hpet=off");
+                } else {
+                    paramsList.add("-no-hpet");
+                }
+            }
         }
 
         if (cpu != null && !cpu.equals("Default")) {

@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 import com.max2idea.android.limbo.jni.LimboGtk;
+import com.max2idea.android.limbo.machine.MachineAction;
 import com.max2idea.android.limbo.machine.MachineController;
 
 import org.gtk.android.ToplevelActivity;
@@ -33,10 +34,14 @@ public class LimboGtkActivity extends ToplevelActivity {
 
         LimboGtk.init(this);
 
+        // Route the VM start through MachineService (same as SDL/VNC): this
+        // records the exit code (EXIT_UNKNOWN) before the VM boots so that a
+        // native crash (SIGSEGV etc.) is detected on the next app launch and
+        // the log dialog is shown (see LimboActivity.checkLog()).
         new Thread(() -> {
             try {
                 Log.i(TAG, "Starting VM with GTK display");
-                MachineController.getInstance().start();
+                LimboApplication.getViewListener().onAction(MachineAction.START_VM, null);
             } catch (Exception ex) {
                 Log.e(TAG, "Failed to start VM: " + ex.getMessage());
             }

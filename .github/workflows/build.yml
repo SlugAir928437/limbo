@@ -95,6 +95,22 @@ jobs:
           path: ~/.cache/meson
           key: meson-wrap-${{ runner.os }}
 
+      # QEMU 的 configure 不会清理构建目录, make qemu 走 ninja 增量构建,
+      # 因此缓存 qemu/build 可以跳过大部分 C 编译。
+      # key 覆盖所有影响 QEMU 编译结果的输入:
+      #   - BUILD_GUEST (--target-list)
+      #   - NDK 版本 (25.2.9519653)
+      #   - 交叉编译配置 / 补丁 / limbo 兼容层头文件 / 顶层 Makefile
+      # 精确未命中时回退到同 BUILD_GUEST 的最近一次缓存。
+      - name: 缓存 QEMU 构建产物
+        id: qemu-build-cache
+        uses: actions/cache@v4
+        with:
+          path: limbo-android-lib/src/main/jni/qemu/build
+          key: qemu-build-${{ runner.os }}-ndk25-${{ github.event.inputs.build_guest || 'x86_64-softmmu,aarch64-softmmu,ia64-softmmu' }}-${{ hashFiles('limbo-android-lib/src/main/jni/android-config/**', 'limbo-android-lib/src/main/jni/compat/**', 'limbo-android-lib/src/main/jni/patches/**', 'limbo-android-lib/src/main/jni/Makefile', 'limbo-android-lib/src/main/jni/android-limbo-build.mak', 'limbo-android-lib/src/main/jni/Android.mk', 'limbo-android-lib/src/main/jni/Application.mk') }}
+          restore-keys: |
+            qemu-build-${{ runner.os }}-ndk25-${{ github.event.inputs.build_guest || 'x86_64-softmmu,aarch64-softmmu,ia64-softmmu' }}-
+
       - name: Build QEMU
         run: |
           cd limbo-android-lib/src/main/jni

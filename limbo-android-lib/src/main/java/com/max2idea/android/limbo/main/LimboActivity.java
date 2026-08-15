@@ -1294,8 +1294,9 @@ public class LimboActivity extends AppCompatActivity implements
     }
 
     private String buildUISummary() {
-        String text = getString(R.string.display) + ": " + (getMachine().getEnableVNC() == 1 ? "VNC" : "SDL");
-        if (getMachine().getEnableVNC() == 1) {
+        String ui = getMachine().getUI();
+        String text = getString(R.string.display) + ": " + ui;
+        if ("VNC".equals(ui)) {
             text += ", " + getString(R.string.server);
             text += ": " + NetworkUtils.getVNCAddress(this) + ":" + Config.defaultVNCPort;
         }
@@ -2443,12 +2444,13 @@ public class LimboActivity extends AppCompatActivity implements
 
     @Override
     public void onUiSelected(int index) {
-        if (getMachine() == null)
-            return;
         if (index < 0 || index >= uiState.getUiOptions().size())
             return;
-        String ui = uiState.getUiOptions().get(index);
+        // keep the dropdown responsive even before a machine is loaded
         uiState.setUiSel(index);
+        if (getMachine() == null)
+            return;
+        String ui = uiState.getUiOptions().get(index);
         notifyFieldChange(MachineProperty.UI, ui);
     }
 

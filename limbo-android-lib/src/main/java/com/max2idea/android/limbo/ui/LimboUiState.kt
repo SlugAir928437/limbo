@@ -30,6 +30,23 @@ class StorageDeviceUiState {
 }
 
 /**
+ * Identifies a collapsible section of the main configuration screen.
+ * Using an enum instead of string literals gives compile-time safety:
+ * adding a new section forces the [LimboUiState.toggleSection] `when`
+ * (and any other exhaustive handling) to be updated.
+ */
+enum class Section {
+    UI,
+    BOARD,
+    STORAGE,
+    BOOT,
+    GRAPHICS,
+    AUDIO,
+    NETWORK,
+    ADVANCED
+}
+
+/**
  * Central observable UI state for LimboMainScreen.
  * Every field is backed by Compose snapshot state so the UI recomposes
  * whenever business logic updates it.
@@ -143,4 +160,22 @@ class LimboUiState {
     var audioSummary by mutableStateOf("")
     var networkSummary by mutableStateOf("")
     var advancedSummary by mutableStateOf("")
+
+    /**
+     * Toggles the collapsed state of the given [section].
+     * The `when` is exhaustive over [Section], so adding a new section
+     * produces a compile error here instead of silently doing nothing.
+     */
+    fun toggleSection(section: Section) {
+        when (section) {
+            Section.UI -> uiCollapsed = !uiCollapsed
+            Section.BOARD -> boardCollapsed = !boardCollapsed
+            Section.STORAGE -> storageCollapsed = !storageCollapsed
+            Section.BOOT -> bootCollapsed = !bootCollapsed
+            Section.GRAPHICS -> graphicsCollapsed = !graphicsCollapsed
+            Section.AUDIO -> audioCollapsed = !audioCollapsed
+            Section.NETWORK -> networkCollapsed = !networkCollapsed
+            Section.ADVANCED -> advancedCollapsed = !advancedCollapsed
+        }
+    }
 }

@@ -27,7 +27,7 @@ object LimboComposeBridge {
                     state = state,
                     callbacks = callbacks,
                     statusColor = statusColor(state.statusKind),
-                    onToggleSection = { section -> toggleSection(state, section) }
+                    onToggleSection = state::toggleSection
                 )
             }
         }
@@ -39,18 +39,5 @@ object LimboComposeBridge {
         2 -> StatusPaused
         3 -> StatusSaving
         else -> StatusStopped
-    }
-
-    private fun toggleSection(state: LimboUiState, section: String) {
-        when (section) {
-            "ui" -> state.uiCollapsed = !state.uiCollapsed
-            "board" -> state.boardCollapsed = !state.boardCollapsed
-            "storage" -> state.storageCollapsed = !state.storageCollapsed
-            "boot" -> state.bootCollapsed = !state.bootCollapsed
-            "graphics" -> state.graphicsCollapsed = !state.graphicsCollapsed
-            "audio" -> state.audioCollapsed = !state.audioCollapsed
-            "network" -> state.networkCollapsed = !state.networkCollapsed
-            "advanced" -> state.advancedCollapsed = !state.advancedCollapsed
-        }
     }
 }

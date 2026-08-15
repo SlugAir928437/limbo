@@ -106,7 +106,7 @@ fun LimboMainScreen(
     state: LimboUiState,
     callbacks: LimboUiCallbacks,
     statusColor: Color = StatusStopped,
-    onToggleSection: (String) -> Unit
+    onToggleSection: (Section) -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -149,7 +149,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.ui,
                     summary = state.uiSummary,
                     collapsed = state.uiCollapsed,
-                    onToggle = { onToggleSection("ui") }
+                    onToggle = { onToggleSection(Section.UI) }
                 ) {
                     SettingRow(label = stringResource(R.string.label_display), iconRes = R.drawable.ui) {
                         LimboDropdown(
@@ -188,7 +188,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.machinetype,
                     summary = state.boardSummary,
                     collapsed = state.boardCollapsed,
-                    onToggle = { onToggleSection("board") }
+                    onToggle = { onToggleSection(Section.BOARD) }
                 ) {
                     SettingRow(label = stringResource(R.string.label_machine_type), iconRes = R.drawable.machinetype) {
                         LimboDropdown(
@@ -263,7 +263,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.harddisk,
                     summary = state.storageSummary,
                     collapsed = state.storageCollapsed,
-                    onToggle = { onToggleSection("storage") }
+                    onToggle = { onToggleSection(Section.STORAGE) }
                 ) {
                     state.storageDevices.forEach { device ->
                         StorageDeviceRow(
@@ -292,7 +292,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.drives,
                     summary = state.bootSummary,
                     collapsed = state.bootCollapsed,
-                    onToggle = { onToggleSection("boot") }
+                    onToggle = { onToggleSection(Section.BOOT) }
                 ) {
                     SettingRow(label = stringResource(R.string.label_boot_from_device), iconRes = R.drawable.drives) {
                         LimboDropdown(
@@ -338,7 +338,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.screen,
                     summary = state.graphicsSummary,
                     collapsed = state.graphicsCollapsed,
-                    onToggle = { onToggleSection("graphics") }
+                    onToggle = { onToggleSection(Section.GRAPHICS) }
                 ) {
                     SettingRow(label = stringResource(R.string.label_video_display), iconRes = R.drawable.screen) {
                         LimboDropdown(
@@ -359,7 +359,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.audiocard,
                     summary = state.audioSummary,
                     collapsed = state.audioCollapsed,
-                    onToggle = { onToggleSection("audio") }
+                    onToggle = { onToggleSection(Section.AUDIO) }
                 ) {
                     SettingRow(label = stringResource(R.string.label_sound_card), iconRes = R.drawable.audiocard) {
                         LimboDropdown(
@@ -380,7 +380,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.network,
                     summary = state.networkSummary,
                     collapsed = state.networkCollapsed,
-                    onToggle = { onToggleSection("network") }
+                    onToggle = { onToggleSection(Section.NETWORK) }
                 ) {
                     SettingRow(label = stringResource(R.string.label_network), iconRes = R.drawable.network) {
                         LimboDropdown(
@@ -424,7 +424,7 @@ fun LimboMainScreen(
                     iconRes = R.drawable.advanced,
                     summary = state.advancedSummary,
                     collapsed = state.advancedCollapsed,
-                    onToggle = { onToggleSection("advanced") }
+                    onToggle = { onToggleSection(Section.ADVANCED) }
                 ) {
                     TextFieldRow(
                         label = stringResource(R.string.label_extra_qemu_params),

@@ -35,9 +35,13 @@ jobs:
         run: |
           sudo apt-get install make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync \
-            gtk-doc-tools python3-pip ninja-build meson libglib2.0-bin
+            gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev
           # ubuntu-latest 自带的 meson (1.3.2) 太旧: glib 2.89.3 要求 >= 1.4.0
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
+          # verify the host glib tools are present: the Makefile's glib target
+          # replaces the Android-ELF tools in the installed bindir with these
+          # (fail early instead of mid-build)
+          command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
       - name: 克隆代码
         run: |

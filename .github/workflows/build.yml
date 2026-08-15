@@ -36,6 +36,8 @@ jobs:
           sudo apt-get install make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync \
             gtk-doc-tools python3-pip ninja-build meson
+          # ubuntu-latest 自带的 meson (1.3.2) 太旧: glib 2.89.3 要求 >= 1.4.0
+          sudo python3 -m pip install --upgrade 'meson>=1.4.0'
 
       - name: 克隆代码
         run: |

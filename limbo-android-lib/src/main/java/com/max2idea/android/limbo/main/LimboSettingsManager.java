@@ -339,7 +339,7 @@ public class LimboSettingsManager extends PreferenceActivity {
 
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, getString(android.R.string.ok), new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int which) {
-                if (passwdView.getText().toString().trim().equals("")) {
+                if (passwdView.getText().toString().trim().isEmpty()) {
                     ToastUtils.toastShort(getApplicationContext(), getString(R.string.passwordCannotBeEmpty));
                 } else {
                     LimboSettingsManager.setVNCPass(activity, passwdView.getText().toString());

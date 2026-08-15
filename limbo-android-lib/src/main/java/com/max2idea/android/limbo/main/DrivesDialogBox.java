@@ -211,16 +211,16 @@ public class DrivesDialogBox extends Dialog implements Observer {
 
     public void setDriveAttr(FileType fileType, final String file) {
         notifyAction(MachineAction.INSERT_FAV, new Object[]{file, fileType});
-        if (fileType == FileType.CDROM && file != null && !file.trim().equals("")) {
+        if (fileType == FileType.CDROM && file != null && !file.trim().isEmpty()) {
             notifyFieldChange(MachineProperty.CDROM, file);
             setSpinnerValue(mCD, file);
-        } else if (fileType == FileType.SD && file != null && !file.trim().equals("")) {
+        } else if (fileType == FileType.SD && file != null && !file.trim().isEmpty()) {
             notifyFieldChange(MachineProperty.SD, file);
             setSpinnerValue(mSD, file);
-        } else if (file != null && !file.trim().equals("") && fileType == FileType.FDA) {
+        } else if (file != null && !file.trim().isEmpty() && fileType == FileType.FDA) {
             notifyFieldChange(MachineProperty.FDA, file);
             setSpinnerValue(mFDA, file);
-        } else if (file != null && !file.trim().equals("") && fileType == FileType.FDB) {
+        } else if (file != null && !file.trim().isEmpty() && fileType == FileType.FDB) {
             notifyFieldChange(MachineProperty.FDB, file);
             setSpinnerValue(mFDB, file);
         }

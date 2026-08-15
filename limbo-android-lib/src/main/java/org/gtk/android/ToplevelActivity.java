@@ -27,7 +27,6 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.Insets;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.net.Uri;
@@ -44,7 +43,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
-import android.view.WindowInsetsController;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
@@ -54,6 +52,10 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
+import androidx.core.graphics.Insets;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import java.util.Arrays;
 import java.util.logging.Level;
@@ -63,7 +65,7 @@ public class ToplevelActivity extends Activity {
 	public final static String toplevelIdentifierKey = "gdk/toplevel-identifier";
 
 	public static class UnregisteredSurfaceException extends Exception {
-		public UnregisteredSurfaceException(Object surface) {
+		public UnregisteredSurfaceException(@NonNull Object surface) {
 			super(String.format("Surface \"%s\" was not registered within GDK", surface.toString()));
 		}
 	}
@@ -145,14 +147,13 @@ public class ToplevelActivity extends Activity {
 					boolean imeKeyboardState = queuedImeKeyboardState > 0;
 					queuedImeKeyboardState = 0;
 					runOnUiThread(() -> {
-						WindowInsetsController controller = getWindowInsetsController();
+						WindowInsetsControllerCompat controller = new WindowInsetsControllerCompat(getWindow(), this);
 						if (imeKeyboardState) {
 							requestFocus();
-							if (controller != null)
-								controller.show(WindowInsets.Type.ime());
-						 } else if (controller != null) {
-							controller.hide(WindowInsets.Type.ime());
-						 }
+							controller.show(WindowInsetsCompat.Type.ime());
+						} else {
+							controller.hide(WindowInsetsCompat.Type.ime());
+						}
 					});
 				});
 			}
@@ -282,7 +283,8 @@ public class ToplevelActivity extends Activity {
 			public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
 				if (activeImContext == null)
 					return null;
-				outAttrs.contentMimeTypes = new String[] { "text/plain" };
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1)
+					outAttrs.contentMimeTypes = new String[] { "text/plain" };
 				//outAttrs.inputType = GlibContext.blockForMain(() -> activeImContext.getInputType());
 				outAttrs.inputType = InputType.TYPE_NULL;
 				outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
@@ -347,6 +349,8 @@ public class ToplevelActivity extends Activity {
 		public Surface toplevel;
 		private Surface grabbed;
 
+		private final int INSETS_TYPES = WindowInsetsCompat.Type.systemBars() |
+				WindowInsetsCompat.Type.displayCutout() | WindowInsetsCompat.Type.ime();
 		private Insets insets = Insets.NONE;
 
 		public ToplevelView() {
@@ -390,11 +394,15 @@ public class ToplevelActivity extends Activity {
 			return p instanceof LayoutParams;
 		}
 
+		@SuppressWarnings("deprecation")
 		@Override
 		public WindowInsets onApplyWindowInsets(WindowInsets insets) {
-			this.insets = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+			WindowInsetsCompat compat = WindowInsetsCompat.toWindowInsetsCompat(insets, this);
+			this.insets = compat.getInsets(INSETS_TYPES);
 			requestLayout();
-			return WindowInsets.CONSUMED;
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+				return WindowInsets.CONSUMED;
+			return insets.consumeSystemWindowInsets();
 		}
 
 		public void setGrabbedSurface(@Nullable Surface grabbed) {
@@ -440,6 +448,40 @@ public class ToplevelActivity extends Activity {
 	 */
 	protected boolean gtkAutoActivate = true;
 
+	/**
+	 * Returns the activity's content view. The default implementation returns
+	 * just the {@link ToplevelView}; host activities may override this method
+	 * to wrap the toplevel view with additional UI (e.g. a toolbar), as long
+	 * as the toplevel view itself remains attached to the view tree.
+	 *
+	 * <p>This is invoked from {@link #onCreate(Bundle)} right after the
+	 * {@link ToplevelView} has been created, so {@link #getGtkView()} is
+	 * already available here.
+	 */
+	protected View createContentView() {
+		return this.view;
+	}
+
+	/**
+	 * @return the {@link ToplevelView} that hosts the GTK toplevel surface.
+	 */
+	protected ToplevelView getGtkView() {
+		return this.view;
+	}
+
+	/**
+	 * Shows or hides the IME (soft) keyboard for the GTK toplevel surface.
+	 * This is a no-op until the toplevel surface has been attached.
+	 *
+	 * @param show {@code true} to show the soft keyboard, {@code false} to hide it
+	 */
+	public void setImeKeyboardState(boolean show) {
+		runOnUiThread(() -> {
+			if (this.view != null && this.view.toplevel != null)
+				this.view.toplevel.setImeKeyboardState(show);
+		});
+	}
+
 	private OnBackInvokedCallback defaultBack;
 
 	@Override
@@ -448,20 +490,23 @@ public class ToplevelActivity extends Activity {
 
 		super.onCreate(savedInstanceState);
 		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER);
-		getWindow().setDecorFitsSystemWindows(false);
+		WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
 
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			this.defaultBack = new OnBackInvokedCallback() {
 				@Override
 				public void onBackInvoked() {
-					GlibContext.runOnMain(ToplevelActivity.this::notifyOnBackPress);
+					// Route through onBackPressed() so host activities can
+					// intercept the back press (e.g. to restore a hidden
+					// toolbar) on all API levels.
+					onBackPressed();
 				}
 			};
 			getOnBackInvokedDispatcher().registerOnBackInvokedCallback(0, this.defaultBack);
 		}
 
 		this.view = new ToplevelView();
-		setContentView(this.view);
+		setContentView(createContentView());
 
 		if (!gtkAutoActivate)
 			return;
@@ -569,25 +614,25 @@ public class ToplevelActivity extends Activity {
 	public void postWindowConfiguration(int color, boolean fullscreen) {
 		runOnUiThread(() -> {
 			Window window = getWindow();
-			WindowInsetsController controller = window.getInsetsController();
+			WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
 
 			view.setBackgroundColor(color);
 			// Taken from SO: https://stackoverflow.com/a/3943023
 			// Licensed under CC-BY-SA 4.0
 			boolean dark_fg = (((color >> 16) & 0xFF) * 0.299 +
 			                   ((color >>  8) & 0xFF) * 0.587 +
-			                   ((color >>  0) & 0xFF) * 0.114) > 186;
+			                   ((color) & 0xFF) * 0.114) > 186;
 
-			int bars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-			controller.setSystemBarsAppearance(dark_fg ? bars : 0, bars);
+			controller.setAppearanceLightStatusBars(dark_fg);
+			controller.setAppearanceLightNavigationBars(dark_fg);
 
 			this.fullscreenState = fullscreen;
 			if (fullscreen) {
-				controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-				controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+				controller.hide(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
+				controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
 			} else {
-				controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-				controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_DEFAULT);
+				controller.show(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
+				controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
 			}
 			updateToplevelState();
 		});

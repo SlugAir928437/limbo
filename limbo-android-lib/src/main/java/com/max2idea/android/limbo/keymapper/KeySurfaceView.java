@@ -670,7 +670,7 @@ public class KeySurfaceView extends SurfaceView implements SurfaceHolder.Callbac
         for(String text : texts) {
             if(centerKeys >= 2) // only 2 texts in the center
                 break;
-            if(!textCenter.toString().equals(""))
+            if(!textCenter.toString().isEmpty())
                 textCenter.insert(0, "+");
             textCenter.insert(0, text);
             src.remove(text);

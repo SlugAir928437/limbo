@@ -26,6 +26,8 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.View;
 
+import androidx.annotation.NonNull;
+
 import com.max2idea.android.limbo.machine.MachineAction;
 
 import org.libsdl.app.SDLActivity;
@@ -84,7 +86,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         }).start();
     }
 
-    public boolean onTouchProcess(View v, MotionEvent event) {
+    public boolean onTouchProcess(View v, @NonNull MotionEvent event) {
         int action = event.getActionMasked();
         mouseState.x = event.getX();
         mouseState.y = event.getY();

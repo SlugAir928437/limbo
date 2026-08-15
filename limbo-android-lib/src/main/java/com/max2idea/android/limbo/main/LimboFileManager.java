@@ -327,7 +327,7 @@ public class LimboFileManager extends ListActivity {
         Button button = alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
         button.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                if (dirNameTextview.getText().toString().trim().equals(""))
+                if (dirNameTextview.getText().toString().trim().isEmpty())
                     ToastUtils.toastShort(activity, getString(R.string.DirNameCannotBeEmpty));
                 else {
                     createDirectory(dirNameTextview.getText().toString());

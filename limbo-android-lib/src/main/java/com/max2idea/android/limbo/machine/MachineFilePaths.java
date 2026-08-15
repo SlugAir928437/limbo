@@ -23,7 +23,7 @@ import java.util.ArrayList;
 public class MachineFilePaths {
 
     public static void insertRecentFilePath(Machine.FileType fileType, String filePath) {
-        if (fileType == null || filePath == null || filePath.equals(""))
+        if (fileType == null || filePath == null || filePath.isEmpty())
             return;
         if (!isRecentFilePathStored(fileType, filePath)) {
             FavOpenHelper.getInstance().insertFav(fileType.name().toLowerCase(), filePath);

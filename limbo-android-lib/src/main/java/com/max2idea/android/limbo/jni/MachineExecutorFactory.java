@@ -18,16 +18,19 @@ Copyright (C) Max Kastanas 2012
  */
 package com.max2idea.android.limbo.jni;
 
+import androidx.annotation.Nullable;
+
 import com.max2idea.android.limbo.machine.MachineController;
 import com.max2idea.android.limbo.machine.MachineExecutor;
+
+import java.util.Objects;
 
 public class MachineExecutorFactory {
     private static final String TAG = "MachineExecutorFactory";
 
     public static MachineExecutor createMachineExecutor(MachineController machineController, MachineExecutorType type) {
-        switch (type) {
-            case QEMU:
-                return new VMExecutor(machineController);
+        if (Objects.requireNonNull(type) == MachineExecutorType.QEMU) {
+            return new VMExecutor(machineController);
         }
         return null;
     }

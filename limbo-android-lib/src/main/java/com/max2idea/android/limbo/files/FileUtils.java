@@ -186,7 +186,7 @@ public class FileUtils {
     }
 
     public static boolean fileValid(String path) {
-        if (path == null || path.equals(""))
+        if (path == null || path.isEmpty())
             return true;
         if (path.startsWith("content://") || path.startsWith("/content/")) {
             int fd = get_fd(path);

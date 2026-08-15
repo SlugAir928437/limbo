@@ -29,7 +29,6 @@ import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.AudioTrack;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -50,12 +49,12 @@ import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.widget.Toolbar;
 
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.files.FileUtils;
-import com.max2idea.android.limbo.help.Help;
 import com.max2idea.android.limbo.keyboard.KeyboardUtils;
 import com.max2idea.android.limbo.keymapper.KeyMapManager;
 import com.max2idea.android.limbo.log.Logger;
@@ -199,7 +198,7 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     @Override
-    public boolean onOptionsItemSelected(final MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull final MenuItem item) {
         super.onOptionsItemSelected(item);
         if (item.getItemId() == R.id.itemDrives) {
             // Show up removable devices dialog
@@ -238,8 +237,6 @@ public class LimboSDLActivity extends SDLActivity
             LimboActivityCommon.promptPause(this, viewListener);
         } else if (item.getItemId() == R.id.itemCtrlAltDel) {
             sendCtrlAltDel();
-        } else if (item.getItemId() == R.id.itemHelp) {
-            Help.showHelp(this);
         } else if (item.getItemId() == R.id.itemHideToolbar) {
             hideToolbar();
         } else if (item.getItemId() == R.id.itemDisplay) {
@@ -383,7 +380,7 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
+    public boolean onPrepareOptionsMenu(@NonNull Menu menu) {
         menu.clear();
         getMenuInflater().inflate(R.menu.sdlactivitymenu, menu);
 
@@ -438,7 +435,7 @@ public class LimboSDLActivity extends SDLActivity
     // FIXME: We need this to able to catch complex characters strings like
     // grave and send it as text
     @Override
-    public boolean dispatchKeyEvent(KeyEvent event) {
+    public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_MULTIPLE && event.getKeyCode() == KeyEvent.KEYCODE_UNKNOWN) {
             sendText(event.getCharacters());
             return true;
@@ -463,7 +460,7 @@ public class LimboSDLActivity extends SDLActivity
         }
     }
 
-    private void sendText(String string) {
+    private void sendText(@NonNull String string) {
         KeyCharacterMap keyCharacterMap = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD);
         KeyEvent[] keyEvents = keyCharacterMap.getEvents(string.toCharArray());
         if (keyEvents == null)
@@ -504,10 +501,8 @@ public class LimboSDLActivity extends SDLActivity
                     WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
         PowerManager pm = (PowerManager) getApplicationContext().getSystemService(Context.POWER_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            if(pm.isSustainedPerformanceModeSupported())
-                getWindow().setSustainedPerformanceMode(true);
-        }
+        if (pm.isSustainedPerformanceModeSupported())
+            getWindow().setSustainedPerformanceMode(true);
     }
 
     private void setupListeners() {
@@ -533,14 +528,14 @@ public class LimboSDLActivity extends SDLActivity
     private void setupWidgets() {
         mSurface = new LimboSDLSurface(this, this);
 
-        setContentView(R.layout.limbo_sdl);
-        mLayout = (RelativeLayout) findViewById(R.id.sdl_layout);
+        setContentView(R.layout.limbo_display);
+        mLayout = findViewById(R.id.sdl_layout);
 
         setupKeyMapManager();
-        RelativeLayout mLayout = (RelativeLayout) findViewById(R.id.sdl);
+        RelativeLayout mLayout = findViewById(R.id.sdl);
         mLayout.addView(mSurface);
 
-        mGap = (View) findViewById(R.id.gap);
+        mGap = findViewById(R.id.gap);
         updateLayout(getResources().getConfiguration().orientation);
 
     }
@@ -704,6 +699,7 @@ public class LimboSDLActivity extends SDLActivity
         }, 5000);
     }
 
+    @SuppressWarnings("MissingSuperCall")
     public void onBackPressed() {
         if (mKeyMapManager != null && mKeyMapManager.isEditMode()) {
             toggleKeyMapper();

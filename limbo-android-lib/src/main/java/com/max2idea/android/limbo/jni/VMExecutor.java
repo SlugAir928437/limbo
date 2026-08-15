@@ -179,7 +179,7 @@ private String getQemuLibrary() {
      * @param paramsList Existing parameter list to be passed to qemu
      */
     private void addStateOptions(ArrayList<String> paramsList) {
-        if (MachineController.getInstance().isPaused() && !getSaveStateName().equals("")) {
+        if (MachineController.getInstance().isPaused() && !getSaveStateName().isEmpty()) {
             int fd_tmp = FileUtils.get_fd(getSaveStateName());
             if (fd_tmp < 0) {
                 Log.e(TAG, "Error while getting fd for: " + getSaveStateName());
@@ -227,12 +227,11 @@ private String getQemuLibrary() {
             paramsList.add("-parallel");
             paramsList.add("none");
 
+            paramsList.add("-display");
             if (gtk) {
                 // GTK4 android backend (initialized by LimboGtk on the activity side)
-                paramsList.add("-display");
-                paramsList.add("gtk");
+                paramsList.add("gtk,show-menubar=off");
             } else {
-                paramsList.add("-display");
                 paramsList.add("sdl");
             }
         }
@@ -251,7 +250,7 @@ private String getQemuLibrary() {
 
     private void addAdvancedOptions(ArrayList<String> paramsList) {
 
-        if (getMachine().getExtraParams() != null && !getMachine().getExtraParams().trim().equals("")) {
+        if (getMachine().getExtraParams() != null && !getMachine().getExtraParams().trim().isEmpty()) {
             String[] paramsTmp = getMachine().getExtraParams().split(" ");
             paramsList.addAll(Arrays.asList(paramsTmp));
         }
@@ -418,32 +417,37 @@ private String getQemuLibrary() {
         String network = getNetCfg();
         if (network != null) {
             paramsList.add("-net");
-            if (network.equals("user")) {
-                String netParams = network;
-                String hostFwd = getHostFwd();
-                if (hostFwd != null) {
+            switch (network) {
+                case "user":
+                    StringBuilder netParams = new StringBuilder(network);
+                    String hostFwd = getHostFwd();
+                    if (hostFwd != null) {
 
-                    //hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport{,hostfwd=...}
-                    // example forward ssh from guest port 2222 to guest port 22:
-                    // hostfwd=tcp::2222-:22
-                    if (hostFwd.startsWith("hostfwd")) {
-                        throw new Exception("Invalid format for Host Forward, should be: tcp:hostport1:guestport1,udp:hostport2:questport2,...");
+                        //hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport{,hostfwd=...}
+                        // example forward ssh from guest port 2222 to guest port 22:
+                        // hostfwd=tcp::2222-:22
+                        if (hostFwd.startsWith("hostfwd")) {
+                            throw new Exception("Invalid format for Host Forward, should be: tcp:hostport1:guestport1,udp:hostport2:questport2,...");
+                        }
+                        String[] hostFwdParams = hostFwd.split(",");
+                        for (String hostFwdParam : hostFwdParams) {
+                            netParams.append(",");
+                            String[] hostfwdparam = hostFwdParam.split(":");
+                            netParams.append("hostfwd=").append(hostfwdparam[0]).append("::").append(hostfwdparam[1]).append("-:").append(hostfwdparam[2]);
+                        }
                     }
-                    String[] hostFwdParams = hostFwd.split(",");
-                    for (int i = 0; i < hostFwdParams.length; i++) {
-                        netParams += ",";
-                        String[] hostfwdparam = hostFwdParams[i].split(":");
-                        netParams += ("hostfwd=" + hostfwdparam[0] + "::" + hostfwdparam[1] + "-:" + hostfwdparam[2]);
-                    }
-                }
-                paramsList.add(netParams);
-            } else if (network.equals("tap")) {
-                paramsList.add("tap,vlan=0,ifname=tap0,script=no");
-            } else if (network.equals("none")) {
-                paramsList.add("none");
-            } else {
-                //Unknown interface
-                paramsList.add("none");
+                    paramsList.add(netParams.toString());
+                    break;
+                case "tap":
+                    paramsList.add("tap,vlan=0,ifname=tap0,script=no");
+                    break;
+                case "none":
+                    paramsList.add("none");
+                    break;
+                default:
+                    //Unknown interface
+                    paramsList.add("none");
+                    break;
             }
         }
 
@@ -461,7 +465,7 @@ private String getQemuLibrary() {
 
     private String getHostFwd() {
         if (getMachine().getNetwork().equals("User")) {
-            if (getMachine().getHostFwd() != null && !getMachine().getHostFwd().equals(""))
+            if (getMachine().getHostFwd() != null && !getMachine().getHostFwd().isEmpty())
                 return getMachine().getHostFwd();
         }
         return null;
@@ -512,18 +516,18 @@ private String getQemuLibrary() {
         }
 
         String kernel = getKernel();
-        if (kernel != null && !kernel.equals("")) {
+        if (kernel != null && !kernel.isEmpty()) {
             paramsList.add("-kernel");
             paramsList.add(kernel);
         }
 
         String initrd = getInitRd();
-        if (initrd != null && !initrd.equals("")) {
+        if (initrd != null && !initrd.isEmpty()) {
             paramsList.add("-initrd");
             paramsList.add(initrd);
         }
 
-        if (getMachine().getAppend() != null && !getMachine().getAppend().equals("")) {
+        if (getMachine().getAppend() != null && !getMachine().getAppend().isEmpty()) {
             paramsList.add("-append");
             paramsList.add(getMachine().getAppend());
         }
@@ -578,40 +582,22 @@ private String getQemuLibrary() {
     }
 
     public void addHardDisk(ArrayList<String> paramsList, String imagePath, int index, String hdInterface) {
-        if (imagePath != null && !imagePath.trim().equals("")) {
-            if (Config.legacyDrives) {
-                switch (index) {
-                    case 0:
-                        paramsList.add("-hda");
-                        break;
-                    case 1:
-                        paramsList.add("-hdb");
-                        break;
-                    case 2:
-                        paramsList.add("-hdc");
-                        break;
-                    case 3:
-                        paramsList.add("-hdd");
-                        break;
+        if (imagePath != null && !imagePath.trim().isEmpty()) {
+            paramsList.add("-drive");
+            String param = "index=" + index;
+            param += ",if=";
+            param += hdInterface;
+            param += ",media=disk";
+            if (!imagePath.isEmpty()) {
+                param += ",file=" + imagePath;
+                if (isRawImage(imagePath)) {
+                    param += ",format=raw";
                 }
-                paramsList.add(imagePath);
-            } else {
-                paramsList.add("-drive");
-                String param = "index=" + index;
-                param += ",if=";
-                param += hdInterface;
-                param += ",media=disk";
-                if (!imagePath.equals("")) {
-                    param += ",file=" + imagePath;
-                    if (isRawImage(imagePath)) {
-                        param += ",format=raw";
-                    }
-                }
-                String cache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
-                if(cache != null && !cache.equals("default"))
-                    param += ",cache=" + cache;
-                paramsList.add(param);
             }
+            String cache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
+            if(cache != null && !cache.equals("default"))
+                param += ",cache=" + cache;
+            paramsList.add(param);
         }
     }
 
@@ -634,67 +620,47 @@ private String getQemuLibrary() {
     public void addRemovableDrives(ArrayList<String> paramsList) {
         String cdImagePath = getDriveFilePath(getMachine().getCdImagePath());
         if (cdImagePath != null) {
-            if (Config.legacyDrives) {
-                paramsList.add("-cdrom");
-                paramsList.add(cdImagePath);
-            } else {
-                paramsList.add("-drive"); //empty
-                String param = "index=2";
-                param += ",if=";
-                param += getMachine().getCDInterface();
-                param += ",media=cdrom";
-                if (!cdImagePath.equals("")) {
-                    param += ",file=" + cdImagePath;
-                }
-                paramsList.add(param);
+            paramsList.add("-drive"); //empty
+            String param = "index=2";
+            param += ",if=";
+            param += getMachine().getCDInterface();
+            param += ",media=cdrom";
+            if (!cdImagePath.isEmpty()) {
+                param += ",file=" + cdImagePath;
             }
+            paramsList.add(param);
         }
 
         String fdaImagePath = getDriveFilePath(getMachine().getFdaImagePath());
         if (Config.enableEmulatedFloppy && fdaImagePath != null) {
-            if (Config.legacyDrives) {
-                paramsList.add("-fda");
-                paramsList.add(fdaImagePath);
-            } else {
-                paramsList.add("-drive"); //empty
-                String param = "index=0,if=floppy";
-                if (!fdaImagePath.equals("")) {
-                    param += ",file=" + fdaImagePath;
-                }
-                paramsList.add(param);
+            paramsList.add("-drive"); //empty
+            String param = "index=0,if=floppy";
+            if (!fdaImagePath.isEmpty()) {
+                param += ",file=" + fdaImagePath;
             }
+            paramsList.add(param);
         }
 
         String fdbImagePath = getDriveFilePath(getMachine().getFdbImagePath());
         if (Config.enableEmulatedFloppy && fdbImagePath != null) {
-            if (Config.legacyDrives) {
-                paramsList.add("-fdb");
-                paramsList.add(fdbImagePath);
-            } else {
-                paramsList.add("-drive"); //empty
-                String param = "index=1,if=floppy";
-                if (!fdbImagePath.equals("")) {
-                    param += ",file=" + fdbImagePath;
-                }
-                paramsList.add(param);
+            paramsList.add("-drive"); //empty
+            String param = "index=1,if=floppy";
+            if (!fdbImagePath.isEmpty()) {
+                param += ",file=" + fdbImagePath;
             }
+            paramsList.add(param);
         }
 
         String sdImagePath = getDriveFilePath(getMachine().getSdImagePath());
         if (Config.enableEmulatedSDCard && sdImagePath != null) {
-            if (Config.legacyDrives) {
-                paramsList.add("-sd");
-                paramsList.add(sdImagePath);
-            } else {
-                paramsList.add("-device");
-                paramsList.add("sd-card,drive=sd0,bus=sd-bus");
-                paramsList.add("-drive");
-                String param = "if=none,id=sd0";
-                if (!sdImagePath.equals("")) {
-                    param += ",file=" + sdImagePath;
-                }
-                paramsList.add(param);
+            paramsList.add("-device");
+            paramsList.add("sd-card,drive=sd0,bus=sd-bus");
+            paramsList.add("-drive");
+            String param = "if=none,id=sd0";
+            if (!sdImagePath.isEmpty()) {
+                param += ",file=" + sdImagePath;
             }
+            paramsList.add(param);
         }
 
     }
@@ -708,12 +674,12 @@ private String getQemuLibrary() {
      */
     protected void vncchangepassword(String vncPassword) throws Exception {
         String res = QmpClient.sendCommand(QmpClient.getChangeVncPasswdCommand(vncPassword));
-        String desc = null;
-        if (res != null && !res.equals("")) {
+        String desc;
+        if (res != null && !res.isEmpty()) {
             JSONObject resObj = new JSONObject(res);
-            if (resObj != null && !resObj.equals("") && res.contains("error")) {
+            if (!resObj.equals("") && res.contains("error")) {
                 String resInfo = resObj.getString("error");
-                if (resInfo != null && !resInfo.equals("")) {
+                if (!resInfo.isEmpty()) {
                     JSONObject resInfoObj = new JSONObject(resInfo);
                     desc = resInfoObj.getString("desc");
                     Log.e(TAG, desc);
@@ -850,7 +816,7 @@ private String getQemuLibrary() {
     }
 
     @Override
-    public String getDeviceName(MachineProperty driveProperty) {
+    public String getDeviceName(@NonNull MachineProperty driveProperty) {
         switch (driveProperty) {
             case CDROM:
                 return cdDeviceName;
@@ -937,7 +903,7 @@ private String getQemuLibrary() {
     public String getVmState() {
         String res = QmpClient.sendCommand(QmpClient.getStateCommand());
         String state = "";
-        if (res != null && !res.equals("")) {
+        if (res != null && !res.isEmpty()) {
             try {
                 JSONObject resObj = new JSONObject(res);
                 String resInfo = resObj.getString("return");
@@ -967,7 +933,7 @@ private String getQemuLibrary() {
         String response = VMExecutor.this.ejectdev(dev);
 
         // if there is no media there is nothing else to do
-        if (imagePath == null || imagePath.trim().equals("")) {
+        if (imagePath == null || imagePath.trim().isEmpty()) {
             return true;
         }
 
@@ -983,10 +949,7 @@ private String getQemuLibrary() {
             return false;
         }
         response = VMExecutor.this.changedev(dev, imagePathConverted);
-        if (response == null)
-            return false;
-
-        return true;
+        return response != null;
     }
 
     /**
@@ -1050,7 +1013,7 @@ private String getQemuLibrary() {
         String command = QmpClient.getQueryMigrationCommand();
         String res = QmpClient.sendCommand(command);
 
-        if (res != null && !res.equals("")) {
+        if (res != null && !res.isEmpty()) {
             try {
                 JSONObject resObj = new JSONObject(res);
                 String resInfo = resObj.getString("return");

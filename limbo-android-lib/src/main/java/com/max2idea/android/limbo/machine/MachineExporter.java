@@ -87,7 +87,7 @@ public class MachineExporter extends AsyncTask<Void, Void, Void> {
                 }
 
                 String exportFilename = exportNameView.getText().toString();
-                if (exportFilename.trim().equals(""))
+                if (exportFilename.trim().isEmpty())
                     ToastUtils.toastShort(activity, activity.getString(R.string.ExportFilenameCannotBeEmpty));
                 else {
 

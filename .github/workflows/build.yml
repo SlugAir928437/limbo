@@ -41,36 +41,53 @@ jobs:
         run: |
           #Make sure you're under the jni directory
           cd ./limbo-android-lib/src/main/jni
-          
-          # Now download the source code for the external libraries and unzip them under the jni directory
-          #Note: if some of these file links don't download with wget use your browser to download them
-          
+
+          # glib / pixman / libffi are git-ignored in this repo and their
+          # source trees are not shipped, so the CI fetches them from the same
+          # wrap sources the gtk4android submodule describes:
+          #   glib  2.89.3  (wrap-git: gitlab.gnome.org, fixed commit ed3abf0b
+          #                  + patches/glib-hack.patch, tracked in this repo)
+          #   libffi 3.5.2  (wrap-file: github release tarball)
+          #   pixman 0.43.4 (wrap-file: cairographics tarball)
+
           ##### GET glib
-          wget --quiet https://download.gnome.org/sources/glib/2.66/glib-2.66.8.tar.xz -P /tmp/
-          tar -xJf /tmp/glib-2.66.8.tar.xz
-          mv glib-2.66.8 glib
-          
+          git init glib
           cd glib
-          patch -p1 < ../patches/glib-2.66.8.patch
+          git remote add origin https://gitlab.gnome.org/GNOME/glib.git
+          git fetch --depth 1 origin ed3abf0b5221d613a333ed5b118b2f2acc66acd3
+          git checkout FETCH_HEAD
+          git apply ../patches/glib-hack.patch
           cd ..
-          
+
           ##### GET libffi
-          wget --quiet https://sourceware.org/pub/libffi/libffi-3.3.tar.gz -P /tmp/
-          tar -xzf /tmp/libffi-3.3.tar.gz
-          mv libffi-3.3 libffi
-          
+          wget --quiet https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/
+          tar -xzf /tmp/libffi-3.5.2.tar.gz
+          mv libffi-3.5.2 libffi
+
           ##### GET pixman
-          wget --quiet https://www.cairographics.org/releases/pixman-0.40.0.tar.gz -P /tmp/
-          tar -xzf /tmp/pixman-0.40.0.tar.gz
-          mv pixman-0.40.0 pixman
-          
+          wget --quiet https://www.cairographics.org/releases/pixman-0.43.4.tar.gz -P /tmp/ || \
+          wget --quiet https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz -P /tmp/
+          tar -xzf /tmp/pixman-0.43.4.tar.gz
+          mv pixman-0.43.4 pixman
+
+          # sanity check: the sources were fetched
+          test -f glib/meson.build
+          test -f pixman/meson.build
+          test -f libffi/configure.ac
+
           ##### GET SDL2
           wget --quiet https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/
           tar -xzf /tmp/SDL2-2.0.8.tar.gz
           mv SDL2-2.0.8 SDL2
-          
+
           cd SDL2
           patch -p1 < ../patches/sdl2-2.0.8.patch
+
+      - name: 缓存 meson wrap 下载 (pcre2 等)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/meson
+          key: meson-wrap-${{ runner.os }}
 
       - name: Build QEMU
         run: |
@@ -79,6 +96,8 @@ jobs:
           export PATH=$PATH:$NDK_ROOT
           export BUILD_THREADS=$(nproc)
           export BUILD_GUEST=${{ github.event.inputs.build_guest || 'x86_64-softmmu,aarch64-softmmu,ia64-softmmu' }}
+          export USE_GTK=true
+          # 完整构建链: ffi -> glib -> pixman -> gtk(gtk4android) -> qemu -> limbo
           make limbo
 
       - name: Build with Gradle

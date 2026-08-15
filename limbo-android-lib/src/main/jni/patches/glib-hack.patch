@@ -1,0 +1,114 @@
+diff --git a/gio/gio_probes.d b/gio/gio_probes.d
+deleted file mode 100644
+index 0719a39..0000000
+--- a/gio/gio_probes.d
++++ /dev/null
+@@ -1,10 +0,0 @@
+-provider gio {
+-	probe task__new(void*, void*, void*, void*, void*);
+-	probe task__set_task_data(void*, void*, void*);
+-	probe task__set_priority(void*, int);
+-	probe task__set_source_tag(void*, void*);
+-	probe task__before_return(void*, void*, void*, void*);
+-	probe task__propagate(void*, int);
+-	probe task__before_run_in_thread(void*, void*);
+-	probe task__after_run_in_thread(void*, int);
+-};
+diff --git a/glib/glib_probes.d b/glib/glib_probes.d
+deleted file mode 100644
+index 02a8ecd..0000000
+--- a/glib/glib_probes.d
++++ /dev/null
+@@ -1,61 +0,0 @@
+-provider glib {
+-	probe mem__alloc(void*, size_t, unsigned int, unsigned int);
+-	probe mem__realloc(void*, void *, size_t, unsigned int);
+-	probe mem__free(void*);
+-	probe slice__alloc(void*, size_t);
+-	probe slice__free(void*, size_t);
+-	probe quark__new(const char *, unsigned int);
+-	probe main__after_prepare(void*, void*, int);
+-	probe main__after_check(void*, void*, int);
+-	probe main__before_dispatch(const char*, void*, void*, void*, void*);
+-	probe main__after_dispatch(const char*, void*, void*, int);
+-	probe main__source_attach(const char*, void*, void*, unsigned int);
+-	probe main__source_destroy(const char*, void*, void*);
+-	probe main__context_default(void*);
+-	probe main__context_new(void*);
+-	probe main__context_acquire(void*, int);
+-	probe main__context_release(void*);
+-	probe main__context_free(void*);
+-	probe main__context_push_thread_default(void*);
+-	probe main__context_pop_thread_default(void*);
+-	probe main__context_before_prepare(void*);
+-	probe main__context_after_prepare(void*, int, int);
+-	probe main__context_before_query(void*, int);
+-	probe main__context_after_query(void*, bool, uint64_t, void*, int);
+-	probe main__context_before_check(void*, int, void*, int);
+-	probe main__context_after_check(void*, int);
+-	probe main__context_before_dispatch(void*);
+-	probe main__context_after_dispatch(void*);
+-	probe main__context_wakeup(void*);
+-	probe main__context_wakeup_acknowledge(void*);
+-	probe main__loop_new(void*, void*);
+-	probe main__loop_quit(void*);
+-	probe idle__add(void*, void*, unsigned int, int, void*, void*);
+-	probe idle__dispatch(void*, void*, void*, void*, int);
+-	probe timeout__add(void*, void*, unsigned int, int, unsigned int, void*, void*);
+-	probe timeout__dispatch(void*, void*, void*, void*, int);
+-	probe source__new(void*, void*, void*, void*, void*, unsigned int);
+-	probe source__set_callback(void*, void*, void*, void*);
+-	probe source__set_callback_indirect(void*, void*, void*, void*, void*);
+-	probe source__set_ready_time(void*, int64_t);
+-	probe source__set_priority(void*, void*, int);
+-	probe source__add_child_source(void*, void*);
+-	probe source__set_name(void*, const char*);
+-	probe source__before_free(void*, void*, void*);
+-	probe thread__spawned(void*, void*, char*);
+-        probe rcbox__alloc(void*, size_t, int, int);
+-        probe rcbox__acquire(void*, unsigned int);
+-        probe rcbox__release(void*, unsigned int);
+-        probe rcbox__free(void*);
+-	probe variant__type_info_new(void*, const char*);
+-	probe variant__type_info_free(void*);
+-	probe variant__start_serialise(void*, const char*);
+-	probe variant__end_serialise(void*, const char*);
+-	probe variant__from_buffer(void*, const char*, int, int);
+-	probe variant__from_children(void*, const char*, int, int);
+-	probe variant__unref(void*, const char*, int, int);
+-	probe variant__ref(void*, const char*, int, int);
+-	probe variant__ref_sink(void*, const char*, int, int, int);
+-	probe variant__take_ref(void*, const char*, int, int, int);
+-	probe variant__from_parent(void*, const char*, int, int, void*);
+-};
+diff --git a/glib/gutilsprivate.h b/glib/gutilsprivate.h
+index 5717735..97b94ec 100644
+--- a/glib/gutilsprivate.h
++++ b/glib/gutilsprivate.h
+@@ -31,6 +31,7 @@
+ 
+ G_BEGIN_DECLS
+ 
++GLIB_AVAILABLE_IN_ALL
+ void g_set_user_dirs (const gchar *first_dir_type,
+                       ...) G_GNUC_NULL_TERMINATED;
+ 
+diff --git a/gobject/gobject_probes.d b/gobject/gobject_probes.d
+deleted file mode 100644
+index 5914958..0000000
+--- a/gobject/gobject_probes.d
++++ /dev/null
+@@ -1,13 +0,0 @@
+-provider gobject {
+-	probe type__new(char *, uintmax_t, uintmax_t);
+-	probe object__new(void*, uintmax_t);
+-	probe object__ref(void*, uintmax_t, int);
+-	probe object__unref(void*, uintmax_t, int);
+-	probe object__dispose(void*, uintmax_t, unsigned int);
+-	probe object__dispose__end(void*, uintmax_t, unsigned int);
+-	probe object__finalize(void*, uintmax_t);
+-	probe object__finalize__end(void*, uintmax_t);
+-	probe signal__new(unsigned int, char *, uintmax_t);
+-	probe signal__emit(unsigned int, unsigned int, void *, uintmax_t);
+-	probe signal__emit__end(unsigned int, unsigned int, void *, uintmax_t);
+-};

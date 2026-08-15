@@ -233,8 +233,11 @@ clean-pixman:
 # be built (and their .pc files generated) before we can configure GTK.
 config-gtk: ndk pkg-config-link ffi glib pixman
 	$(CREATE_GTK_MESON_CROSS_FILE)
-	# apply the required glib hack patch (meson skips diff_files for pre-existing dirs)
-	@if ! grep -q 'GLIB_AVAILABLE_IN_ALL' \
+	# apply the required glib hack patch (meson skips diff_files for pre-existing
+	# dirs); only when a glib source tree exists inside gtk4android (the wrap
+	# dirs are not shipped with the submodule, so CI simply skips this)
+	@if [ -f $(LIMBO_JNI_ROOT)/gtk4android/subprojects/glib/glib/gutilsprivate.h ] && \
+		! grep -q 'GLIB_AVAILABLE_IN_ALL' \
 		$(LIMBO_JNI_ROOT)/gtk4android/subprojects/glib/glib/gutilsprivate.h; then \
 		cd $(LIMBO_JNI_ROOT)/gtk4android/subprojects/glib && \
 		git apply ../packagefiles/glib/hack.patch || { echo 'ERROR: failed to apply glib hack.patch'; exit 1; }; \

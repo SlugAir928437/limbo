@@ -246,6 +246,8 @@ public class LimboActivity extends AppCompatActivity implements
                 unlockRemovableDevices(true);
                 enableRemovableDiskValues(true);
                 enableNonRemovableDeviceOptions(true);
+                // re-enable the machine selector (it was disabled while running)
+                uiState.setMachineEnabled(true);
             } else if (statusChanged == MachineStatus.Saving) {
                 uiState.setStatusRunning(true);
                 uiState.setStatusText(getString(R.string.savingState));

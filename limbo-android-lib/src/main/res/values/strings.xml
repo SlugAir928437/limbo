@@ -420,8 +420,6 @@
     <string name="label_video_display">Video Display: </string>
     <string name="title_board">Board</string>
     <string name="label_machine_type">Machine Type:</string>
-    <string name="label_nvram">NVRAM File:</string>
-    <string name="hint_nvram">auto or path</string>
     <string name="help_title">Help</string>
     <string name="help">Help</string>
     <string name="help_text">For documentation and support please visit the Limbo emulator project page at https://github.com/limboemu/limbo</string>

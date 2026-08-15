@@ -148,10 +148,6 @@ public class LimboActivity extends AppCompatActivity implements
         if (getMachine() != null)
             notifyFieldChange(MachineProperty.EXTRA_PARAMS, uiState.getExtraParams());
     };
-    private final Runnable nvramCommit = () -> {
-        if (getMachine() != null)
-            notifyFieldChange(MachineProperty.NVRAM, uiState.getNvramValue());
-    };
     private final Runnable cpuNumCommit = () -> {
         if (getMachine() != null) {
             int cpuNum = parseIntSafe(uiState.getCpuNumValue(), 1);
@@ -702,11 +698,6 @@ public class LimboActivity extends AppCompatActivity implements
         uiState.setDisableHPETEnabled(flag);
         uiState.setDisableTSCEnabled(flag);
         uiState.setExtraParamsEnabled(flag);
-        uiState.setNvramEnabled(flag && isIa64());
-    }
-
-    private boolean isIa64() {
-        return LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w;
     }
 
     private void setCPUOptions() {
@@ -1091,9 +1082,6 @@ public class LimboActivity extends AppCompatActivity implements
                     uiState.setInitrdSel(0);
                 }
                 break;
-            case NVRAM:
-                uiState.setNvramValue(diskValue != null ? diskValue : "");
-                break;
             default:
                 // storage device rows
                 StorageEntry entry = null;
@@ -1181,7 +1169,6 @@ public class LimboActivity extends AppCompatActivity implements
         debounceHandler.removeCallbacks(dnsCommit);
         debounceHandler.removeCallbacks(hostFwdCommit);
         debounceHandler.removeCallbacks(extraParamsCommit);
-        debounceHandler.removeCallbacks(nvramCommit);
         debounceHandler.removeCallbacks(cpuNumCommit);
         debounceHandler.removeCallbacks(ramCommit);
         new Handler(Looper.getMainLooper()).post(() -> {
@@ -1220,9 +1207,6 @@ public class LimboActivity extends AppCompatActivity implements
         uiState.setAppend(getMachine() != null && getMachine().getAppend() != null ? getMachine().getAppend() : "");
         uiState.setHostFwd(getMachine() != null && getMachine().getHostFwd() != null ? getMachine().getHostFwd() : "");
         uiState.setExtraParams(getMachine() != null && getMachine().getExtraParams() != null ? getMachine().getExtraParams() : "");
-        // NVRAM is an IA-64 only motherboard option
-        uiState.setNvramVisible(isIa64());
-        uiState.setNvramValue(getMachine() != null && getMachine().getNvram() != null ? getMachine().getNvram() : "");
 
         // Storage devices are loaded dynamically
         refreshStorageDevices();
@@ -1334,8 +1318,6 @@ public class LimboActivity extends AppCompatActivity implements
             text = appendOption("Disable HPET", text);
         if (uiState.getDisableTSC())
             text = appendOption("Disable TSC", text);
-        if (getMachine().getNvram() != null && !getMachine().getNvram().isEmpty())
-            text = appendOption("NVRAM: " + getMachine().getNvram(), text);
         return text;
     }
 
@@ -1843,10 +1825,6 @@ public class LimboActivity extends AppCompatActivity implements
                     }
                     notifyAction(MachineAction.INSERT_FAV, new Object[]{diskValue, fileType});
                     seMachineDriveValue(fileType, diskValue);
-                    break;
-                case NVRAM:
-                    uiState.setNvramValue(diskValue);
-                    notifyFieldChange(MachineProperty.NVRAM, diskValue);
                     break;
                 default: {
                     StorageEntry entry = null;
@@ -2484,21 +2462,6 @@ public class LimboActivity extends AppCompatActivity implements
             return;
         uiState.setMachineTypeSel(index);
         notifyFieldChange(MachineProperty.MACHINETYPE, uiState.getMachineTypeOptions().get(index));
-    }
-
-    @Override
-    public void onNvramChanged(@NonNull String value) {
-        uiState.setNvramValue(value);
-        debounceHandler.removeCallbacks(nvramCommit);
-        debounceHandler.postDelayed(nvramCommit, DEBOUNCE_MS);
-    }
-
-    @Override
-    public void onNvramBrowse() {
-        if (getMachine() == null)
-            return;
-        browseFileType = FileType.NVRAM;
-        LimboFileManager.browse(this, browseFileType, Config.OPEN_IMAGE_FILE_REQUEST_CODE);
     }
 
     @Override

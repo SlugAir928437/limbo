@@ -324,12 +324,10 @@ private String getQemuLibrary() {
         }
         if (getMachineType() != null && !getMachineType().equals("Default")) {
             String machineParams = getMachineType();
-            // NVRAM is an IA-64 only option: -machine <type>,nvram=<path>
+            // IA-64 only: always append the EFI NVRAM option automatically.
+            // Other architectures must not receive this option.
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-                String nvram = getMachine().getNvram();
-                if (nvram != null && !nvram.trim().isEmpty()) {
-                    machineParams += ",nvram=" + FileUtils.encodeDocumentFilePath(nvram.trim());
-                }
+                machineParams += ",nvram=./ia64.nvram";
             }
             paramsList.add("-M");
             paramsList.add(machineParams);

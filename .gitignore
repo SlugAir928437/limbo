@@ -71,3 +71,7 @@ gitsync.sh
 /limbo-android-lib/src/main/jni/qemu-5.1.0/
 
 push.sh
+
+# TRAE generated analysis artifacts
+.trae-html-share-packages/
+ui-issues-analysis/

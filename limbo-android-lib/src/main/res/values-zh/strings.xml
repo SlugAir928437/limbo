@@ -420,8 +420,6 @@
     <string name="label_video_display">视频显示：</string>
     <string name="title_board">主板</string>
     <string name="label_machine_type">机型：</string>
-    <string name="label_nvram">NVRAM 文件：</string>
-    <string name="hint_nvram">auto 或路径</string>
     <string name="help_title">帮助</string>
     <string name="help">帮助</string>
     <string name="help_text">文档与支持请访问 Limbo 模拟器项目主页 https://github.com/limboemu/limbo</string>

@@ -80,10 +80,6 @@ class LimboUiState {
     var disableHPETEnabled by mutableStateOf(true)
     var disableTSC by mutableStateOf(false)
     var disableTSCEnabled by mutableStateOf(true)
-    // NVRAM (IA-64 only): path to the EFI NVRAM file
-    var nvramVisible by mutableStateOf(false)
-    var nvramValue by mutableStateOf("")
-    var nvramEnabled by mutableStateOf(true)
 
     // storage devices
     var storageDevices by mutableStateOf(listOf<StorageDeviceUiState>())

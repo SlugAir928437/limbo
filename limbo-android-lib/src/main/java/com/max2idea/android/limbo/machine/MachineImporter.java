@@ -89,9 +89,6 @@ public class MachineImporter {
                             case "MACHINETYPE":
                                 mach.setMachineType(machineAttr[i].replace("\"", ""));
                                 break;
-                            case "NVRAM":
-                                mach.setNvram(machineAttr[i].replace("\"", ""));
-                                break;
                             case "CPU":
                                 mach.setCpu(machineAttr[i].replace("\"", ""));
                                 break;

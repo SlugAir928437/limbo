@@ -163,6 +163,7 @@ private String getQemuLibrary() {
         addCpuBoardOptions(paramsList);
         addDrives(paramsList);
         addBootOptions(paramsList);
+        addBIOSOption(paramsList);
         addGraphicsOptions(paramsList);
         addAudioOptions(paramsList);
         addNetworkOptions(paramsList);
@@ -545,6 +546,29 @@ private String getQemuLibrary() {
             return "c";
         }
         return null;
+    }
+
+    /**
+     * Adds the "-bios" option pointing at the SeaBIOS firmware shipped in the
+     * app assets (assets/roms, installed to the base dir by FileInstaller).
+     * Only x86/x86_64 PC machines use the bundled SeaBIOS; other targets
+     * manage their own firmware (EFI NVRAM, u-boot, etc.) so they must not
+     * receive this option.
+     */
+    private void addBIOSOption(ArrayList<String> paramsList) {
+        if (LimboApplication.arch != Config.Arch.x86 && LimboApplication.arch != Config.Arch.x86_64)
+            return;
+        // QEMU 10.x defaults to bios-256k.bin on PC machines; bios.bin is the
+        // legacy 128K SeaBIOS kept as a fallback.
+        String[] biosCandidates = {"bios-256k.bin", "bios.bin"};
+        for (String biosFile : biosCandidates) {
+            File bios = new File(LimboApplication.getBasefileDir() + biosFile);
+            if (bios.exists()) {
+                paramsList.add("-bios");
+                paramsList.add(bios.getAbsolutePath());
+                return;
+            }
+        }
     }
 
     private String getInitRd() {

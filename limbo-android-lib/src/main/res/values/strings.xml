@@ -433,6 +433,7 @@
     <string name="label_disable_acpi">Disable ACPI</string>
     <string name="title_boot">Boot</string>
     <string name="label_boot_from_device">Boot from Device: </string>
+    <string name="label_bios">BIOS: </string>
     <string name="label_kernel">Kernel: </string>
     <string name="label_initrd">Initrd: </string>
     <string name="label_append">Append: </string>

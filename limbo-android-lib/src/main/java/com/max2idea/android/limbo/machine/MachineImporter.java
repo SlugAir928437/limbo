@@ -196,6 +196,9 @@ public class MachineImporter {
                             case "APPEND":
                                 mach.setAppend(machineAttr[i].replace("\"", ""));
                                 break;
+                            case "BIOS":
+                                mach.setBios(machineAttr[i].replace("\"", ""));
+                                break;
 
                             // Extra Params
                             case "EXTRA_PARAMS":

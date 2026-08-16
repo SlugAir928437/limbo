@@ -164,6 +164,9 @@ public class Dispatcher implements ViewListener {
             case APPEND:
                 getMachine().setAppend(convertString(property, value));
                 break;
+            case BIOS:
+                getMachine().setBios(convertString(property, value));
+                break;
             case BOOT_CONFIG:
                 getMachine().setBootDevice(convertString(property, value));
                 break;

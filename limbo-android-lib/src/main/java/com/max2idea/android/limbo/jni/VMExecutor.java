@@ -549,22 +549,38 @@ private String getQemuLibrary() {
     }
 
     /**
-     * Adds the "-bios" option pointing at the SeaBIOS firmware shipped in the
-     * app assets (assets/roms, installed to the base dir by FileInstaller).
+     * Adds the "-bios" option. If the user picked a firmware from the BIOS
+     * dropdown (assets/roms file name stored in the machine), that file is
+     * used; otherwise the SeaBIOS shipped in the app assets is used.
      * Applied to every architecture: x86/x86_64 PC machines use it as their
      * default firmware, the IA-64 itanium2-vpc machine requires a "-bios"
      * firmware ROM to boot, and ARM boards fall back to it when they need a
      * firmware blob.
      */
     private void addBIOSOption(ArrayList<String> paramsList) {
+        String bios = getMachine() != null ? getMachine().getBios() : null;
+        if (bios != null && !bios.isEmpty() && !bios.equals("None")) {
+            // user-selected firmware from the BIOS dropdown
+            File biosFile = new File(bios);
+            if (!biosFile.isAbsolute()) {
+                biosFile = new File(LimboApplication.getBasefileDir() + bios);
+            }
+            if (biosFile.exists()) {
+                paramsList.add("-bios");
+                paramsList.add(biosFile.getAbsolutePath());
+                return;
+            }
+            Log.w(TAG, "BIOS file not found: " + biosFile.getPath());
+            return;
+        }
         // QEMU 10.x defaults to bios-256k.bin on PC machines; bios.bin is the
         // legacy 128K SeaBIOS kept as a fallback.
         String[] biosCandidates = {"bios-256k.bin", "bios.bin"};
         for (String biosFile : biosCandidates) {
-            File bios = new File(LimboApplication.getBasefileDir() + biosFile);
-            if (bios.exists()) {
+            File biosF = new File(LimboApplication.getBasefileDir() + biosFile);
+            if (biosF.exists()) {
                 paramsList.add("-bios");
-                paramsList.add(bios.getAbsolutePath());
+                paramsList.add(biosF.getAbsolutePath());
                 return;
             }
         }

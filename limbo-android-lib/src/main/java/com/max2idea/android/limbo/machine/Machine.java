@@ -73,6 +73,8 @@ public class Machine extends Observable {
     private String kernel;
     private String initRd;
     private String append;
+    // BIOS firmware file name (from assets/roms, installed to the base dir)
+    private String bios;
     // net
     private String network = null;
     private String networkCard = "ne2k_pci";
@@ -532,6 +534,18 @@ public class Machine extends Observable {
             notifyChanged(MachineProperty.APPEND, append);
         }
 
+    }
+
+    public String getBios() {
+        return bios;
+    }
+
+    void setBios(String bios) {
+        if (this.bios == null || !this.bios.equals(bios)) {
+            this.bios = bios;
+            setChanged();
+            notifyChanged(MachineProperty.BIOS, bios);
+        }
     }
 
     public String getNetwork() {

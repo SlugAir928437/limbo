@@ -77,6 +77,7 @@ interface LimboUiCallbacks {
 
     // boot section
     fun onBootSelected(index: Int)
+    fun onBiosSelected(index: Int)
     fun onKernelSelected(index: Int)
     fun onInitrdSelected(index: Int)
     fun onAppendChanged(value: String)
@@ -301,6 +302,15 @@ fun LimboMainScreen(
                             enabled = state.bootEnabled,
                             modifier = Modifier.width(150.dp),
                             onSelected = { callbacks.onBootSelected(it) }
+                        )
+                    }
+                    SettingRow(label = stringResource(R.string.label_bios), iconRes = R.drawable.sysfile) {
+                        LimboDropdown(
+                            options = state.biosOptions,
+                            selectedIndex = state.biosSel,
+                            enabled = state.biosEnabled,
+                            modifier = Modifier.width(180.dp),
+                            onSelected = { callbacks.onBiosSelected(it) }
                         )
                     }
                     SettingRow(label = stringResource(R.string.label_kernel), iconRes = R.drawable.sysfile) {

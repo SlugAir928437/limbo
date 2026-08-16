@@ -433,6 +433,7 @@
     <string name="label_disable_acpi">禁用 ACPI</string>
     <string name="title_boot">启动</string>
     <string name="label_boot_from_device">启动设备：</string>
+    <string name="label_bios">BIOS：</string>
     <string name="label_kernel">内核：</string>
     <string name="label_initrd">Initrd：</string>
     <string name="label_append">附加参数：</string>

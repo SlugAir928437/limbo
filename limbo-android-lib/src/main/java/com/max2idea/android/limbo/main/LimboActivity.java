@@ -672,6 +672,7 @@ public class LimboActivity extends AppCompatActivity implements
 
         // boot
         uiState.setBootEnabled(flag);
+        uiState.setBiosEnabled(flag);
         uiState.setKernelEnabled(flag);
         uiState.setInitrdEnabled(flag);
         uiState.setAppendEnabled(flag);
@@ -960,6 +961,42 @@ public class LimboActivity extends AppCompatActivity implements
             uiState.setInitrdOptions(options);
             uiState.setInitrdSel(index);
         });
+        populateBiosOptions();
+    }
+
+    /**
+     * Populates the BIOS dropdown with the firmware files (*.bin) shipped in
+     * the app assets under roms/. "None" leaves the QEMU default firmware
+     * resolution in place (bios-256k.bin fallback chain in VMExecutor).
+     */
+    private void populateBiosOptions() {
+        Thread t = new Thread(() -> {
+            ArrayList<String> options = new ArrayList<>();
+            options.add("None");
+            try {
+                String[] roms = getAssets().list("roms");
+                if (roms != null) {
+                    java.util.Arrays.sort(roms);
+                    for (String rom : roms) {
+                        if (rom.toLowerCase().endsWith(".bin")) {
+                            options.add(rom);
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Could not list assets/roms: " + e.getMessage());
+            }
+            List<String> finalOptions = options;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                uiState.setBiosOptions(finalOptions);
+                // restore the machine's saved BIOS selection, if any
+                String savedBios = getMachine() != null ? getMachine().getBios() : null;
+                int sel = savedBios != null ? finalOptions.indexOf(savedBios) : -1;
+                uiState.setBiosSel(Math.max(sel, 0));
+            });
+        });
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
     }
 
     private void setDefaultDNServer() {
@@ -1214,6 +1251,8 @@ public class LimboActivity extends AppCompatActivity implements
         // Advance
         setSpinnerSel(uiState.getBootOptions(), getMachine() != null ? getMachine().getBootDevice() : null,
                 idx -> uiState.setBootSel(idx));
+        setSpinnerSel(uiState.getBiosOptions(), getMachine() != null ? getMachine().getBios() : null,
+                idx -> uiState.setBiosSel(idx));
         setSpinnerSel(uiState.getNetOptions(), getMachine() != null ? getMachine().getNetwork() : null,
                 idx -> uiState.setNetSel(idx));
         setSpinnerSel(uiState.getVgaOptions(), getMachine() != null ? getMachine().getVga() : null,
@@ -1351,6 +1390,7 @@ public class LimboActivity extends AppCompatActivity implements
 
     private String buildBootSummary() {
         String text = "Boot from: " + getMachine().getBootDevice();
+        text = appendDriveFilename(getMachine().getBios(), text, "bios", false);
         text = appendDriveFilename(getMachine().getKernel(), text, "kernel", false);
         text = appendDriveFilename(getMachine().getInitRd(), text, "initrd", false);
         text = appendDriveFilename(getMachine().getAppend(), text, "append", false);
@@ -2572,6 +2612,18 @@ public class LimboActivity extends AppCompatActivity implements
             return;
         uiState.setBootSel(index);
         notifyFieldChange(MachineProperty.BOOT_CONFIG, uiState.getBootOptions().get(index));
+    }
+
+    @Override
+    public void onBiosSelected(int index) {
+        if (getMachine() == null)
+            return;
+        if (index < 0 || index >= uiState.getBiosOptions().size())
+            return;
+        uiState.setBiosSel(index);
+        String bios = uiState.getBiosOptions().get(index);
+        // "None" clears the selection so QEMU falls back to its default firmware
+        notifyFieldChange(MachineProperty.BIOS, index == 0 ? null : bios);
     }
 
     @Override

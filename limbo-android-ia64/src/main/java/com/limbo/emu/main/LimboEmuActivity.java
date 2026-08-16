@@ -27,7 +27,8 @@ public class LimboEmuActivity extends LimboActivity {
     protected void loadQEMULib(){
         try {
             System.loadLibrary("qemu-system-ia64");
-        } catch (Error ex) {
+        } catch (Exception exception) {
+            exception.printStackTrace();
             System.loadLibrary("qemu-system-ia64w");
         }
     }

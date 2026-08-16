@@ -6,7 +6,7 @@
 #NDK_ROOT = /home/dev/tools/ndk/android-ndk-r14b
 #USE_GCC?=true
 # Or use r25c with clang
-NDK_ROOT ?= /root/tools/ndk/android-ndk-r25c
+NDK_ROOT ?= /home/huang/android-ndk-r25c
 USE_GCC?=false
 
 ### the ndk api should be the same as the minSdkVersion in your AndroidManifest.xml 

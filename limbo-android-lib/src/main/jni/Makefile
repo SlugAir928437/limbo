@@ -311,7 +311,7 @@ config-qemu: ndk pkg-config-link
 clean-qemu:
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) distclean
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) clean
-	-rm $(NDK_PROJECT_PATH)/obj/local/arm64-v8a/libqemu-system-x86_64.a
+	-rm $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-x86_64.a
 	-rm -rf ../assets/roms/* 
 	-rm -rf $(LIMBO_APP_LIBS)/assets/roms/*
 

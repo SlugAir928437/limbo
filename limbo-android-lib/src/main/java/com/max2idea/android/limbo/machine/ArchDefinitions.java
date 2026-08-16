@@ -19,6 +19,7 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.machine;
 
 import android.content.Context;
+import android.os.Build;
 
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.install.Installer;
@@ -117,7 +118,12 @@ public class ArchDefinitions {
         arrList.add("VNC");
         if (Config.enable_SDL)
             arrList.add("SDL");
-        arrList.add("GTK");
+        // The GTK4 backend (gtk4android) is cross-compiled against API 31 and
+        // depends on AMotionEvent_fromJava/AKeyEvent_fromJava, which are only
+        // exported by libandroid.so on API 31+. On older devices loading the
+        // VM would crash with UnsatisfiedLinkError, so hide the option there.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            arrList.add("GTK");
         return arrList;
     }
 

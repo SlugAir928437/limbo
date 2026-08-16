@@ -445,6 +445,11 @@
     <string name="pref_title_screen">屏幕</string>
     <string name="pref_summary_show_fullscreen">显示全屏</string>
     <string name="pref_title_fullscreen">全屏</string>
+    <string name="pref_title_scale_mode">显示方式 / 缩放模式</string>
+    <string name="pref_summary_scale_mode">全屏拉伸 / 保持纵横比 / 点对点</string>
+    <string name="scale_mode_stretch">全屏拉伸</string>
+    <string name="scale_mode_aspect">保持纵横比</string>
+    <string name="scale_mode_1to1">点对点（1:1）</string>
     <string name="pref_title_advanced">高级</string>
     <string name="pref_title_qmp">QMP</string>
     <string name="pref_title_vnc">VNC</string>

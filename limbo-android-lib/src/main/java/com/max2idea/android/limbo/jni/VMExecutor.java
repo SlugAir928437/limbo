@@ -86,7 +86,8 @@ class VMExecutor extends MachineExecutor {
     //JNI Methods
     private native String start(String storage_dir, String base_dir,
                                 String lib_filename, String lib_path,
-                                int sdl_scale_hint, Object[] params);
+                                int sdl_scale_hint, int sdl_scale_mode,
+                                Object[] params);
 
     private native String stop(int restart);
 
@@ -747,10 +748,14 @@ private String getQemuLibrary() {
 
             ignoreBreakpointInvalidation(LimboSettingsManager.getIgnoreBreakpointInvalidation(LimboApplication.getInstance())?1:0, 2000);
             QmpClient.setExternal(LimboSettingsManager.getEnableExternalQMP(LimboApplication.getInstance()));
+            // Display scale mode (0=stretch, 1=aspect, 2=1:1) shared by the
+            // SDL and GTK backends; read at VM start so the setting takes
+            // effect for the current run.
+            Config.SDLScaleMode = LimboSettingsManager.getDisplayScaleMode(LimboApplication.getInstance());
             String libFilename = getQemuLibrary();
             res = start(Config.storagedir, LimboApplication.getBasefileDir(),
                     libFilename, FileUtils.getNativeLibDir(LimboApplication.getInstance()) + "/" + libFilename,
-                    Config.SDLHintScale, params);
+                    Config.SDLHintScale, Config.SDLScaleMode, params);
         } catch (Exception ex) {
             ToastUtils.toastLong(LimboApplication.getInstance(), ex.getMessage());
             return res;

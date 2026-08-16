@@ -445,6 +445,11 @@
     <string name="pref_title_screen">Screen</string>
     <string name="pref_summary_show_fullscreen">Show Fullscreen</string>
     <string name="pref_title_fullscreen">Fullscreen</string>
+    <string name="pref_title_scale_mode">Display / Scale Mode</string>
+    <string name="pref_summary_scale_mode">Stretch, keep aspect ratio or 1:1 pixels</string>
+    <string name="scale_mode_stretch">Full screen (stretch)</string>
+    <string name="scale_mode_aspect">Keep aspect ratio</string>
+    <string name="scale_mode_1to1">1:1 pixel mapping</string>
     <string name="pref_title_advanced">Advanced</string>
     <string name="pref_title_qmp">QMP</string>
     <string name="pref_title_vnc">VNC</string>

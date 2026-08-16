@@ -1815,6 +1815,9 @@ public class LimboActivity extends AppCompatActivity implements
                         uiState.setKernelOptions(opts);
                     }
                     notifyAction(MachineAction.INSERT_FAV, new Object[]{diskValue, fileType});
+                    // persist the newly opened file into the machine (and DB),
+                    // otherwise the VM would start with the old/empty path
+                    notifyFieldChange(MachineProperty.KERNEL, diskValue);
                     seMachineDriveValue(fileType, diskValue);
                     break;
                 case INITRD:
@@ -1824,6 +1827,8 @@ public class LimboActivity extends AppCompatActivity implements
                         uiState.setInitrdOptions(opts);
                     }
                     notifyAction(MachineAction.INSERT_FAV, new Object[]{diskValue, fileType});
+                    // persist the newly opened file into the machine (and DB)
+                    notifyFieldChange(MachineProperty.INITRD, diskValue);
                     seMachineDriveValue(fileType, diskValue);
                     break;
                 default: {
@@ -1841,6 +1846,9 @@ public class LimboActivity extends AppCompatActivity implements
                             entry.ui.setImageOptions(opts);
                         }
                         notifyAction(MachineAction.INSERT_FAV, new Object[]{diskValue, fileType});
+                        // persist the newly opened file into the machine (and DB),
+                        // otherwise the VM would start with the old/empty path
+                        notifyDriveChanged(entry, diskValue);
                         seMachineDriveValue(fileType, diskValue);
                     }
                     break;

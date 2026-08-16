@@ -162,7 +162,6 @@ private String getQemuLibrary() {
         addUIOptions(context, paramsList);
         addCpuBoardOptions(paramsList);
         addDrives(paramsList);
-        addRemovableDrives(paramsList);
         addBootOptions(paramsList);
         addGraphicsOptions(paramsList);
         addAudioOptions(paramsList);
@@ -565,104 +564,101 @@ private String getQemuLibrary() {
     }
 
     private boolean isRawImage(String imagePath) {
+        if (imagePath == null)
+            return false;
         String lower = imagePath.toLowerCase();
         return lower.endsWith(".img") || lower.endsWith(".raw");
     }
 
+    /**
+     * Emits all storage devices (HDA..HDD, CDROM, FDA/FDB, SD card and the
+     * shared folder) as uniform "-drive" parameters.
+     */
     public void addDrives(ArrayList<String> paramsList) {
-        addHardDisk(paramsList, getDriveFilePath(getMachine().getHdaImagePath()),
-                0, getMachine().getHdaInterface());
-        addHardDisk(paramsList, getDriveFilePath(getMachine().getHdbImagePath()),
-                1, getMachine().getHdbInterface());
-        addHardDisk(paramsList, getDriveFilePath(getMachine().getHdcImagePath()),
-                2, getMachine().getHdcInterface());
-        addHardDisk(paramsList, getDriveFilePath(getMachine().getHddImagePath()),
-                3, getMachine().getHddInterface());
-        addSharedFolder(paramsList, getDriveFilePath(getMachine().getSharedFolderPath()));
+        String cache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
+        if (cache == null || cache.equals("default"))
+            cache = null;
+
+        // Hard disks HDA..HDD
+        addDrive(paramsList, "0", getMachine().getHdaInterface(), "disk", null,
+                getDriveFilePath(getMachine().getHdaImagePath()),
+                isRawImage(getDriveFilePath(getMachine().getHdaImagePath())) ? "raw" : null, cache);
+        addDrive(paramsList, "1", getMachine().getHdbInterface(), "disk", null,
+                getDriveFilePath(getMachine().getHdbImagePath()),
+                isRawImage(getDriveFilePath(getMachine().getHdbImagePath())) ? "raw" : null, cache);
+        addDrive(paramsList, "2", getMachine().getHdcInterface(), "disk", null,
+                getDriveFilePath(getMachine().getHdcImagePath()),
+                isRawImage(getDriveFilePath(getMachine().getHdcImagePath())) ? "raw" : null, cache);
+        addDrive(paramsList, "3", getMachine().getHddInterface(), "disk", null,
+                getDriveFilePath(getMachine().getHddImagePath()),
+                isRawImage(getDriveFilePath(getMachine().getHddImagePath())) ? "raw" : null, cache);
+
+        // CDROM
+        addDrive(paramsList, "2", getMachine().getCDInterface(), "cdrom", null,
+                getDriveFilePath(getMachine().getCdImagePath()), null, null);
+
+        // Floppy drives FDA/FDB
+        if (Config.enableEmulatedFloppy) {
+            addDrive(paramsList, "0", "floppy", null, null,
+                    getDriveFilePath(getMachine().getFdaImagePath()), null, null);
+            addDrive(paramsList, "1", "floppy", null, null,
+                    getDriveFilePath(getMachine().getFdbImagePath()), null, null);
+        }
+
+        // SD card: -drive if=none,id=sd0 paired with the sd-card device
+        if (Config.enableEmulatedSDCard) {
+            String sdImagePath = getDriveFilePath(getMachine().getSdImagePath());
+            if (sdImagePath != null) {
+                paramsList.add("-device");
+                paramsList.add("sd-card,drive=sd0,bus=sd-bus");
+                addDrive(paramsList, null, "none", null, "sd0", sdImagePath, null, null);
+            }
+        }
+
+        // Shared folder mounted as a virtual FAT drive
+        if (Config.enableSharedFolder) {
+            String sharedFolderPath = getDriveFilePath(getMachine().getSharedFolderPath());
+            if (sharedFolderPath != null) {
+                addDrive(paramsList, "3", "ide", "disk", null,
+                        "fat:rw:" + sharedFolderPath, "raw", null);
+            }
+        }
     }
 
-    public void addHardDisk(ArrayList<String> paramsList, String imagePath, int index, String hdInterface) {
-        if (imagePath != null && !imagePath.trim().isEmpty()) {
-            paramsList.add("-drive");
-            String param = "index=" + index;
-            param += ",if=";
-            param += hdInterface;
-            param += ",media=disk";
-            if (!imagePath.isEmpty()) {
-                param += ",file=" + imagePath;
-                if (isRawImage(imagePath)) {
-                    param += ",format=raw";
-                }
-            }
-            String cache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
-            if(cache != null && !cache.equals("default"))
-                param += ",cache=" + cache;
-            paramsList.add(param);
-        }
+    /**
+     * Appends a single "-drive" parameter to paramsList. All storage devices
+     * go through this helper so the QEMU command line stays uniform.
+     *
+     * @param index  bus index ("0".."3") or null when if=none (SD card)
+     * @param iface  interface: ide, scsi, virtio, floppy, none, ...
+     * @param media  media type: disk, cdrom or null
+     * @param id     drive id (used for if=none drives such as sd0)
+     * @param file   image file path, or "fat:rw:<dir>" for shared folders
+     * @param format force the format (raw) or null for auto-detection
+     * @param cache  cache mode or null
+     */
+    private void addDrive(ArrayList<String> paramsList, String index, String iface, String media,
+                          String id, String file, String format, String cache) {
+        if (file == null || file.trim().isEmpty())
+            return;
+        StringBuilder param = new StringBuilder();
+        appendDriveField(param, "index", index);
+        appendDriveField(param, "if", iface);
+        appendDriveField(param, "media", media);
+        appendDriveField(param, "id", id);
+        appendDriveField(param, "file", file);
+        appendDriveField(param, "format", format);
+        appendDriveField(param, "cache", cache);
+        paramsList.add("-drive");
+        paramsList.add(param.toString());
     }
 
-    public void addSharedFolder(ArrayList<String> paramsList, String sharedFolderPath) {
-        if (Config.enableSharedFolder && sharedFolderPath != null) {
-            //XXX; We use hdd to mount any virtual fat drives
-            paramsList.add("-drive"); //empty
-            String driveParams = "index=3";
-            driveParams += ",media=disk";
-            driveParams += ",if=ide";
-            driveParams += ",format=raw";
-            driveParams += ",file=fat:";
-            driveParams += "rw:"; //Always Read/Write
-            driveParams += sharedFolderPath;
-            paramsList.add(driveParams);
-        }
-
-    }
-
-    public void addRemovableDrives(ArrayList<String> paramsList) {
-        String cdImagePath = getDriveFilePath(getMachine().getCdImagePath());
-        if (cdImagePath != null) {
-            paramsList.add("-drive"); //empty
-            String param = "index=2";
-            param += ",if=";
-            param += getMachine().getCDInterface();
-            param += ",media=cdrom";
-            if (!cdImagePath.isEmpty()) {
-                param += ",file=" + cdImagePath;
-            }
-            paramsList.add(param);
-        }
-
-        String fdaImagePath = getDriveFilePath(getMachine().getFdaImagePath());
-        if (Config.enableEmulatedFloppy && fdaImagePath != null) {
-            paramsList.add("-drive"); //empty
-            String param = "index=0,if=floppy";
-            if (!fdaImagePath.isEmpty()) {
-                param += ",file=" + fdaImagePath;
-            }
-            paramsList.add(param);
-        }
-
-        String fdbImagePath = getDriveFilePath(getMachine().getFdbImagePath());
-        if (Config.enableEmulatedFloppy && fdbImagePath != null) {
-            paramsList.add("-drive"); //empty
-            String param = "index=1,if=floppy";
-            if (!fdbImagePath.isEmpty()) {
-                param += ",file=" + fdbImagePath;
-            }
-            paramsList.add(param);
-        }
-
-        String sdImagePath = getDriveFilePath(getMachine().getSdImagePath());
-        if (Config.enableEmulatedSDCard && sdImagePath != null) {
-            paramsList.add("-device");
-            paramsList.add("sd-card,drive=sd0,bus=sd-bus");
-            paramsList.add("-drive");
-            String param = "if=none,id=sd0";
-            if (!sdImagePath.isEmpty()) {
-                param += ",file=" + sdImagePath;
-            }
-            paramsList.add(param);
-        }
-
+    private void appendDriveField(StringBuilder param, String field, String value) {
+        if (value == null || value.isEmpty())
+            return;
+        if (param.length() > 0)
+            param.append(",");
+        param.append(field).append("=").append(value);
     }
 
 

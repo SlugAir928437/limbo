@@ -117,7 +117,7 @@ fun LimboMainScreen(
                         painter = painterResource(R.drawable.limbo),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = Color.Unspecified
                     )
                 },
                 actions = {
@@ -461,7 +461,7 @@ private fun MachineCard(state: LimboUiState, callbacks: LimboUiCallbacks) {
                 painter = painterResource(R.drawable.limbo),
                 contentDescription = null,
                 modifier = Modifier.size(40.dp),
-                tint = MaterialTheme.colorScheme.primary
+                tint = Color.Unspecified
             )
             Spacer(Modifier.width(12.dp))
             Text(
@@ -532,7 +532,7 @@ private fun ControlButtons(state: LimboUiState, callbacks: LimboUiCallbacks) {
                 painter = painterResource(R.drawable.play),
                 contentDescription = stringResource(R.string.button_start),
                 modifier = Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                tint = Color.Unspecified
             )
         }
         IconButton(

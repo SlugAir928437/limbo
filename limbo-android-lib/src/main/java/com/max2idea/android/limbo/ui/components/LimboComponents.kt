@@ -67,7 +67,7 @@ fun SectionCard(
                     painter = painterResource(iconRes),
                     contentDescription = null,
                     modifier = Modifier.size(40.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = Color.Unspecified
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
@@ -132,7 +132,7 @@ fun SettingRow(
                 painter = painterResource(iconRes),
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary
+                tint = Color.Unspecified
             )
             Spacer(Modifier.width(12.dp))
         }

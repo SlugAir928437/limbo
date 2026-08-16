@@ -142,14 +142,14 @@ class LimboUiState {
     var extraParamsEnabled by mutableStateOf(true)
 
     // section collapse state
-    var uiCollapsed by mutableStateOf(false)
-    var boardCollapsed by mutableStateOf(false)
-    var storageCollapsed by mutableStateOf(false)
-    var bootCollapsed by mutableStateOf(false)
+    var uiCollapsed by mutableStateOf(true)
+    var boardCollapsed by mutableStateOf(true)
+    var storageCollapsed by mutableStateOf(true)
+    var bootCollapsed by mutableStateOf(true)
     var graphicsCollapsed by mutableStateOf(false)
-    var audioCollapsed by mutableStateOf(false)
-    var networkCollapsed by mutableStateOf(false)
-    var advancedCollapsed by mutableStateOf(false)
+    var audioCollapsed by mutableStateOf(true)
+    var networkCollapsed by mutableStateOf(true)
+    var advancedCollapsed by mutableStateOf(true)
 
     // section summaries
     var uiSummary by mutableStateOf("")

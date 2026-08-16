@@ -1,13 +1,17 @@
 name: build
 on:
-  push:
   pull_request:
   workflow_dispatch:
     inputs:
       build_guest:
-        description: '模拟架构'
+        description: 'QEMU Emulator type'
         required: true
         default: 'x86_64-softmmu,aarch64-softmmu,ia64-softmmu'
+        type: string
+      build_host:
+        description: 'Android device type'
+        required: true
+        default: 'arm64-v8a'
         type: string
 
 jobs:
@@ -109,7 +113,7 @@ jobs:
       - name: Build with Gradle
         run: |
           chmod +x ./gradlew
-          ./gradlew assemble
+          ./gradlew assembleDebug
       - name: 上传apk构建产物
         uses: actions/upload-artifact@v7.0.1
         with:

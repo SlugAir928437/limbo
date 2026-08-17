@@ -54,6 +54,10 @@ utilities = 'disabled'
 builtin_loaders = ['all']
 glycin = 'disabled'
 documentation = false
+# The gdk-pixbuf android loader uses the AImageDecoder API (Android 11/API 30+),
+# which is unavailable on our android-24 target. The classic libpng/libjpeg/
+# libtiff loaders cover the same formats, so disable it here.
+android = 'disabled'
 
 [gtk:project options]
 android-backend = true

@@ -72,5 +72,11 @@ USE_KVM ?= true
 # Set to false to skip the GTK4 build (faster builds, no GTK display support)
 USE_GTK ?= true
 
-# Android API level used for the GTK4 cross build (gtk4android targets API 31)
-GTK_ANDROID_API ?= 31
+# Android API level used for the GTK4 cross build (gtk4android)
+# IMPORTANT: this MUST match the device minSdk (ANDROID_API, android-24).
+# Building against a higher API level makes libgtk-4.so reference symbols
+# that only exist on newer devices (e.g. the NDK native input API
+# AMotionEvent_fromJava/AKeyEvent_fromJava/AInputEvent_release, which were
+# introduced in API 31), so the library fails to dlopen on older devices.
+# The gdk android backend reads input events via JNI and does not need them.
+GTK_ANDROID_API ?= 24

@@ -18,6 +18,8 @@
  */
 package com.max2idea.android.limbo.machine;
 
+import android.os.Build;
+
 import com.max2idea.android.limbo.main.Config;
 import com.max2idea.android.limbo.main.LimboApplication;
 

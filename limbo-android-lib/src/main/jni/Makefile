@@ -256,9 +256,9 @@ config-gtk: ndk pkg-config-link ffi glib pixman
 	# mirror the jni shared-lib trees under the NDK sysroot: pkg-config prefixes
 	# -I/-L with the sysroot when a cross config carries sys_root, and these
 	# symlinks keep those prefixed paths resolvable (needs passwordless sudo)
-	sudo mkdir -p "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))"; \
-	sudo ln -sfn "$(LIMBO_JNI_ROOT)" "$(SYSROOT_JNI_LINK)"; \
-	sudo ln -sfn "$(NDK_PROJECT_PATH)/obj" "$(SYSROOT_OBJ_LINK)"
+	mkdir -p "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))"; \
+	ln -sfn "$(LIMBO_JNI_ROOT)" "$(SYSROOT_JNI_LINK)"; \
+	ln -sfn "$(NDK_PROJECT_PATH)/obj" "$(SYSROOT_OBJ_LINK)"
 	# NOTE: as the top-level project, [gtk:project options] in the cross file does NOT apply,
 	# so the key options must be passed explicitly (see gtk4android README)
 	# glib/pixman/libffi come from the jni builds (shared with QEMU) via pkg-config;
@@ -299,8 +299,8 @@ gtk: ffi glib pixman
 clean-gtk:
 	-rm -rf "$(GTK_BUILD_DIR)" "$(GTK_INSTALL_DIR)" "$(GTK_CROSS_FILE)" "$(GTK_BUILD_DIR).subprojects-save"
 	# remove the sysroot-prefixed jni symlinks created by config-gtk
-	sudo rm -f "$(SYSROOT_JNI_LINK)" "$(SYSROOT_OBJ_LINK)" || true; \
-	sudo rmdir "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))" 2>/dev/null || true
+	rm -f "$(SYSROOT_JNI_LINK)" "$(SYSROOT_OBJ_LINK)" || true; \
+	rmdir "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))" 2>/dev/null || true
 
 _qemu: ndk
 	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST) CFLAGS="$(ARCH_CFLAGS)"

@@ -122,8 +122,8 @@ public class ArchDefinitions {
         // depends on AMotionEvent_fromJava/AKeyEvent_fromJava, which are only
         // exported by libandroid.so on API 31+. On older devices loading the
         // VM would crash with UnsatisfiedLinkError, so hide the option there.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-            arrList.add("GTK");
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        arrList.add("GTK");
         return arrList;
     }
 

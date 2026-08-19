@@ -82,12 +82,6 @@ public class LimboSettingsManager extends PreferenceActivity {
     // Display scale mode shared by the SDL and GTK display backends:
     // 0 = stretch to fill, 1 = keep aspect ratio (letterbox), 2 = 1:1 pixels
     public static int getDisplayScaleMode(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        int mode = Integer.parseInt(prefs.getString("displayScaleMode", "1"));
-        if (mode < 0 || mode > 2) {
-            mode = 1;
-        }
-        return mode;
     }
 
     // updates

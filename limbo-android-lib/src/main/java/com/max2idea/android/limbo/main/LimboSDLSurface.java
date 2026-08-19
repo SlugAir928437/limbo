@@ -60,7 +60,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         setOnGenericMotionListener(new SDLGenericMotionListener_API12());
     }
 
-    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+    public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
         Log.d(TAG, "surfaceChanged: " + width + "x" + height);
         super.surfaceChanged(holder, format, width, height);
         refreshSurfaceView();
@@ -172,7 +172,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         }
     }
 
-    private int getMouseButton(MotionEvent event) {
+    private int getMouseButton(@NonNull MotionEvent event) {
         int sdlMouseButton = 0;
         if (event.getButtonState() == MotionEvent.BUTTON_PRIMARY)
             sdlMouseButton = Config.SDL_MOUSE_LEFT;
@@ -211,7 +211,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         mouseState.down_event_time = System.currentTimeMillis();
     }
 
-    public boolean onTouch(View v, MotionEvent event) {
+    public boolean onTouch(View v, @NonNull MotionEvent event) {
         return processExternalMouseEvents(v, event);
     }
 
@@ -223,7 +223,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
      * @param event MotionEvent to be processed
      * @return true if event is consumed
      */
-    private boolean processExternalMouseEvents(View v, MotionEvent event) {
+    private boolean processExternalMouseEvents(View v, @NonNull MotionEvent event) {
         if (event.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER
                 || sdlActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN) {
             onTouchProcess(v, event);
@@ -233,7 +233,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
     }
 
     @Override
-    public boolean onKey(View v, int keyCode, KeyEvent event) {
+    public boolean onKey(View v, int keyCode, @NonNull KeyEvent event) {
         // if keys are other than keyboard (joystick, etc) we send to the parent SDLSurface
         if (event.getSource() != InputDevice.SOURCE_KEYBOARD)
             return super.onKey(v, keyCode, event);
@@ -266,7 +266,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         }
 
         public boolean isDoubleTap() {
-            if (LimboSDLActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN
+            return LimboSDLActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN
                     && taps.size() >= 3
                     && taps.get(0).toolType == MotionEvent.TOOL_TYPE_FINGER
                     && taps.get(0).action == MotionEvent.ACTION_DOWN
@@ -275,10 +275,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
                     && taps.get(0).x == taps.get(1).x
                     && taps.get(0).y == taps.get(1).y
                     && taps.get(2).toolType == MotionEvent.TOOL_TYPE_FINGER
-                    && taps.get(2).action == MotionEvent.ACTION_DOWN
-            )
-                return true;
-            return false;
+                    && taps.get(2).action == MotionEvent.ACTION_DOWN;
         }
 
         public class MouseAction {
@@ -300,10 +297,10 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
     /**
      * A motion listener for the external mouse and other peripheral which are NOT TESTED!
      */
-    class SDLGenericMotionListener_API12 implements OnGenericMotionListener {
+    class SDLGenericMotionListener_API12 implements View.OnGenericMotionListener {
 
         @Override
-        public boolean onGenericMotion(View v, MotionEvent event) {
+        public boolean onGenericMotion(View v, @NonNull MotionEvent event) {
             float x, y;
             int action;
 

@@ -85,4 +85,11 @@
         <item name="android:padding">8dp</item>
     </style>
 
+    <style name="FilePickerTheme" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
+        <item name="colorPrimary">#6750A4</item>
+        <item name="colorPrimaryVariant">#4F378B</item>
+        <item name="colorSecondary">#6750A4</item>
+        <item name="colorAccent">#6750A4</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
 </resources>

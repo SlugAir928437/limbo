@@ -1,415 +1,241 @@
-/*
-Copyright (C) Max Kastanas 2012
-
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- */
 package com.max2idea.android.limbo.main;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.ListActivity;
-import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Environment;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
-import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuItem;
-import android.view.View;
-import android.view.ViewGroup;
-import android.webkit.MimeTypeMap;
-import android.widget.ArrayAdapter;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.ListView;
-import android.widget.TextView;
+import android.widget.Toast;
 
-import com.limbo.emu.lib.R;
-import com.max2idea.android.limbo.files.FileUtils;
-import com.max2idea.android.limbo.machine.Machine.FileType;
-import com.max2idea.android.limbo.toast.ToastUtils;
+import androidx.annotation.NonNull;
+
+import com.max2idea.android.limbo.machine.Machine;
+
+import org.jetbrains.annotations.Contract;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 
-/**
- * Built-in file manager Activity used for all file selection and save operations.
- * This requires android:requestLegacyExternalStorage="true" in AndroidManifest.xml.
- */
-public class LimboFileManager extends ListActivity {
+import me.rosuh.filepicker.config.FilePickerConfig;
+import me.rosuh.filepicker.config.FilePickerManager;
+import me.rosuh.filepicker.filetype.FileType;
 
-    private static String TAG = "FileManager";
-    private final int SELECT_DIR = 1;
-    private final int CREATE_DIR = 2;
-    private final int CANCEL = 3;
-    public Comparator<File> comparator = new Comparator<File>() {
+public class LimboFileManager extends Activity {
+    private static final String EXTRA_FILE_TYPE = "com.max2idea.android.limbo.main.EXTRA_FILE_TYPE";
 
-        public int compare(File object1, File object2) {
-            if (object1.getName().startsWith(".."))
-                return -1;
-            else if (object2.getName().startsWith(".."))
-                return 1;
-            else if (object1.getName().endsWith("/") && !object2.getName().endsWith("/"))
-                return -1;
-            else if (!object1.getName().endsWith("/") && object2.getName().endsWith("/"))
-                return 1;
-            return object1.toString().compareToIgnoreCase(object2.toString());
+    // 结果 extras 的键与 FileUtils.getFilePathFromIntent() / getDirPathFromIntent() /
+    // getFileTypeFromIntent() 的约定保持一致
+    private static final String EXTRA_FILE = "file";
+    private static final String EXTRA_CURR_DIR = "currDir";
+    private static final String EXTRA_FILE_TYPE_RESULT = "fileType";
+
+    private Machine.FileType fileType;
+
+    /**
+     * 启动文件选择器,选择结果通过调用方 Activity 的 onActivityResult(requestCode, ...) 返回。
+     * 结果 Intent 的 extras 中携带:
+     * <ul>
+     *     <li>"file" - 选中文件的完整路径</li>
+     *     <li>"currDir" - 当前目录(目录选择类请求为选中文件所在目录)</li>
+     *     <li>"fileType" - Machine.FileType 枚举</li>
+     * </ul>
+     */
+    public static void browse(Activity activity, Machine.FileType fileType, int requestCode) {
+        if (activity == null || fileType == null) {
+            return;
         }
-    };
-    private ArrayList<File> items = null;
-    private File currdir = new File(Environment.getExternalStorageDirectory().getAbsolutePath());
-    private File file;
-    private TextView currentDir;
-    private Button select;
-    private FileType fileType;
-    private HashMap<String, String> filter = new HashMap<>();
-    private SelectionMode selectionMode = SelectionMode.FILE;
+        Intent intent = new Intent(activity, LimboFileManager.class);
+        intent.putExtra(EXTRA_FILE_TYPE, fileType);
+        activity.startActivityForResult(intent, requestCode);
+    }
 
-    public static void browse(Activity activity, FileType fileType, int requestCode) {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-        String lastDir = getLastDir(activity, fileType);
-
-        String state = Environment.getExternalStorageState();
-        if (!Environment.MEDIA_MOUNTED.equals(state)) {
-            ToastUtils.toastShort(activity, activity.getResources().getString(R.string.sdcardNotMounted));
+        fileType = getFileTypeFromIntent();
+        if (fileType == null) {
+            // 非法入口:未通过 LimboFileManager.browse() 启动,直接取消返回
+            setResult(Activity.RESULT_CANCELED);
+            finish();
             return;
         }
 
-        // Always use the built-in LimboFileManager for file selection/save operations
-        // instead of the Android Storage Access Framework picker.
-        LimboFileManager.promptLegacyStorageAccess(activity, fileType, requestCode, lastDir);
+        startFilePicker();
     }
 
-    private static String getLastDir(Context context, FileType fileType) {
-        if (fileType == FileType.SHARED_DIR) {
-            return LimboSettingsManager.getSharedDir(context);
-        } else if (fileType == FileType.EXPORT_DIR || fileType == FileType.IMPORT_FILE) {
-            return LimboSettingsManager.getExportDir(context);
-        } else if (fileType == FileType.IMAGE_DIR) {
-            return LimboSettingsManager.getImagesDir(context);
-        }
-        return LimboSettingsManager.getLastDir(context);
-    }
+    private void startFilePicker() {
+        CustomFileType customFileType = new CustomFileType(fileType);
+        FilePickerConfig config = FilePickerManager
+                .from(this)
+                .maxSelectable(1)
+                .registerFileType(new ArrayList<>() {{
+                    add(customFileType);
+                }}, false);
 
-    public static void promptLegacyStorageAccess(Activity activity, FileType fileType, int requestCode, String lastDir) {
-
-        String dir = null;
-        try {
-
-            HashMap<String, String> filterExt = getFileExt(fileType);
-
-            Intent i = null;
-            i = getFileManIntent(activity);
-            Bundle b = new Bundle();
-            if (lastDir != null && !lastDir.startsWith("content://"))
-                b.putString("lastDir", lastDir);
-            b.putSerializable("fileType", fileType);
-            b.putSerializable("filterExt", filterExt);
-            i.putExtras(b);
-            activity.startActivityForResult(i, requestCode);
-        } catch (Exception e) {
-            Log.e(TAG, "Error while starting Filemanager: " + e.getMessage());
-        }
-    }
-
-    public static Intent getFileManIntent(Activity activity) {
-        return new Intent(activity, LimboFileManager.class);
-    }
-
-    private static boolean isFileTypeDirectory(FileType fileType) {
-        return (fileType == FileType.SHARED_DIR || fileType == FileType.EXPORT_DIR
-                || fileType == FileType.IMAGE_DIR || fileType == FileType.LOG_DIR);
-
-    }
-
-    private static HashMap<String, String> getFileExt(FileType fileType) {
-        HashMap<String, String> filterExt = new HashMap<>();
-
-        if (fileType == FileType.IMPORT_FILE)
-            filterExt.put("csv", "csv");
-
-        return filterExt;
-    }
-
-    public static String getMimeType(String url) {
-        String type = null;
-        String extension = MimeTypeMap.getFileExtensionFromUrl(url);
-        if (extension != null) {
-            type = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
-        }
-        return type;
-    }
-
-    //XXX: for now we dont use filters since file extensions on images is something not so standard
-    // and we don't want to hide files from the user
-    private boolean filter(File filePath) {
-        String ext = FileUtils.getExtensionFromFilename(filePath.getName());
-        return (filter == null || filter.isEmpty() || filter.containsKey(ext.toLowerCase()));
-    }
-
-    @Override
-    public void onCreate(Bundle icicle) {
-        super.onCreate(icicle);
-
-        setContentView(R.layout.directory_list);
-        select = findViewById(R.id.select_button);
-        select.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View arg0) {
-                selectDir();
-            }
-        });
-        currentDir = findViewById(R.id.currDir);
-        Bundle b = this.getIntent().getExtras();
-        String lastDirectory = b.getString("lastDir");
-        fileType = (FileType) b.getSerializable("fileType");
-        filter = (HashMap<String, String>) b.getSerializable("filterExt");
-
-        if (isFileTypeDirectory(fileType))
-            selectionMode = SelectionMode.DIRECTORY;
-        else {
-            selectionMode = SelectionMode.FILE;
-            select.setVisibility(View.GONE);
-        }
-
-        if (selectionMode == SelectionMode.DIRECTORY)
-            setTitle(getString(R.string.SelectADirectory));
-        else
-            setTitle(getString(R.string.SelectAFile));
-
-        //set starting directory
-        if (lastDirectory == null) {
-            lastDirectory = Environment.getExternalStorageDirectory().getPath();
-        }
-        currdir = new File(lastDirectory);
-        if (!currdir.isDirectory() || !currdir.exists()) {
-            lastDirectory = Environment.getExternalStorageDirectory().getPath();
-            currdir = new File(lastDirectory);
-        }
-        currentDir.setText(currdir.getPath());
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                // No permission prompt needed here: storage access is granted
-                // at app level (requestLegacyExternalStorage / MANAGE_EXTERNAL_STORAGE).
-                fill(currdir.listFiles());
-            }
-        }, 500);
-    }
-
-    private void fill(File[] files) {
-
-
-        items = new ArrayList<>();
-        items.add(new File(".. (Parent Directory)"));
-
-        if (files != null) {
-            for (File file1 : files) {
-                if (file1 != null) {
-                    if (file1.isFile() && filter(file1)
-                    ) {
-                        items.add(file1);
-                    } else if (file1.isDirectory()) {
-                        items.add(file1);
-                    }
-                }
-            }
-        }
-        Collections.sort(items, comparator);
-        FileAdapter fileList = new FileAdapter(this, R.layout.dir_row, items);
-        setListAdapter(fileList);
-
-        LimboSettingsManager.setLastDir(this, currdir.getAbsolutePath());
-    }
-
-    @Override
-    protected void onListItemClick(ListView l, View v, int position, long id) {
-        super.onListItemClick(l, v, position, id);
-        // int selectionRowID = (int) l.getSelectedItemId();
-        int selectionRowID = (int) id;
-        if (selectionRowID == 0) {
-            fillWithParent();
+        // 目录选择类请求: 文件夹选择模式,确认后返回当前目录路径
+        // 文件选择类请求: 允许选中文件夹,确认后返回勾选的文件或文件夹路径
+        if (isDirPicker(fileType)) {
+            config.folderPicker();
         } else {
+            config.skipDirWhenSelect(true);
+        }
 
-            file = items.get(selectionRowID);
-            if (file == null) {
-                ToastUtils.toastShort(this, getString(R.string.AccessDeniedCannotRetrieveDirectory));
-            } else if (!file.isDirectory() && selectionMode == SelectionMode.DIRECTORY) {
-                ToastUtils.toastShort(this, getString(R.string.NotADirectory));
-            } else if (file.isDirectory()) {
-                currdir = file;
-                File[] files = file.listFiles();
-                if (files != null) {
-                    currentDir.setText(file.getPath());
-                    fill(files);
+        config.forResult(FilePickerManager.REQUEST_CODE);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != FilePickerManager.REQUEST_CODE) {
+            return;
+        }
+        if (resultCode == Activity.RESULT_OK) {
+            Bundle bundle = new Bundle();
+
+            if (isDirPicker(fileType)) {
+                // 文件夹选择模式:
+                // 优先取已勾选的文件夹; 未勾选时取当前目录
+                List<String> list = FilePickerManager.obtainData();
+                String dir;
+                if (!list.isEmpty()) {
+                    dir = list.get(0);
                 } else {
-                    new AlertDialog.Builder(this).setTitle(R.string.AccessDenied).setMessage(R.string.CannotListDirectory).show();
+                    dir = FilePickerManager.obtainCurrDir();
+                }
+                if (dir != null && !dir.isEmpty()) {
+                    bundle.putString(EXTRA_CURR_DIR, dir);
+                    bundle.putString(EXTRA_FILE, dir);
+                    bundle.putSerializable(EXTRA_FILE_TYPE_RESULT, fileType);
+                } else {
+                    setResult(Activity.RESULT_CANCELED);
+                    finish();
+                    return;
                 }
             } else {
-                this.selectFile();
+                List<String> list = FilePickerManager.obtainData();
+                if (!list.isEmpty()) {
+                    String file = list.get(0);
+                    bundle.putString(EXTRA_CURR_DIR, resolveCurrDir(file));
+                    bundle.putString(EXTRA_FILE, file);
+                    bundle.putSerializable(EXTRA_FILE_TYPE_RESULT, fileType);
+                } else {
+                    Toast.makeText(this,
+                            "You didn't choose anything~", Toast.LENGTH_SHORT).show();
+                    setResult(Activity.RESULT_CANCELED);
+                    finish();
+                    return;
+                }
             }
 
-        }
-    }
-
-    private void fillWithParent() {
-        if (currdir.getPath().equalsIgnoreCase("/")) {
-            currentDir.setText(currdir.getPath());
-            fill(currdir.listFiles());
+            Intent result = new Intent();
+            result.putExtras(bundle);
+            setResult(Activity.RESULT_OK, result);
         } else {
-            currdir = currdir.getParentFile();
-            currentDir.setText(currdir.getPath());
-            fill(currdir.listFiles());
+            setResult(Activity.RESULT_CANCELED);
+        }
+        finish();
+    }
+
+    /**
+     * 计算返回给调用方的当前目录。
+     * 目录选择类请求(导出/镜像/日志/共享目录)从所选文件推导其父目录;
+     * 文件选择类请求回落到文件选择器的初始根路径。
+     */
+    private String resolveCurrDir(String file) {
+        if (isDirPicker(fileType)) {
+            if (file != null) {
+                File parent = new File(file).getParentFile();
+                if (parent != null) {
+                    return parent.getAbsolutePath();
+                }
+            }
+            return file;
+        }
+        return FilePickerManager.config.getCustomRootPath();
+    }
+
+    @Contract(pure = true)
+    private static boolean isDirPicker(@NonNull Machine.FileType type) {
+        switch (type) {
+            case EXPORT_DIR:
+            case IMAGE_DIR:
+            case LOG_DIR:
+            case SHARED_DIR:
+                return true;
+            default:
+                return false;
         }
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0, SELECT_DIR, 0, "Select Directory");
-        menu.add(0, CREATE_DIR, 0, "Create Directory");
-        menu.add(0, CANCEL, 0, "Cancel");
+    @SuppressWarnings("deprecation")
+    private Machine.FileType getFileTypeFromIntent() {
+        return (Machine.FileType) getIntent().getSerializableExtra(EXTRA_FILE_TYPE);
+    }
+}
 
-        return true;
+class CustomFileType implements FileType {
+    private final Machine.FileType fileType;
+    private final int fileIconResId = me.rosuh.filepicker.R.drawable.ic_unknown_file_picker;
+
+    CustomFileType(Machine.FileType type) {
+        fileType = type;
+    }
+
+    @NonNull
+    @Override
+    public String getFileType() {
+        return fileType.name();
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case SELECT_DIR:
-                selectDir();
+    public int getFileIconResId() {
+        return fileIconResId;
+    }
+
+    @Override
+    public boolean verify(@NonNull String fileName) {
+        String[] extensions = getExtensionsByType(fileType);
+        if (extensions == null || extensions.length == 0) {
+            // KERNEL / INITRD 以及目录选择场景没有固定的扩展名,放行所有文件
+            return true;
+        }
+        String lowerName = fileName.toLowerCase(Locale.ROOT);
+        for (String extension : extensions) {
+            if (lowerName.endsWith("." + extension)) {
                 return true;
-            case CREATE_DIR:
-                promptCreateDir(this);
-                return true;
-            case CANCEL:
-                cancel();
-                return true;
+            }
         }
         return false;
     }
 
-
-    public void promptCreateDir(final Activity activity) {
-        final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
-        alertDialog.setTitle(getString(R.string.NewDirectory));
-        final EditText dirNameTextview = new EditText(activity);
-        dirNameTextview.setPadding(20, 20, 20, 20);
-        dirNameTextview.setEnabled(true);
-        dirNameTextview.setVisibility(View.VISIBLE);
-        dirNameTextview.setSingleLine();
-        alertDialog.setView(dirNameTextview);
-        alertDialog.setCanceledOnTouchOutside(false);
-        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, getString(R.string.Create), (DialogInterface.OnClickListener) null);
-
-        alertDialog.show();
-
-        Button button = alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
-        button.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                if (dirNameTextview.getText().toString().trim().isEmpty())
-                    ToastUtils.toastShort(activity, getString(R.string.DirNameCannotBeEmpty));
-                else {
-                    createDirectory(dirNameTextview.getText().toString());
-                    fill(currdir.listFiles());
-                    alertDialog.dismiss();
-                }
-            }
-        });
-    }
-
-    private void createDirectory(String dirName) {
-        File dir = new File(currdir, dirName);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        } else {
-            ToastUtils.toastShort(this, getString(R.string.DirectoryAlreadyExists));
+    // 根据文件类型返回对应的扩展名数组(小写,不含点号);null 表示不限制扩展名
+    public String[] getExtensionsByType(@NonNull Machine.FileType type) {
+        switch (type) {
+            case CDROM:
+                return new String[]{"iso", "bin", "img", "cue", "mdf", "nrg"};
+            case FDA:
+            case FDB:
+                return new String[]{"ima", "img", "flp", "fd", "raw", "dsk"};
+            case SD:
+                return new String[]{"img", "raw"};
+            case HDA:
+            case HDB:
+            case HDC:
+            case HDD:
+                return new String[]{"qcow2", "qcow", "img", "raw", "vmdk", "vdi", "vhd", "vhdx", "vpc"};
+            case IMPORT_FILE:
+                return new String[]{"csv"};
+            case IMPORT_BIOS_FILE:
+                return new String[]{"bin", "fd", "rom", "bios"};
+            case KERNEL:
+            case INITRD:
+            case EXPORT_DIR:
+            case IMAGE_DIR:
+            case LOG_DIR:
+            case SHARED_DIR:
+            default:
+                return null;
         }
     }
-
-    public void selectDir() {
-        Intent data = new Intent();
-        Bundle bundle = new Bundle();
-        bundle.putString("currDir", this.currdir.getPath());
-        bundle.putSerializable("fileType", fileType);
-        data.putExtras(bundle);
-        setResult(Config.FILEMAN_RETURN_CODE, data);
-        finish();
-    }
-
-    public void selectFile() {
-        Intent data = new Intent();
-        Bundle bundle = new Bundle();
-        bundle.putString("currDir", this.currdir.getPath());
-        bundle.putString("file", this.file.getPath());
-        bundle.putSerializable("fileType", fileType);
-        data.putExtras(bundle);
-        setResult(Config.FILEMAN_RETURN_CODE, data);
-        finish();
-    }
-
-    private void cancel() {
-        Intent data = new Intent();
-        data.putExtra("currDir", "");
-        setResult(Config.FILEMAN_RETURN_CODE, data);
-        finish();
-    }
-
-
-    public enum SelectionMode {
-        DIRECTORY,
-        FILE
-    }
-
-    public static class FileAdapter extends ArrayAdapter<File> {
-        private final Context context;
-        private final ArrayList<File> files;
-
-        public FileAdapter(Context context, int layout, ArrayList<File> files) {
-            super(context, layout, files);
-            this.context = context;
-            this.files = files;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            LayoutInflater inflater = (LayoutInflater) context
-                    .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-
-            View rowView = inflater.inflate(R.layout.dir_row, parent, false);
-            TextView textView = (TextView) rowView.findViewById(R.id.FILE_NAME);
-            ImageView imageView = (ImageView) rowView.findViewById(R.id.FILE_ICON);
-            textView.setText(files.get(position).getName());
-
-            int iconRes = 0;
-            if (files.get(position).getName().startsWith("..") || files.get(position).isDirectory())
-                imageView.setImageResource(R.drawable.folder);
-            else {
-                iconRes = FileUtils.getIconForFile(files.get(position).getName());
-                imageView.setImageResource(iconRes);
-            }
-            return rowView;
-        }
-    }
-
 }

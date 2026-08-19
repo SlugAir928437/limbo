@@ -7,15 +7,13 @@ android {
     namespace 'com.limbo.emu.lib'
     compileSdk {
         //noinspection GradleDependency
-        version = release(36) {
-            minorApiLevel = 1
-        }
+        version = release(37)
     }
 
     defaultConfig {
         minSdk 24
         //noinspection OldTargetApi
-        targetSdk 36
+        targetSdk 37
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,14 +43,6 @@ dependencies {
     // 核心兼容库（版本统一）
     implementation libs.androidx.appcompat
     implementation libs.material
-    implementation libs.androidx.recyclerview
-    implementation libs.androidx.constraintlayout
-    implementation libs.androidx.preference
-
-    // 现代 Lifecycle（替代废弃的 extensions）
-    implementation libs.androidx.lifecycle.viewmodel
-    implementation libs.androidx.lifecycle.livedata
-    implementation libs.androidx.lifecycle.runtime.compose
 
     // Compose (Jetpack Compose + Material Design 3)
     implementation platform(libs.compose.bom)
@@ -66,10 +56,11 @@ dependencies {
     // 注解
     implementation libs.annotations
 
-    implementation libs.devicecompat
     implementation libs.xxpermissions
 
     implementation libs.markwon.core
+
+    implementation project(':filepicker')
 }
 tasks.configureEach { task ->
     if (task.name.startsWith('compile') && task.name.endsWith('Ndk')) {

@@ -29,6 +29,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ApplicationInfo;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 /**
@@ -156,8 +157,8 @@ public class SDLActivity
     // Setup
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        Log.v(TAG, "Device: " + Build.DEVICE);
-        Log.v(TAG, "Model: " + Build.MODEL);
+        Log.v(TAG, "Device: " + android.os.Build.DEVICE);
+        Log.v(TAG, "Model: " + android.os.Build.MODEL);
         Log.v(TAG, "onCreate()");
         super.onCreate(savedInstanceState);
 
@@ -315,10 +316,10 @@ public class SDLActivity
             return;
         }
         if (SDLActivity.mBrokenLibraries) {
-           super.onDestroy();
-           // Reset everything in case the user re opens the app
-           SDLActivity.initialize();
-           return;
+            super.onDestroy();
+            // Reset everything in case the user re opens the app
+            SDLActivity.initialize();
+            return;
         }
         //LIMBO
 
@@ -1114,7 +1115,7 @@ class SDLMain implements Runnable {
         //LIMBO: we override
         //SDLActivity.nativeRunMain(library, function, arguments);
         SDLActivity.mSingleton.runSDLMain();
-		//LIMBO
+        //LIMBO
         Log.v("SDL", "Finished main function");
 
         // Native thread has finished, let's finish the Activity
@@ -1155,9 +1156,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         mDisplay = ((WindowManager)context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
         mSensorManager = (SensorManager)context.getSystemService(Context.SENSOR_SERVICE);
 
-        if (Build.VERSION.SDK_INT >= 12) {
-            setOnGenericMotionListener(new SDLGenericMotionListener_API12());
-        }
+        setOnGenericMotionListener(new SDLGenericMotionListener_API12());
 
         // Some arbitrary defaults to avoid a potential division by zero
         mWidth = 1.0f;
@@ -1190,7 +1189,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     // Called when we lose the surface
     @Override
-    public void surfaceDestroyed(SurfaceHolder holder) {
+    public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
         Log.v("SDL", "surfaceDestroyed()");
 
         // Transition to pause, if needed
@@ -1203,7 +1202,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     // Called when the surface is resized
     @Override
-    public void surfaceChanged(SurfaceHolder holder,
+    public void surfaceChanged(@NonNull SurfaceHolder holder,
                                int format, int width, int height) {
         Log.v("SDL", "surfaceChanged()");
 
@@ -1304,7 +1303,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     // Key events
     @Override
-    public boolean onKey(View  v, int keyCode, KeyEvent event) {
+    public boolean onKey(View  v, int keyCode, @NonNull KeyEvent event) {
         // Dispatch the different events depending on where they come from
         // Some SOURCE_JOYSTICK, SOURCE_DPAD or SOURCE_GAMEPAD are also SOURCE_KEYBOARD
         // So, we try to process them as JOYSTICK/DPAD/GAMEPAD events first, if that fails we try them as KEYBOARD
@@ -1360,7 +1359,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
     // Touch events
     @Override
-    public boolean onTouch(View v, MotionEvent event) {
+    public boolean onTouch(View v, @NonNull MotionEvent event) {
         /* Ref: http://developer.android.com/training/gestures/multi.html */
         final int touchDevId = event.getDeviceId();
         final int pointerCount = event.getPointerCount();
@@ -1652,12 +1651,12 @@ interface SDLClipboardHandler {
 
 class SDLClipboardHandler_API11 implements
         SDLClipboardHandler,
-        ClipboardManager.OnPrimaryClipChangedListener {
+        android.content.ClipboardManager.OnPrimaryClipChangedListener {
 
-    protected ClipboardManager mClipMgr;
+    protected android.content.ClipboardManager mClipMgr;
 
     SDLClipboardHandler_API11() {
-        mClipMgr = (ClipboardManager) SDL.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        mClipMgr = (android.content.ClipboardManager) SDL.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
         mClipMgr.addPrimaryClipChangedListener(this);
     }
 
@@ -1719,4 +1718,3 @@ class SDLClipboardHandler_Old implements
         mClipMgrOld.setText(string);
     }
 }
-

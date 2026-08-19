@@ -978,7 +978,7 @@ public class LimboActivity extends AppCompatActivity implements
                 if (roms != null) {
                     java.util.Arrays.sort(roms);
                     for (String rom : roms) {
-                        if (rom.toLowerCase().endsWith(".bin")) {
+                        if (rom.toLowerCase().endsWith(".bin") || rom.toLowerCase().endsWith(".rom")) {
                             options.add(rom);
                         }
                     }

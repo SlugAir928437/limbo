@@ -1,0 +1,59 @@
+plugins {
+    alias(libs.plugins.android.library)
+}
+
+group = 'com.github.rosuH'
+
+android {
+    namespace 'me.rosuh.filepicker'  // 建议添加，避免资源冲突
+
+    defaultConfig {
+        minSdk 16
+        compileSdk 37  // 升级到较新版本，Gradle 9.4.1 配合 AGP 8.x 使用
+        targetSdk 37
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/proguard/androidx-annotations.pro']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+
+    // Kotlin
+    implementation libs.kotlin.stdlib  // 升级到与 AGP 8.x 兼容的版本
+
+    // AndroidX
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.recyclerview
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.swiperefreshlayout
+
+    // 图片加载库（编译时可选）
+    compileOnly libs.picasso
+    compileOnly(libs.glide) {
+        exclude group: "androidx"
+    }
+
+    // 测试
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
+}

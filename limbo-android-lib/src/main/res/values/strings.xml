@@ -195,6 +195,7 @@
     <string name="EjectedDevice">Ejected device</string>
     <string name="ChangedDevice">Changed device</string>
     <string name="Error">Error</string>
+    <string name="CopyFileFailed">Failed to copy file, please try another location</string>
     <string name="ChooseDirForVMExport">Choose a directory to export your virtual machines</string>
     <string name="ExportFilenameCannotBeEmpty">Export filename cannot be empty</string>
     <string name="ChangeDirectory">Change Directory</string>

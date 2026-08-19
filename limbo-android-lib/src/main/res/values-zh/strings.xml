@@ -195,6 +195,7 @@
     <string name="EjectedDevice">已弹出设备</string>
     <string name="ChangedDevice">已更改设备</string>
     <string name="Error">错误</string>
+    <string name="CopyFileFailed">复制文件失败，请尝试其他位置</string>
     <string name="ChooseDirForVMExport">选择一个目录来导出您的虚拟机</string>
     <string name="ExportFilenameCannotBeEmpty">导出文件名不能为空</string>
     <string name="ChangeDirectory">更改目录</string>

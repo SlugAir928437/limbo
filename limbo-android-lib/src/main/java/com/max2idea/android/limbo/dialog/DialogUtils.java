@@ -19,11 +19,12 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.dialog;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.DialogInterface;
-import android.graphics.Color;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class DialogUtils {
     private static final String TAG = "DialogUtils";
@@ -31,7 +32,7 @@ public class DialogUtils {
     public static void UIAlert(Activity activity, String title, String body) {
 
         final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
+        alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(title);
         TextView textView = new TextView(activity);
         textView.setPadding(20, 20, 20, 20);
@@ -41,11 +42,7 @@ public class DialogUtils {
         alertDialog.setView(view);
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE,
                 activity.getResources().getString(android.R.string.ok),
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        alertDialog.dismiss();
-                    }
-                });
+                (dialog, which) -> alertDialog.dismiss());
         alertDialog.show();
     }
 
@@ -56,7 +53,7 @@ public class DialogUtils {
     ) {
 
         AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
+        alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(title);
         alertDialog.setCanceledOnTouchOutside(cancelable);
         TextView textView = new TextView(activity);

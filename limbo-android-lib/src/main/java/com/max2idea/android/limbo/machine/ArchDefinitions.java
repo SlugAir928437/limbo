@@ -36,8 +36,7 @@ public class ArchDefinitions {
     private static String TAG = "ArchDefinitions";
 
     public static ArrayList<String> getSoundcards(Context context) {
-        ArrayList<String> commonSoundcards = new ArrayList<>(Arrays.asList(Installer.getAttrs(context, R.raw.common_soundcards)));
-        return commonSoundcards;
+        return new ArrayList<>(Arrays.asList(Installer.getAttrs(context, R.raw.common_soundcards)));
     }
 
     public static ArrayList<String> getNetworkDevices(Context context) {
@@ -84,9 +83,7 @@ public class ArchDefinitions {
         }
 
         if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-            vgaValues.add("ati-vga");
-            vgaValues.add("secondary-vga");
-            vgaValues.add("VGA");
+            vgaValues.add("ati");
         }
 
         //XXX: some archs don't support vga on QEMU like SPARC64

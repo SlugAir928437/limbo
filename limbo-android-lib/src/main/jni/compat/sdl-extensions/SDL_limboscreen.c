@@ -27,4 +27,3 @@ JNIEXPORT void JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_nativeFull
         JNIEnv* env, jobject thiz) {
     SDL_SetWindowFullscreen(Android_Window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 }
-

@@ -129,10 +129,6 @@ public class Config {
 
     //XXX set scaling to linear it's a tad slower but it's worth it
     public static int SDLHintScale = 1;
-
-    // Display scale mode for the SDL/GTK backends:
-    // 0 = stretch to fill, 1 = keep aspect ratio (letterbox), 2 = 1:1 pixels
-    public static int SDLScaleMode = 1;
     public static boolean viewLogInternally = true;
     //XXX some archs don't support floppy or sd card
     public static boolean enableEmulatedFloppy = true;

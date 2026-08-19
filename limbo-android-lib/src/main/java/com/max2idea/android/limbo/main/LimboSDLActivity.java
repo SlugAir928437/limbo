@@ -157,7 +157,7 @@ public class LimboSDLActivity extends SDLActivity
         sendKeys(codes, Config.keyDelay);
     }
 
-    public synchronized void sendKeys(int [] codes, int delay) {
+    public synchronized void sendKeys(@NonNull int [] codes, int delay) {
         for(int code : codes)
             sendKeyEvent(null, code, true, delay);
         for(int code : codes)
@@ -166,7 +166,7 @@ public class LimboSDLActivity extends SDLActivity
 
     public synchronized void sendCtrlAlt(int code) {
         sendKeys(new int[]{KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.KEYCODE_ALT_LEFT,
-            code}, 100);
+                code}, 100);
     }
 
     public synchronized void sendCtrlAltShift(int code) {
@@ -369,9 +369,9 @@ public class LimboSDLActivity extends SDLActivity
             mouseMode = MouseMode.TOUCHSCREEN;
             invalidateOptionsMenu();
             ((LimboSDLSurface) mSurface).refreshSurfaceView();
-        } catch (Exception ex) {
+        } catch (Exception exception) {
             if (Config.debug)
-                ex.printStackTrace();
+                exception.printStackTrace();
         }
     }
 
@@ -699,7 +699,6 @@ public class LimboSDLActivity extends SDLActivity
         }, 5000);
     }
 
-    @SuppressWarnings("MissingSuperCall")
     public void onBackPressed() {
         if (mKeyMapManager != null && mKeyMapManager.isEditMode()) {
             toggleKeyMapper();
@@ -995,7 +994,7 @@ public class LimboSDLActivity extends SDLActivity
      */
     public boolean isRelativeMode(int toolType) {
         return toolType == MotionEvent.TOOL_TYPE_FINGER
-                && LimboSDLActivity.mouseMode != MouseMode.TOUCHSCREEN;
+                && LimboSDLActivity.mouseMode != LimboSDLActivity.MouseMode.TOUCHSCREEN;
     }
 
 
@@ -1099,7 +1098,7 @@ public class LimboSDLActivity extends SDLActivity
                     public void run() {
                         invalidateOptionsMenu();
                         ((LimboSDLSurface) mSurface).refreshSurfaceView();
-                        }
+                    }
                 }, 1000);
                 break;
         }

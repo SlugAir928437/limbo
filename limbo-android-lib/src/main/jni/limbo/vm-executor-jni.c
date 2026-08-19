@@ -162,8 +162,7 @@ JNIEXPORT jstring JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_start(
         JNIEnv* env, jobject thiz,
 		jstring storage_dir, jstring base_dir,
 		jstring lib_filename, jstring lib_path,
-		jint sdl_scale_hint, jint sdl_scale_mode,
-		jobjectArray params) {
+		jint sdl_scale_hint, jobjectArray params) {
 	int res;
 	char res_msg[MSG_BUFSIZE + 1] = { 0 };
 
@@ -259,8 +258,8 @@ JNIEXPORT jstring JNICALL Java_com_max2idea_android_limbo_jni_VMExecutor_start(
      * 0 = stretch, 1 = keep aspect ratio, 2 = 1:1 pixels.  Symbols that are
      * not exported by the loaded qemu library (e.g. VNC-only builds) are
      * simply ignored by set_qemu_var(). */
-    set_qemu_var(env, thiz, "limbo_sdl_scale_mode", sdl_scale_mode);
-    set_qemu_var(env, thiz, "limbo_gtk_scale_mode", sdl_scale_mode);
+    // set_qemu_var(env, thiz, "limbo_sdl_scale_mode", sdl_scale_mode);
+    // set_qemu_var(env, thiz, "limbo_gtk_scale_mode", sdl_scale_mode);
 
 	// Use correct function signatures to avoid undefined behavior on ARM64
 	typedef void (*qemu_init_t)(int argc, char **argv);

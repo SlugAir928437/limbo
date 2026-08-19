@@ -20,12 +20,12 @@ package com.max2idea.android.limbo.jni;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
 
+import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 
 import com.limbo.emu.lib.R;
@@ -47,7 +47,6 @@ import org.json.JSONObject;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-
 
 /**
  * Class is used to start and stop the qemu process and communicate file descriptions, mouse,
@@ -77,7 +76,7 @@ class VMExecutor extends MachineExecutor {
      * @param width  Width
      * @param height Height
      */
-    public static void onVMResolutionChanged(int width, int height) {
+    @Keep public static void onVMResolutionChanged(int width, int height) {
         vm_width = width;
         vm_height = height;
         mInstance.onResolutionChanged(vm_width, vm_height);
@@ -86,8 +85,7 @@ class VMExecutor extends MachineExecutor {
     //JNI Methods
     private native String start(String storage_dir, String base_dir,
                                 String lib_filename, String lib_path,
-                                int sdl_scale_hint, int sdl_scale_mode,
-                                Object[] params);
+                                int sdl_scale_hint, Object[] params);
 
     private native String stop(int restart);
 
@@ -116,7 +114,7 @@ class VMExecutor extends MachineExecutor {
      *
      * @param params Parameters to be printed
      */
-    public void printParams(String[] params) {
+    public void printParams(@NonNull String[] params) {
         Log.d(TAG, "Params:");
         for (int i = 0; i < params.length; i++) {
             Log.d(TAG, i + ": " + params[i]);
@@ -126,12 +124,12 @@ class VMExecutor extends MachineExecutor {
     // Translate to QEMU format
     private String getSoundCard() {
         if (Config.enableSDLSound && getMachine().getSoundCard() != null
-                && !getMachine().getSoundCard().toLowerCase().equals("none"))
+                && !getMachine().getSoundCard().equalsIgnoreCase("none"))
             return getMachine().getSoundCard();
         return null;
     }
 
-private String getQemuLibrary() {
+    private String getQemuLibrary() {
         switch (LimboApplication.arch) {
             case x86:
                 return "libqemu-system-i386.so";
@@ -230,6 +228,7 @@ private String getQemuLibrary() {
             paramsList.add("-display");
             if (gtk) {
                 // GTK4 android backend (initialized by LimboGtk on the activity side)
+                // app 已有顶栏且 gtk 自带的顶栏会造成崩溃，默认关闭
                 paramsList.add("gtk,show-menubar=off");
             } else {
                 paramsList.add("sdl");
@@ -249,10 +248,13 @@ private String getQemuLibrary() {
     }
 
     private void addAdvancedOptions(ArrayList<String> paramsList) {
-
         if (getMachine().getExtraParams() != null && !getMachine().getExtraParams().trim().isEmpty()) {
             String[] paramsTmp = getMachine().getExtraParams().split(" ");
             paramsList.addAll(Arrays.asList(paramsTmp));
+        }
+        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+            paramsList.add("-device");
+            paramsList.add("usb-kbd");
         }
     }
 
@@ -263,7 +265,7 @@ private String getQemuLibrary() {
         }
     }
 
-    private void addGenericOptions(Context context, ArrayList<String> paramsList) {
+    private void addGenericOptions(Context context, @NonNull ArrayList<String> paramsList) {
         paramsList.add("-L");
         paramsList.add(LimboApplication.getBasefileDir());
         if (LimboSettingsManager.getEnableQmp(context)) {
@@ -324,10 +326,10 @@ private String getQemuLibrary() {
         }
         if (getMachineType() != null && !getMachineType().equals("Default")) {
             String machineParams = getMachineType();
-            // IA-64 only: always append the EFI NVRAM option automatically.
+            // IA-64 only: always append the EFI NVRAM option and trun off i8042 automatically.
             // Other architectures must not receive this option.
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-                machineParams += ",nvram=./ia64.nvram";
+                machineParams += ",i8042=off,nvram=./ia64.nvram";
             }
             paramsList.add("-M");
             paramsList.add(machineParams);
@@ -783,14 +785,11 @@ private String getQemuLibrary() {
 
             ignoreBreakpointInvalidation(LimboSettingsManager.getIgnoreBreakpointInvalidation(LimboApplication.getInstance())?1:0, 2000);
             QmpClient.setExternal(LimboSettingsManager.getEnableExternalQMP(LimboApplication.getInstance()));
-            // Display scale mode (0=stretch, 1=aspect, 2=1:1) shared by the
-            // SDL and GTK backends; read at VM start so the setting takes
-            // effect for the current run.
-            Config.SDLScaleMode = LimboSettingsManager.getDisplayScaleMode(LimboApplication.getInstance());
+            // Read at VM start so the setting takes effect for the current run.
             String libFilename = getQemuLibrary();
             res = start(Config.storagedir, LimboApplication.getBasefileDir(),
                     libFilename, FileUtils.getNativeLibDir(LimboApplication.getInstance()) + "/" + libFilename,
-                    Config.SDLHintScale, Config.SDLScaleMode, params);
+                    Config.SDLHintScale, params);
         } catch (Exception ex) {
             ToastUtils.toastLong(LimboApplication.getInstance(), ex.getMessage());
             return res;

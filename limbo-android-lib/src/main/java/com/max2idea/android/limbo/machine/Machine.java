@@ -670,7 +670,14 @@ public class Machine extends Observable {
             networkCard = "Default";
         } else if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
             arch = "ia64";
-            machineType = "itanium2-vpc";
+            // ia64-vpc is the alias for itanium2-vpc (Itanium 2 / Montecito
+            // profile, EFI 1.10).  This is the correct profile for Windows XP
+            // 64-Bit Edition (Version 2003) and Windows Server 2003 IA64.
+            // itanium-vpc (Merced, EFI 1.02) is only needed for the older
+            // Version 2002 builds.  VMExecutor additionally passes i8042=off
+            // so the text-mode installer gets a USB keyboard (PS/2 is not
+            // operational during XP IA64 text setup) and nvram=./ia64.nvram.
+            machineType = "ia64-vpc";
             cpu = "Default";
             networkCard = "Default";
         }

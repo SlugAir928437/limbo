@@ -2,41 +2,12 @@
 <resources xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Base application theme -->
-    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-        <!-- Status bar -->
-        <item name="android:windowLightStatusBar">false</item>
-        <!-- Window -->
-        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <!-- Material components -->
-        <item name="materialButtonStyle">@style/Widget.Limbo.Button</item>
-        <item name="materialCardViewStyle">@style/Widget.Limbo.SectionCard</item>
-        <!-- Shape appearance -->
-        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.Limbo.Small</item>
-        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.Limbo.Medium</item>
-        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.Limbo.Large</item>
-    </style>
-
     <!-- NoActionBar variant for emulator activities (Material 3, matched with Compose theme) -->
     <style name="AppTheme.NoActionBar" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
 
     <!-- Shape Appearances -->
-    <style name="ShapeAppearance.Limbo.Small" parent="ShapeAppearance.MaterialComponents.SmallComponent">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">10dp</item>
-    </style>
-
-    <style name="ShapeAppearance.Limbo.Medium" parent="ShapeAppearance.MaterialComponents.MediumComponent">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">16dp</item>
-    </style>
-
-    <style name="ShapeAppearance.Limbo.Large" parent="ShapeAppearance.MaterialComponents.LargeComponent">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">24dp</item>
-    </style>
-
     <style name="Transparent" parent="@android:style/Theme.Dialog"></style>
 
     <style name="leftEllipsisSpinnerDropDownItem" parent="@android:style/Widget.DropDownItem.Spinner">
@@ -52,39 +23,9 @@
     </style>
 
     <!-- Section Card style -->
-    <style name="Widget.Limbo.SectionCard" parent="Widget.MaterialComponents.CardView">
-        <item name="cardCornerRadius">@dimen/card_corner_radius</item>
-        <item name="cardElevation">@dimen/card_elevation</item>
-        <item name="strokeWidth">@dimen/card_stroke_width</item>
-        <item name="contentPadding">0dp</item>
-    </style>
-
     <!-- Standard Button -->
-    <style name="Widget.Limbo.Button" parent="Widget.MaterialComponents.Button">
-        <item name="cornerRadius">14dp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
-        <item name="android:textSize">15sp</item>
-        <item name="android:letterSpacing">0.02</item>
-    </style>
-
     <!-- Control Button style - Large Pill Shape -->
-    <style name="Widget.Limbo.ControlButton" parent="Widget.MaterialComponents.Button.Icon">
-        <item name="iconPadding">0dp</item>
-        <item name="iconSize">@dimen/control_button_icon_size</item>
-        <item name="cornerRadius">@dimen/control_button_corner</item>
-        <item name="android:insetTop">0dp</item>
-        <item name="android:insetBottom">0dp</item>
-        <item name="android:insetLeft">0dp</item>
-        <item name="android:insetRight">0dp</item>
-        <item name="elevation">6dp</item>
-        <item name="rippleColor">@android:color/white</item>
-    </style>
-
     <!-- Section Header Icon Background -->
-    <style name="Widget.Limbo.IconBg" parent="">
-        <item name="android:padding">8dp</item>
-    </style>
-
     <style name="FilePickerTheme" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
         <item name="colorPrimary">#6750A4</item>
         <item name="colorPrimaryVariant">#4F378B</item>

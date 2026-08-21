@@ -244,6 +244,11 @@ class VMExecutor extends MachineExecutor {
             paramsList.add("-usb");
             paramsList.add("-device");
             paramsList.add(getMachine().getMouse());
+            // 对于 ia64 架构的虚拟机，需要添加 usb-kbd 设备以支持键鼠
+            if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+//                paramsList.add("-device");
+//                paramsList.add("usb-kbd");
+            }
         }
     }
 
@@ -251,10 +256,6 @@ class VMExecutor extends MachineExecutor {
         if (getMachine().getExtraParams() != null && !getMachine().getExtraParams().trim().isEmpty()) {
             String[] paramsTmp = getMachine().getExtraParams().split(" ");
             paramsList.addAll(Arrays.asList(paramsTmp));
-        }
-        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-            paramsList.add("-device");
-            paramsList.add("usb-kbd");
         }
     }
 
@@ -326,10 +327,15 @@ class VMExecutor extends MachineExecutor {
         }
         if (getMachineType() != null && !getMachineType().equals("Default")) {
             String machineParams = getMachineType();
-            // IA-64 only: always append the EFI NVRAM option and trun off i8042 automatically.
-            // Other architectures must not receive this option.
+            // IA-64 only: always append the EFI NVRAM option and disable the
+            // i8042 PS/2 controller.  Windows XP / Server 2003 IA64 text-mode
+            // setup cannot use PS/2, so i8042=off makes QEMU attach a USB
+            // keyboard; without it the "Press any key to boot from CD" prompt
+            // times out and the loader hangs after "Continuing normal boot."
+            // Other architectures must not receive these options.
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-                machineParams += ",i8042=off,nvram=./ia64.nvram";
+//                machineParams += ",i8042=off,nvram=./ia64.nvram";
+                machineParams += ",nvram=./ia64.nvram";
             }
             paramsList.add("-M");
             paramsList.add(machineParams);
@@ -555,9 +561,9 @@ class VMExecutor extends MachineExecutor {
      * dropdown (assets/roms file name stored in the machine), that file is
      * used; otherwise the SeaBIOS shipped in the app assets is used.
      * Applied to every architecture: x86/x86_64 PC machines use it as their
-     * default firmware, the IA-64 itanium2-vpc machine requires a "-bios"
-     * firmware ROM to boot, and ARM boards fall back to it when they need a
-     * firmware blob.
+     * default firmware, the IA-64 ia64-vpc (itanium2-vpc) machine requires a
+     * "-bios" firmware ROM to boot, and ARM boards fall back to it when they
+     * need a firmware blob.
      */
     private void addBIOSOption(ArrayList<String> paramsList) {
         String bios = getMachine() != null ? getMachine().getBios() : null;
@@ -620,6 +626,17 @@ class VMExecutor extends MachineExecutor {
         if (cache == null || cache.equals("default"))
             cache = null;
 
+        // The IA-64 machine exposes AHCI (SATA) and an LSI SCSI HBA.  Windows
+        // XP IA64 ships with IDE and SCSI drivers but has no SATA/AHCI driver,
+        // so an "ide" CD-ROM ends up on the AHCI controller where the Windows
+        // installer cannot read it ("txtsetup.inf is corrupt or missing").
+        // Route every IA-64 drive to the LSI SCSI bus, which Windows XP IA64
+        // supports natively, and use SCSI unit 4 for the CD-ROM so it never
+        // collides with HDC (SCSI unit 2) the way the legacy IDE index=2 does.
+        boolean ia64 = LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w;
+        String cdIndex  = ia64 ? "4" : "2";
+
         // Hard disks HDA..HDD
         addDrive(paramsList, "0", getMachine().getHdaInterface(), "disk", null,
                 getDriveFilePath(getMachine().getHdaImagePath()),
@@ -635,8 +652,8 @@ class VMExecutor extends MachineExecutor {
                 isRawImage(getDriveFilePath(getMachine().getHddImagePath())) ? "raw" : null, cache);
 
         // CDROM
-        addDrive(paramsList, "2", getMachine().getCDInterface(), "cdrom", null,
-                getDriveFilePath(getMachine().getCdImagePath()), null, null);
+        addDrive(paramsList, cdIndex, getMachine().getCDInterface(), "cdrom", null,
+                getDriveFilePath(getMachine().getCdImagePath()), "raw", null);
 
         // Floppy drives FDA/FDB
         if (Config.enableEmulatedFloppy) {
@@ -684,7 +701,8 @@ class VMExecutor extends MachineExecutor {
             return;
         StringBuilder param = new StringBuilder();
         appendDriveField(param, "index", index);
-        appendDriveField(param, "if", iface);
+        if(iface != null)
+            appendDriveField(param, "if", iface);
         appendDriveField(param, "media", media);
         appendDriveField(param, "id", id);
         appendDriveField(param, "file", file);
@@ -823,16 +841,13 @@ class VMExecutor extends MachineExecutor {
     }
 
     public void stopvm(final int restart) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                if (restart != 0) {
-                    QmpClient.sendCommand(QmpClient.getResetCommand());
-                } else {
-                    //XXX: Qmp command only halts the VM but doesn't exit so we use force close
+        new Thread(() -> {
+            if (restart != 0) {
+                QmpClient.sendCommand(QmpClient.getResetCommand());
+            } else {
+                //XXX: Qmp command only halts the VM but doesn't exit so we use force close
 //            QmpClient.sendCommand(QmpClient.powerDown());
-                    stop(restart);
-                }
+                stop(restart);
             }
         }).start();
     }
@@ -855,9 +870,17 @@ class VMExecutor extends MachineExecutor {
 
     @Override
     public String getDeviceName(@NonNull MachineProperty driveProperty) {
+        // On IA-64 the CD-ROM lives on the LSI SCSI bus (unit 4, see
+        // addDrives()), so its QMP id is "scsi0-cd4" instead of the
+        // legacy "ide1-cd0" used on the other architectures.
+        if (driveProperty == MachineProperty.CDROM) {
+            if (LimboApplication.arch == Config.Arch.ia64
+                    || LimboApplication.arch == Config.Arch.ia64w) {
+                return "scsi0-cd4";
+            }
+            return cdDeviceName;
+        }
         switch (driveProperty) {
-            case CDROM:
-                return cdDeviceName;
             case FDA:
                 return fdaDeviceName;
             case FDB:
@@ -1032,9 +1055,9 @@ class VMExecutor extends MachineExecutor {
         // path directly.
         String uri = "file:" + getSaveStateName();
         String command = QmpClient.getStopVMCommand();
-        String msg = QmpClient.sendCommand(command);
+        QmpClient.sendCommand(command);
         command = QmpClient.getMigrateCommand(false, false, uri);
-        msg = QmpClient.sendCommand(command);
+        String msg = QmpClient.sendCommand(command);
         if (msg != null) {
             return processMigrationResponse(msg);
         }

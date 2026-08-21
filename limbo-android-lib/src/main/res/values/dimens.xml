@@ -2,41 +2,11 @@
 <resources>
     <!-- Spacing - 8px Grid System -->
     <dimen name="spacing_xs">4dp</dimen>
-    <dimen name="spacing_sm">8dp</dimen>
-    <dimen name="spacing_md">12dp</dimen>
-    <dimen name="spacing_normal">16dp</dimen>
-    <dimen name="spacing_lg">20dp</dimen>
-    <dimen name="spacing_xl">24dp</dimen>
-    <dimen name="spacing_2xl">32dp</dimen>
-
     <!-- Card - Glassmorphism Style -->
-    <dimen name="card_corner_radius">20dp</dimen>
-    <dimen name="card_elevation">8dp</dimen>
-    <dimen name="card_stroke_width">1dp</dimen>
-    <dimen name="card_inner_padding">16dp</dimen>
-    <dimen name="card_header_padding">16dp</dimen>
-
     <!-- Section header -->
-    <dimen name="section_header_icon_size">40dp</dimen>
-    <dimen name="section_header_text_size">20sp</dimen>
-    <dimen name="section_summary_text_size">12sp</dimen>
-
     <!-- Row item -->
-    <dimen name="row_icon_size">24dp</dimen>
-    <dimen name="row_text_size">15sp</dimen>
-    <dimen name="row_item_height">56dp</dimen>
-
     <!-- Control button -->
-    <dimen name="control_button_size">64dp</dimen>
-    <dimen name="control_button_icon_size">28dp</dimen>
-    <dimen name="control_button_corner">20dp</dimen>
-
     <!-- Divider -->
-    <dimen name="divider_height">0.5dp</dimen>
-
     <!-- Toolbar -->
-    <dimen name="toolbar_elevation">0dp</dimen>
-
     <!-- Input -->
-    <dimen name="input_corner_radius">12dp</dimen>
 </resources>

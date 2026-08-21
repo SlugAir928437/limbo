@@ -40,7 +40,7 @@ import java.util.Observer;
 public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatabase, Observer {
     private static final String TAG = "MachineOpenHelper";
 
-    private static final int DATABASE_VERSION = 17;
+    private static final int DATABASE_VERSION = 19;
     private static final String DATABASE_NAME = "LIMBO";
     private static final String MACHINE_TABLE_NAME = "machines";
 
@@ -162,6 +162,34 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
 
         if (newVersion >= 17 && oldVersion <= 16) {
             db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.BIOS + " TEXT;");
+        }
+
+        if (newVersion >= 18 && oldVersion <= 17) {
+            // IA-64: itanium2-vpc (Montecito) drops the legacy loader/SAL ABI
+            // and IA-32 execution support, which causes older guests such as
+            // Windows XP 64-Bit Edition (Version 2002) to hang after the
+            // firmware prints "Continuing normal boot."  Redirect existing
+            // IA-64 VMs to itanium-vpc (Merced), which provides the required
+            // first-generation firmware compatibility workarounds.
+            db.execSQL("UPDATE " + MACHINE_TABLE_NAME
+                    + " SET " + MachineProperty.MACHINETYPE + " = 'itanium-vpc'"
+                    + " WHERE " + MachineProperty.ARCH + " IN ('ia64', 'ia64w')"
+                    + " AND (" + MachineProperty.MACHINETYPE + " = 'itanium2-vpc'"
+                    + "  OR " + MachineProperty.MACHINETYPE + " = 'ia64-vpc');");
+        }
+
+        if (newVersion >= 19 && oldVersion <= 18) {
+            // The v18 migration was based on a misdiagnosis: itanium-vpc is
+            // only for the older Windows XP Version 2002 (EFI 1.02) builds,
+            // while Windows XP Version 2003 / Server 2003 need ia64-vpc
+            // (itanium2-vpc, EFI 1.10).  The real cause of the "Continuing
+            // normal boot." hang was the missing i8042=off flag (PS/2 keyboard
+            // does not work in XP IA64 text setup), now added in VMExecutor.
+            // Revert any IA-64 VMs that v18 redirected to itanium-vpc.
+            db.execSQL("UPDATE " + MACHINE_TABLE_NAME
+                    + " SET " + MachineProperty.MACHINETYPE + " = 'ia64-vpc'"
+                    + " WHERE " + MachineProperty.ARCH + " IN ('ia64', 'ia64w')"
+                    + " AND " + MachineProperty.MACHINETYPE + " = 'itanium-vpc';");
         }
     }
 

@@ -8,7 +8,6 @@
         android:supportsRtl="true" >
         <activity
             android:name="com.limbo.emu.main.LimboEmuActivity"
-            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/AppTheme.NoActionBar"

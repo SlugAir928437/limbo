@@ -72,17 +72,6 @@
         <item>4</item>
     </string-array>
 
-    <string-array name="scaleModeLabels">
-        <item>@string/scale_mode_stretch</item>
-        <item>@string/scale_mode_aspect</item>
-        <item>@string/scale_mode_1to1</item>
-    </string-array>
-    <string-array name="scaleModeValues">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-    </string-array>
-
     <string-array name="diskCacheLabels">
         <item>default</item>
         <item>none</item>

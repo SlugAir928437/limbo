@@ -65,8 +65,7 @@ public class LimboSettingsManager extends PreferenceActivity {
     // Screen
     public static int getOrientationSetting(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        int orientation = Integer.parseInt(prefs.getString("orientationPref", "0"));
-        return orientation;
+        return Integer.parseInt(prefs.getString("orientationPref", "0"));
     }
 
     public static boolean getAlwaysShowMenuToolbar(Context activity) {
@@ -77,11 +76,6 @@ public class LimboSettingsManager extends PreferenceActivity {
     public static boolean getFullscreen(Context activity) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
         return prefs.getBoolean("ShowFullscreen", true);
-    }
-
-    // Display scale mode shared by the SDL and GTK display backends:
-    // 0 = stretch to fill, 1 = keep aspect ratio (letterbox), 2 = 1:1 pixels
-    public static int getDisplayScaleMode(Context context) {
     }
 
     // updates

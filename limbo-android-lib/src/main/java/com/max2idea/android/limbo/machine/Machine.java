@@ -684,17 +684,25 @@ public class Machine extends Observable {
             // so the text-mode installer gets a USB keyboard (PS/2 is not
             // operational during XP IA64 text setup) and nvram=./ia64.nvram.
             //
-            // Hard disks default to the LSI SCSI bus and the boot CD-ROM to the
-            // CMD646 legacy IDE primary master: Windows XP/Server 2003 IA64
-            // ships in-box LSI/Symbios SCSI and IDE/ATAPI drivers but no SATA
-            // AHCI driver, and an LSI SCSI boot CD-ROM hangs this firmware.
+            // The CMD646 legacy IDE bus serves the entire IA-64 storage stack:
+            // the boot CD-ROM is its primary master and hard disks ride on the
+            // same controller.  Windows XP/Server 2003 IA64 ships with in-box
+            // IDE/ATAPI and LSI/Symbios SCSI drivers, but the target disk must
+            // NOT sit on the LSI SCSI HBA: the third-party SCSI driver faults
+            // there once setup enters the graphical install environment and the
+            // machine blue-screens with STOP 0x0000007E
+            // (SYSTEM_THREAD_EXCEPTION_NOT_HANDLED). Keeping every IA64 drive
+            // on the IDE bus means the installer only ever loads its proven
+            // in-box IDE/ATAPI driver, which already reads the boot CD.
+            // A SATA/AHCI drive stays avoided (no Windows AHCI driver) and an
+            // LSI SCSI boot CD-ROM hangs this firmware.
             machineType = "ia64-vpc";
             cpu = "Default";
             networkCard = "Default";
-            hdaInterface = "scsi";
-            hdbInterface = "scsi";
-            hdcInterface = "scsi";
-            hddInterface = "scsi";
+            hdaInterface = "ide";
+            hdbInterface = "ide";
+            hdcInterface = "ide";
+            hddInterface = "ide";
             cdInterface = "ide";
         }
     }

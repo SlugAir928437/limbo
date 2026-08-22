@@ -625,30 +625,38 @@ class VMExecutor extends MachineExecutor {
         if (cache == null || cache.equals("default"))
             cache = null;
 
-        // The IA-64 machine exposes AHCI (SATA) and an LSI SCSI HBA.  Windows
-        // XP IA64 ships with IDE and SCSI drivers but has no SATA/AHCI driver,
-        // so an "ide" CD-ROM ends up on the AHCI controller where the Windows
-        // installer cannot read it ("txtsetup.inf is corrupt or missing").
-        // Route every IA-64 drive to the LSI SCSI bus, which Windows XP IA64
-        // supports natively, and use SCSI unit 4 for the CD-ROM so it never
-        // collides with HDC (SCSI unit 2) the way the legacy IDE index=2 does.
-        // boolean ia64 = LimboApplication.arch == Config.Arch.ia64
-        //         || LimboApplication.arch == Config.Arch.ia64w;
-        // String cdIndex  = ia64 ? "4" : "2";
+        // The IA-64 machine exposes an LSI SCSI HBA and a CMD646 legacy IDE
+        // controller.  Windows XP/Server 2003 IA64 ships with in-box IDE/ATAPI
+        // and LSI/Symbios SCSI drivers but has no SATA/AHCI driver, so the
+        // whole IA-64 storage stack is put on the CMD646 legacy IDE bus: the
+        // boot CD-ROM is its primary master (if=ide index 0) and hard disks
+        // follow at index 1 so they never collide with the CD.  Routing the
+        // target disk to the LSI SCSI HBA instead gives the installer a
+        // graphical blue-screen with STOP 0x7E
+        // (SYSTEM_THREAD_EXCEPTION_NOT_HANDLED) in the Symbios SCSI driver.
+        boolean iaDisk = LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w;
+        int iaDiskBase = iaDisk ? 1 : 0;
 
         // Hard disks HDA..HDD
-        addDrive(paramsList, "0", getMachine().getHdaInterface(), "disk", null,
+        addDrive(paramsList, Integer.toString(iaDiskBase + 0),
+                getMachine().getHdaInterface(), "disk", null,
                 getDriveFilePath(getMachine().getHdaImagePath()),
                 isRawImage(getDriveFilePath(getMachine().getHdaImagePath())) ? "raw" : null, cache);
-        addDrive(paramsList, "1", getMachine().getHdbInterface(), "disk", null,
+        addDrive(paramsList, Integer.toString(iaDiskBase + 1),
+                getMachine().getHdbInterface(), "disk", null,
                 getDriveFilePath(getMachine().getHdbImagePath()),
                 isRawImage(getDriveFilePath(getMachine().getHdbImagePath())) ? "raw" : null, cache);
-        addDrive(paramsList, "2", getMachine().getHdcInterface(), "disk", null,
+        addDrive(paramsList, Integer.toString(iaDiskBase + 2),
+                getMachine().getHdcInterface(), "disk", null,
                 getDriveFilePath(getMachine().getHdcImagePath()),
                 isRawImage(getDriveFilePath(getMachine().getHdcImagePath())) ? "raw" : null, cache);
-        addDrive(paramsList, "3", getMachine().getHddInterface(), "disk", null,
-                getDriveFilePath(getMachine().getHddImagePath()),
-                isRawImage(getDriveFilePath(getMachine().getHddImagePath())) ? "raw" : null, cache);
+        if (!iaDisk || iaDiskBase + 3 <= 3) {
+            addDrive(paramsList, Integer.toString(iaDiskBase + 3),
+                    getMachine().getHddInterface(), "disk", null,
+                    getDriveFilePath(getMachine().getHddImagePath()),
+                    isRawImage(getDriveFilePath(getMachine().getHddImagePath())) ? "raw" : null, cache);
+        }
 
         // CDROM getMachine().getCDInterface()
         // IA-64: the boot CD-ROM is wired to the CMD646 legacy PCI IDE

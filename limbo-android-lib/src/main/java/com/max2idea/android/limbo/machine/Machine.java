@@ -659,7 +659,13 @@ public class Machine extends Observable {
     void setDefaults() {
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64) {
             arch = "x86";
-            cpu = "n270";
+            // x86/x86_64 default to "Default" so VMExecutor's disableTSC
+            // path applies its stable qemu32/qemu64 model.  Forcing a
+            // concrete model here (e.g. the old "n270") bypasses that
+            // fallback and renders "-cpu n270,-tsc", which makes the
+            // Windows XP / Server 2003 i386 installer crash with a
+            // STOP 0x0000007E (SYSTEM_THREAD_EXCEPTION_NOT_HANDLED).
+            cpu = "Default";
             machineType = "pc";
             networkCard = "Default";
             disableTSC = 1;

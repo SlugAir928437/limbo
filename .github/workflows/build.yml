@@ -70,7 +70,7 @@ jobs:
           git init glib
           cd glib
           git remote add origin https://gitlab.gnome.org/GNOME/glib.git
-          timeout 120 git fetch --depth 1 --single-branch origin ed3abf0b5221d613a333ed5b118b2f2acc66acd3
+          timeout 120 git fetch --depth 1 origin ed3abf0b5221d613a333ed5b118b2f2acc66acd3
           git checkout FETCH_HEAD
           git apply ../patches/glib-hack.patch
           cd ..

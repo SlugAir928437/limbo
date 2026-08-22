@@ -49,6 +49,11 @@ jobs:
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
       - name: 克隆代码
+        env:
+          # 防止 git 在遇到认证提示时无限期挂起
+          GIT_TERMINAL_PROMPT: '0'
+          GIT_HTTP_LOW_SPEED_TIME: '30'
+          GIT_HTTP_LOW_SPEED_LIMIT: '1024'
         run: |
           #Make sure you're under the jni directory
           cd ./limbo-android-lib/src/main/jni
@@ -65,19 +70,20 @@ jobs:
           git init glib
           cd glib
           git remote add origin https://gitlab.gnome.org/GNOME/glib.git
-          git fetch --depth 1 origin ed3abf0b5221d613a333ed5b118b2f2acc66acd3
+          timeout 120 git fetch --depth 1 --single-branch origin ed3abf0b5221d613a333ed5b118b2f2acc66acd3
           git checkout FETCH_HEAD
           git apply ../patches/glib-hack.patch
           cd ..
 
           ##### GET libffi
-          wget --quiet https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/
+          wget --quiet --timeout=60 https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/ || \
+          wget --quiet --timeout=60 https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/
           tar -xzf /tmp/libffi-3.5.2.tar.gz
           mv libffi-3.5.2 libffi
 
           ##### GET pixman
-          wget --quiet https://www.cairographics.org/releases/pixman-0.43.4.tar.gz -P /tmp/ || \
-          wget --quiet https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz -P /tmp/
+          wget --quiet --timeout=60 https://www.cairographics.org/releases/pixman-0.43.4.tar.gz -P /tmp/ || \
+          wget --quiet --timeout=60 https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz -P /tmp/
           tar -xzf /tmp/pixman-0.43.4.tar.gz
           mv pixman-0.43.4 pixman
 
@@ -87,7 +93,8 @@ jobs:
           test -f libffi/configure.ac
 
           ##### GET SDL2
-          wget --quiet https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/
+          wget --quiet --timeout=60 https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/ || \
+          wget --quiet --timeout=60 https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/
           tar -xzf /tmp/SDL2-2.0.8.tar.gz
           mv SDL2-2.0.8 SDL2
 

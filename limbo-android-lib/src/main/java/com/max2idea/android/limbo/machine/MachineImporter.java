@@ -19,13 +19,14 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.machine;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.DialogInterface;
 import android.util.Log;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.files.FileUtils;
 import com.max2idea.android.limbo.machine.Machine.FileType;
@@ -255,7 +256,7 @@ public class MachineImporter {
 
     public static void promptImportMachines(final Activity activity) {
         final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
+        alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(activity.getString(R.string.ImportMachines));
 
         LinearLayout mLayout = new LinearLayout(activity);

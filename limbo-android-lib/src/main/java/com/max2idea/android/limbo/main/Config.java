@@ -107,7 +107,6 @@ public class Config {
 
     //TODO: add in settings
     public static boolean legacyDrives = false;
-    public static boolean enableDefaultDevices = false;
     public static boolean syncFilesOnClose = true;
 
     public enum Arch {

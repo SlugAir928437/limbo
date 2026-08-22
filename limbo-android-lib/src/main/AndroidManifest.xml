@@ -52,7 +52,8 @@
         <activity
             android:name="com.max2idea.android.limbo.main.LimboSettingsManager"
             android:label="Settings"
-            android:exported="false" />
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat"/>
         <service
             android:name="com.max2idea.android.limbo.machine.MachineService"
             android:enabled="true"

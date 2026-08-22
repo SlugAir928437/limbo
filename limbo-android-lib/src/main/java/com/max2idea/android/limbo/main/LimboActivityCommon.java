@@ -19,7 +19,7 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.main;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -52,7 +52,7 @@ public class LimboActivityCommon {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                new AlertDialog.Builder(activity).setTitle(R.string.ShutdownVM)
+                new MaterialAlertDialogBuilder(activity).setTitle(R.string.ShutdownVM)
                         .setMessage(R.string.ShutdownVMWarning)
                         .setPositiveButton(activity.getString(android.R.string.ok), new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int which) {
@@ -72,7 +72,7 @@ public class LimboActivityCommon {
             public void run() {
 
                 String message = msg != null ? msg : activity.getString(R.string.CouldNotPauseVMViewLogFileDetails);
-                new AlertDialog.Builder(activity).setTitle(R.string.Error).setMessage(message)
+                new MaterialAlertDialogBuilder(activity).setTitle(R.string.Error).setMessage(message)
                         .setPositiveButton(activity.getString(android.R.string.ok), new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int which) {
                                 Thread t = new Thread(new Runnable() {
@@ -98,7 +98,7 @@ public class LimboActivityCommon {
             public void run() {
 
                 final AlertDialog alertDialog;
-                alertDialog = new AlertDialog.Builder(activity).create();
+                alertDialog = new MaterialAlertDialogBuilder(activity).create();
                 alertDialog.setTitle(activity.getString(R.string.PauseVM));
                 TextView stateView = new TextView(activity);
                 stateView.setText(R.string.pauseVMWarning);
@@ -120,7 +120,7 @@ public class LimboActivityCommon {
             @Override
             public void run() {
 
-                new AlertDialog.Builder(activity).setTitle(R.string.ResetVM)
+                new MaterialAlertDialogBuilder(activity).setTitle(R.string.ResetVM)
                         .setMessage(R.string.ResetVMWarning)
                         .setPositiveButton(activity.getString(android.R.string.yes), new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int which) {
@@ -139,7 +139,7 @@ public class LimboActivityCommon {
             @Override
             public void run() {
 
-                new AlertDialog.Builder(activity).setCancelable(false).setTitle(R.string.Paused)
+                new MaterialAlertDialogBuilder(activity).setCancelable(false).setTitle(R.string.Paused)
                         .setMessage(R.string.VMPausedPressOkToExit)
                         .setPositiveButton(R.string.Ok, new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface dialog, int which) {
@@ -203,7 +203,7 @@ public class LimboActivityCommon {
             @Override
             public void run() {
                 AlertDialog alertDialog;
-                alertDialog = new AlertDialog.Builder(activity).create();
+                alertDialog = new MaterialAlertDialogBuilder(activity).create();
                 alertDialog.setTitle(title);
 
                 TextView textView = new TextView(activity);

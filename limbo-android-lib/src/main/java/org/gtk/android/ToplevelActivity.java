@@ -560,6 +560,14 @@ public class ToplevelActivity extends Activity {
 					ViewGroup.LayoutParams.MATCH_PARENT
 			));
 			this.view.requestLayout();
+			// Grant focus to the GTK surface (mirroring SDL's explicit
+			// requestFocus on its input view). Otherwise Android hands key
+			// events to whichever focusable sibling was focused first (e.g.
+			// the host activity's toolbar) and the guest never receives them.
+			this.view.toplevel.post(() -> {
+				if (this.view.toplevel != null)
+					this.view.toplevel.requestFocus();
+			});
 		});
 	}
 
@@ -594,8 +602,17 @@ public class ToplevelActivity extends Activity {
 		// dispatch a notifyStateChange JNI call whose native side performs
 		// a hash table lookup that returns NULL, leading to a NULL pointer
 		// dereference in gdk_synthesize_surface_state (SIGSEGV).
-		if (this.nativeIdentifier != 0)
+		if (this.nativeIdentifier != 0) {
 			updateToplevelState();
+			// On regaining window focus Android may have moved view focus
+			// back to a host-visible sibling (toolbar etc.), which would
+			// swallow subsequent key events. Retake focus on the GTK surface.
+			if (hasFocus && this.view != null && this.view.toplevel != null)
+				this.view.toplevel.post(() -> {
+					if (this.view.toplevel != null)
+						this.view.toplevel.requestFocus();
+				});
+		}
 	}
 
 	@Override

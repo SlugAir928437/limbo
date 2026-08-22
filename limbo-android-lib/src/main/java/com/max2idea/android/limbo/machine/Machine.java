@@ -677,9 +677,19 @@ public class Machine extends Observable {
             // Version 2002 builds.  VMExecutor additionally passes i8042=off
             // so the text-mode installer gets a USB keyboard (PS/2 is not
             // operational during XP IA64 text setup) and nvram=./ia64.nvram.
+            //
+            // Hard disks default to the LSI SCSI bus and the boot CD-ROM to the
+            // CMD646 legacy IDE primary master: Windows XP/Server 2003 IA64
+            // ships in-box LSI/Symbios SCSI and IDE/ATAPI drivers but no SATA
+            // AHCI driver, and an LSI SCSI boot CD-ROM hangs this firmware.
             machineType = "ia64-vpc";
             cpu = "Default";
             networkCard = "Default";
+            hdaInterface = "scsi";
+            hdbInterface = "scsi";
+            hdcInterface = "scsi";
+            hddInterface = "scsi";
+            cdInterface = "ide";
         }
     }
 

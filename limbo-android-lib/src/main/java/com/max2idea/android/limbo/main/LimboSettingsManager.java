@@ -20,7 +20,7 @@ package com.max2idea.android.limbo.main;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -270,21 +270,15 @@ public class LimboSettingsManager extends PreferenceActivity {
         setResult(Config.SETTINGS_RETURN_CODE, data);
         addPrefs();
         getPreferenceManager().findPreference("enableVNCPassword").setOnPreferenceChangeListener(
-                new android.preference.Preference.OnPreferenceChangeListener() {
-                    @Override
-                    public boolean onPreferenceChange(android.preference.Preference preference, Object newValue) {
-                        if ((boolean) newValue)
-                            promptVNCPass(LimboSettingsManager.this);
-                        return true;
-                    }
+                (preference, newValue) -> {
+                    if ((boolean) newValue)
+                        promptVNCPass(LimboSettingsManager.this);
+                    return true;
                 });
         getPreferenceManager().findPreference("vncPass").setOnPreferenceClickListener(
-                new android.preference.Preference.OnPreferenceClickListener() {
-                    @Override
-                    public boolean onPreferenceClick(android.preference.Preference preference) {
-                        promptVNCPass(LimboSettingsManager.this);
-                        return true;
-                    }
+                preference -> {
+                    promptVNCPass(LimboSettingsManager.this);
+                    return true;
                 });
 
     }

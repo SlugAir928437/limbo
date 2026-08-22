@@ -221,6 +221,7 @@ class VMExecutor extends MachineExecutor {
 
             paramsList.add("-serial");
             paramsList.add("none");
+//            paramsList.add("tcp:127.0.0.1:4444,server,nowait");
 
             paramsList.add("-parallel");
             paramsList.add("none");
@@ -229,7 +230,7 @@ class VMExecutor extends MachineExecutor {
             if (gtk) {
                 // GTK4 android backend (initialized by LimboGtk on the activity side)
                 // app 已有顶栏且 gtk 自带的顶栏会造成崩溃，默认关闭
-                paramsList.add("gtk,show-menubar=off");
+                paramsList.add("gtk");
             } else {
                 paramsList.add("sdl");
             }
@@ -245,6 +246,7 @@ class VMExecutor extends MachineExecutor {
             paramsList.add("-device");
             paramsList.add(getMachine().getMouse());
             // 对于 ia64 架构的虚拟机，需要添加 usb-kbd 设备以支持键鼠
+            // FIXME: 在没有控制台的情况下支持 usb-kbd
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
 //                paramsList.add("-device");
 //                paramsList.add("usb-kbd");
@@ -310,9 +312,6 @@ class VMExecutor extends MachineExecutor {
 
         paramsList.add("-rtc");
         paramsList.add("base=localtime");
-
-        if (!Config.enableDefaultDevices)
-            paramsList.add("-nodefaults");
     }
 
     private void addCpuBoardOptions(ArrayList<String> paramsList) {
@@ -633,9 +632,9 @@ class VMExecutor extends MachineExecutor {
         // Route every IA-64 drive to the LSI SCSI bus, which Windows XP IA64
         // supports natively, and use SCSI unit 4 for the CD-ROM so it never
         // collides with HDC (SCSI unit 2) the way the legacy IDE index=2 does.
-        boolean ia64 = LimboApplication.arch == Config.Arch.ia64
-                || LimboApplication.arch == Config.Arch.ia64w;
-        String cdIndex  = ia64 ? "4" : "2";
+        // boolean ia64 = LimboApplication.arch == Config.Arch.ia64
+        //         || LimboApplication.arch == Config.Arch.ia64w;
+        // String cdIndex  = ia64 ? "4" : "2";
 
         // Hard disks HDA..HDD
         addDrive(paramsList, "0", getMachine().getHdaInterface(), "disk", null,
@@ -651,9 +650,23 @@ class VMExecutor extends MachineExecutor {
                 getDriveFilePath(getMachine().getHddImagePath()),
                 isRawImage(getDriveFilePath(getMachine().getHddImagePath())) ? "raw" : null, cache);
 
-        // CDROM
-        addDrive(paramsList, cdIndex, getMachine().getCDInterface(), "cdrom", null,
-                getDriveFilePath(getMachine().getCdImagePath()), "raw", null);
+        // CDROM getMachine().getCDInterface()
+        // IA-64: the boot CD-ROM is wired to the CMD646 legacy PCI IDE
+        // controller as primary master (if=ide index 0), so the firmware boots
+        // from it and Windows XP/Server 2003 IA64 reads it with its in-box
+        // IDE/ATAPI driver.  The other interfaces cannot install 2003: an LSI
+        // SCSI CD-ROM hangs the firmware's SCSI path, and a SATA/AHCI CD-ROM
+        // has no Windows IA64 driver ("txtsetup.inf is corrupt or missing").
+        // Keep the historical if=scsi behavior for every other architecture.
+        boolean ia64cd = LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w;
+        if (ia64cd) {
+            addDrive(paramsList, "0", "ide", "cdrom", null,
+                    getDriveFilePath(getMachine().getCdImagePath()), "raw", null);
+        } else {
+            addDrive(paramsList, null, "scsi", "cdrom", null,
+                    getDriveFilePath(getMachine().getCdImagePath()), "raw", null);
+        }
 
         // Floppy drives FDA/FDB
         if (Config.enableEmulatedFloppy) {
@@ -700,7 +713,8 @@ class VMExecutor extends MachineExecutor {
         if (file == null || file.trim().isEmpty())
             return;
         StringBuilder param = new StringBuilder();
-        appendDriveField(param, "index", index);
+        if(index != null)
+            appendDriveField(param, "index", index);
         if(iface != null)
             appendDriveField(param, "if", iface);
         appendDriveField(param, "media", media);

@@ -1,6 +1,6 @@
 package com.max2idea.android.limbo.main;
 
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;

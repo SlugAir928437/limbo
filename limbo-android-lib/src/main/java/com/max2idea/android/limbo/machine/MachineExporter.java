@@ -19,7 +19,7 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.machine;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.DialogInterface;
 import android.net.Uri;
 import android.os.AsyncTask;
@@ -28,6 +28,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.files.FileUtils;
 import com.max2idea.android.limbo.machine.Machine.FileType;
@@ -52,7 +53,7 @@ public class MachineExporter extends AsyncTask<Void, Void, Void> {
     public static void promptExport(final Activity activity) {
 
         final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
+        alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(activity.getString(R.string.ExportFilename));
 
         LinearLayout mLayout = new LinearLayout(activity);

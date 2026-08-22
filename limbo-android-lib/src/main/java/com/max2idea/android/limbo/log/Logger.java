@@ -19,7 +19,6 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.log;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Color;
@@ -32,7 +31,11 @@ import android.util.Log;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AlertDialog;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.lib.R;
+import com.max2idea.android.limbo.dialog.DialogUtils;
 import com.max2idea.android.limbo.main.LimboApplication;
 import com.max2idea.android.limbo.main.LimboFileManager;
 import com.max2idea.android.limbo.files.FileUtils;
@@ -95,31 +98,17 @@ public class Logger {
     }
 
     public static void promptShowLog(final Activity activity) {
-
-        final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
-        alertDialog.setTitle(activity.getString(R.string.ShowLog));
-        TextView stateView = new TextView(activity);
-        stateView.setText(R.string.LogWarning);
-        stateView.setPadding(20, 20, 20, 20);
-        alertDialog.setView(stateView);
-
-        // alertDialog.setMessage(body);
-        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, activity.getString(R.string.Yes),
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        viewLimboLog(activity);
-                    }
-                });
-        alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, activity.getString(R.string.Cancel),
-                (dialog, which) -> {});
-        alertDialog.show();
+        DialogUtils.UIAlert(activity, activity.getString(R.string.ShowLog),
+                activity.getString(R.string.LogWarning), 0, true,
+                activity.getString(R.string.Yes), (dialogInterface, i) ->
+                        viewLimboLog(activity),
+                activity.getString(R.string.Cancel), (dialog, which) -> {},
+                null, null);
     }
 
     public static void UIAlertLog(final Activity activity, String title, Spannable body) {
-
         final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
+        alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(title);
         TextView textView = new TextView(activity);
         textView.setPadding(20, 20, 20, 20);
@@ -133,19 +122,13 @@ public class Logger {
         alertDialog.setView(view);
         alertDialog.setCanceledOnTouchOutside(false);
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, activity.getString(R.string.Ok),
-                new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                alertDialog.dismiss();
-            }
-        });
+                (dialog, which) -> alertDialog.dismiss());
         alertDialog.setButton(DialogInterface.BUTTON_NEUTRAL, activity.getString(R.string.CopyTo),
-                new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                ToastUtils.toastShort(activity, activity.getString(R.string.ChooseDirToSaveLogFile));
-                LimboFileManager.browse(activity, FileType.LOG_DIR, Config.OPEN_LOG_FILE_DIR_REQUEST_CODE);
-                alertDialog.dismiss();
-            }
-        });
+                (dialog, which) -> {
+                    ToastUtils.toastShort(activity, activity.getString(R.string.ChooseDirToSaveLogFile));
+                    LimboFileManager.browse(activity, FileType.LOG_DIR, Config.OPEN_LOG_FILE_DIR_REQUEST_CODE);
+                    alertDialog.dismiss();
+                });
         alertDialog.show();
     }
 

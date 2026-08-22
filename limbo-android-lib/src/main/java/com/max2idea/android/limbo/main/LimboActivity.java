@@ -44,6 +44,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.hjq.permissions.XXPermissions;
 import com.hjq.permissions.permission.PermissionLists;
 import com.limbo.emu.lib.R;
@@ -1593,7 +1594,7 @@ public class LimboActivity extends AppCompatActivity implements
     // ============================================================
 
     public void promptMachineName(Activity activity) {
-        AlertDialog alertDialog = new AlertDialog.Builder(activity).create();
+        AlertDialog alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(getString(R.string.NewMachineName));
         final EditText vmNameTextView = new EditText(activity);
         vmNameTextView.setPadding(20, 20, 20, 20);
@@ -1630,7 +1631,7 @@ public class LimboActivity extends AppCompatActivity implements
     }
 
     public void promptImageName(Activity activity, FileType fileType, long sizeBytes) {
-        AlertDialog alertDialog = new AlertDialog.Builder(activity).create();
+        AlertDialog alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(getString(R.string.ImageName));
 
         LinearLayout mLayout = new LinearLayout(this);

@@ -19,7 +19,7 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.keymapper;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.os.Handler;
@@ -38,6 +38,7 @@ import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.SimpleAdapter;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.keyboard.KeyboardUtils;
 import com.max2idea.android.limbo.main.Config;
@@ -314,7 +315,7 @@ public class KeyMapManager {
         if(keyMapper == null)
             return;
         final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
+        alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(activity.getString(R.string.KeyMapper));
         alertDialog.setMessage(activity.getString(R.string.DeleteKeyMapper));
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, activity.getString(R.string.Delete),
@@ -365,7 +366,7 @@ public class KeyMapManager {
 
     private void promptAdvancedKey() {
 
-        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(activity);
+        AlertDialog.Builder alertDialogBuilder = new MaterialAlertDialogBuilder(activity);
         alertDialogBuilder.setTitle(R.string.SpecialKeysButtons);
         final CharSequence[] items = new CharSequence[]{"Left Ctrl", "Right Ctrl", "Left Alt", "Right Alt",
                 "Left Shift", "Right Shift", "Fn", "Mouse Btn Left", "Mouse Btn Middle", "Mouse Btn Right"};
@@ -417,7 +418,7 @@ public class KeyMapManager {
 
     public void promptKeyMapperName() {
         final AlertDialog alertDialog;
-        alertDialog = new AlertDialog.Builder(activity).create();
+        alertDialog = new MaterialAlertDialogBuilder(activity).create();
         alertDialog.setTitle(activity.getString(R.string.KeyMapperName));
         final EditText keyMapperName = new EditText(activity);
         keyMapperName.setText("");

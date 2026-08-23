@@ -17,8 +17,14 @@ plugins {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        maven { url 'https://maven.aliyun.com/repository/google/' }
-        maven { url 'https://maven.aliyun.com/repository/public/' }
+        // 阿里云镜像在海外 CI（如 GitHub Actions）下经常返回 502，Gradle 会把非 404 的服务端
+        // 错误当作解析失败而不会回退到 google()/mavenCentral()，导致依赖无法解析。
+        // 因此在 CI 环境默认跳过镜像（可用 LIMBO_USE_ALIYUN=true 强制启用）。
+        def skipAliyun = System.getenv('CI') != null && System.getenv('LIMBO_USE_ALIYUN') != 'true'
+        if (!skipAliyun) {
+            maven { url 'https://maven.aliyun.com/repository/google/' }
+            maven { url 'https://maven.aliyun.com/repository/public/' }
+        }
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }

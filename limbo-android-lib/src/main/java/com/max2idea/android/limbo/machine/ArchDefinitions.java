@@ -102,7 +102,14 @@ public class ArchDefinitions {
 
     public static ArrayList<String> getMouseValues(Context context) {
         ArrayList<String> arrList = new ArrayList<>();
-        if (LimboApplication.arch != Config.Arch.ia64 && LimboApplication.arch != Config.Arch.ia64w) {
+        // 在 i8042=off (disableI8042==1) 的情况下不提供 ps2 鼠标选项
+        boolean i8042Off = false;
+        Machine machine = MachineController.getInstance().getMachine();
+        if (machine != null) {
+            i8042Off = machine.getDisableI8042() == 1;
+        }
+        if (!i8042Off && LimboApplication.arch != Config.Arch.ia64
+                && LimboApplication.arch != Config.Arch.ia64w) {
             arrList.add("ps2");
         }
         arrList.add("usb-mouse");
@@ -119,8 +126,8 @@ public class ArchDefinitions {
         // depends on AMotionEvent_fromJava/AKeyEvent_fromJava, which are only
         // exported by libandroid.so on API 31+. On older devices loading the
         // VM would crash with UnsatisfiedLinkError, so hide the option there.
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-        arrList.add("GTK");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            arrList.add("GTK");
         return arrList;
     }
 

@@ -6,6 +6,8 @@ import android.content.Intent
 import android.os.*
 import android.os.Environment.MEDIA_MOUNTED
 import androidx.collection.ArrayMap
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -173,8 +175,22 @@ class FilePickerActivity : AppCompatActivity(), View.OnClickListener,
         setTheme(pickerConfig.themeId)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.main_activity_for_file_picker)
+        applySystemBarInsets()
         initView()
         loadList()
+    }
+
+    /**
+     * 适配 edge-to-edge：应用系统栏 inset，避免顶部内容被状态栏遮挡
+     */
+    private fun applySystemBarInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(
+            findViewById(R.id.cl_file_browser_file_picker)
+        ) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(0, bars.top, 0, bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
     }
 
     override fun onDestroy() {

@@ -662,6 +662,12 @@ public class LimboActivity extends AppCompatActivity implements
         uiState.setCpuNumEnabled(flag);
         uiState.setRamEnabled(flag);
         uiState.setEnableKVMEnabled(flag && Config.enableKVM);
+        uiState.setDisableI8042Enabled(flag && (LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w));
+        uiState.setEnableNvramEnabled(flag && (LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w));
+        uiState.setNvramEnabled(flag && (LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w));
         uiState.setEnableMTTCGEnabled(flag && Config.enableMTTCG);
 
         // drives
@@ -1000,6 +1006,37 @@ public class LimboActivity extends AppCompatActivity implements
         t.start();
     }
 
+    /**
+     * Populates the NVRAM file dropdown (ia64 only):
+     * "Default" uses the app-managed nvram file, "New" creates a fresh one,
+     * "Open" launches the file picker, followed by recent nvram paths.
+     */
+    private void populateNvramOptions() {
+        Thread t = new Thread(() -> {
+            ArrayList<String> options = new ArrayList<>();
+            options.add(getString(R.string.label_nvram_default));
+            options.add(getString(R.string.label_nvram_new));
+            options.add(getString(R.string.open));
+            ArrayList<String> recent = MachineFilePaths.getRecentFilePaths(Machine.FileType.NVRAM);
+            if (recent != null) {
+                for (String file : recent) {
+                    if (file != null && !options.contains(file)) {
+                        options.add(file);
+                    }
+                }
+            }
+            List<String> finalOptions = options;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                uiState.setNvramOptions(finalOptions);
+                String saved = getMachine() != null ? getMachine().getNvramPath() : null;
+                int sel = saved != null ? finalOptions.indexOf(saved) : -1;
+                uiState.setNvramSel(Math.max(sel, 0));
+            });
+        });
+        t.setPriority(Thread.MIN_PRIORITY);
+        t.start();
+    }
+
     private void setDefaultDNServer() {
         Thread t = new Thread(() -> {
             String defaultDNSServer = LimboSettingsManager.getDNSServer(LimboActivity.this);
@@ -1118,6 +1155,14 @@ public class LimboActivity extends AppCompatActivity implements
                     uiState.setInitrdSel(Math.max(pos, 0));
                 } else {
                     uiState.setInitrdSel(0);
+                }
+                break;
+            case NVRAM:
+                if (diskValue != null) {
+                    int pos = uiState.getNvramOptions().indexOf(diskValue);
+                    uiState.setNvramSel(Math.max(pos, 0));
+                } else {
+                    uiState.setNvramSel(0);
                 }
                 break;
             default:
@@ -1274,6 +1319,11 @@ public class LimboActivity extends AppCompatActivity implements
             uiState.setDisableTSC(getMachine() != null && getMachine().getDisableTSC() == 1);
         uiState.setEnableKVM(getMachine() != null && getMachine().getEnableKVM() == 1);
         uiState.setEnableMTTCG(getMachine() != null && getMachine().getEnableMTTCG() == 1);
+        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w)
+            uiState.setDisableI8042(getMachine() != null && getMachine().getDisableI8042() == 1);
+        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w)
+            uiState.setEnableNvram(getMachine() != null && getMachine().getEnableNvram() == 1);
+        populateNvramOptions();
 
         enableNonRemovableDeviceOptions(true);
         enableRemovableDeviceOptions(!MachineController.getInstance().isRunning());
@@ -1289,7 +1339,7 @@ public class LimboActivity extends AppCompatActivity implements
     private void setSpinnerSel(List<String> options, String value, java.util.function.IntConsumer setter) {
         if (value != null) {
             int pos = options.indexOf(value);
-            setter.accept(pos >= 0 ? pos : 0);
+            setter.accept(Math.max(pos, 0));
         } else {
             setter.accept(0);
         }
@@ -1870,6 +1920,19 @@ public class LimboActivity extends AppCompatActivity implements
                     notifyAction(MachineAction.INSERT_FAV, new Object[]{diskValue, fileType});
                     // persist the newly opened file into the machine (and DB)
                     notifyFieldChange(MachineProperty.INITRD, diskValue);
+                    seMachineDriveValue(fileType, diskValue);
+                    break;
+                case NVRAM:
+                    if (!uiState.getNvramOptions().contains(diskValue)) {
+                        List<String> opts = new ArrayList<>(uiState.getNvramOptions());
+                        opts.add(diskValue);
+                        uiState.setNvramOptions(opts);
+                    }
+                    // record in recent paths directly: Dispatcher.addDriveToList
+                    // expects {FileType, path} while callers pass {path, FileType},
+                    // so the INSERT_FAV action would throw a ClassCastException.
+                    MachineFilePaths.insertRecentFilePath(Machine.FileType.NVRAM, diskValue);
+                    notifyFieldChange(MachineProperty.NVRAM_PATH, diskValue);
                     seMachineDriveValue(fileType, diskValue);
                     break;
                 default: {
@@ -2560,6 +2623,75 @@ public class LimboActivity extends AppCompatActivity implements
             return;
         debounceHandler.removeCallbacks(ramCommit);
         debounceHandler.postDelayed(ramCommit, DEBOUNCE_MS);
+    }
+
+    @Override
+    public void onDisableI8042Changed(boolean checked) {
+        if (getMachine() == null)
+            return;
+        uiState.setDisableI8042(checked);
+        notifyFieldChange(MachineProperty.DISABLE_I8042, checked);
+    }
+
+    @Override
+    public void onEnableNvramChanged(boolean checked) {
+        if (getMachine() == null)
+            return;
+        uiState.setEnableNvram(checked);
+        notifyFieldChange(MachineProperty.ENABLE_NVRAM, checked);
+    }
+
+    @Override
+    public void onNvramSelected(int index) {
+        if (getMachine() == null)
+            return;
+        List<String> options = uiState.getNvramOptions();
+        if (index < 0 || index >= options.size())
+            return;
+        if (index == 0) {
+            // Default: clear the path so VMExecutor falls back to the
+            // app-managed nvram file.
+            uiState.setNvramSel(0);
+            notifyFieldChange(MachineProperty.NVRAM_PATH, null);
+        } else if (index == 1) {
+            // New: create a fresh nvram file and select it.
+            String path = createNewNvramFile();
+            if (path == null)
+                return;
+            List<String> opts = new ArrayList<>(uiState.getNvramOptions());
+            if (!opts.contains(path)) {
+                opts.add(path);
+                uiState.setNvramOptions(opts);
+            }
+            uiState.setNvramSel(Math.max(opts.indexOf(path), 0));
+            MachineFilePaths.insertRecentFilePath(Machine.FileType.NVRAM, path);
+            notifyFieldChange(MachineProperty.NVRAM_PATH, path);
+        } else if (index == 2) {
+            // Open: launch the file picker.
+            browseFileType = Machine.FileType.NVRAM;
+            LimboFileManager.browse(this, browseFileType, Config.OPEN_IMAGE_FILE_REQUEST_CODE);
+            uiState.setNvramSel(0);
+        } else {
+            // Recent nvram path.
+            uiState.setNvramSel(index);
+            notifyFieldChange(MachineProperty.NVRAM_PATH, options.get(index));
+        }
+    }
+
+    private String createNewNvramFile() {
+        String path = LimboApplication.getNvramFile();
+        if (path == null)
+            return null;
+        try {
+            File nvramFile = new File(path);
+            if (!nvramFile.exists()) {
+                nvramFile.createNewFile();
+            }
+            return nvramFile.getAbsolutePath();
+        } catch (IOException e) {
+            Log.e(TAG, "Could not create NVRAM file: " + e.getMessage());
+            return null;
+        }
     }
 
     @Override

@@ -69,6 +69,9 @@ interface LimboUiCallbacks {
     fun onCpuSelected(index: Int)
     fun onCpuNumChanged(value: String)
     fun onRamChanged(value: String)
+    fun onDisableI8042Changed(checked: Boolean)
+    fun onEnableNvramChanged(checked: Boolean)
+    fun onNvramSelected(index: Int)
     fun onEnableMTTCGChanged(checked: Boolean)
     fun onEnableKVMChanged(checked: Boolean)
     fun onDisableHPETChanged(checked: Boolean)
@@ -224,6 +227,27 @@ fun LimboMainScreen(
                         onValueChange = { callbacks.onRamChanged(it) }
                     )
                     Spacer(Modifier.height(4.dp))
+                    SwitchRow(
+                        label = stringResource(R.string.label_disable_i8042),
+                        checked = state.disableI8042,
+                        enabled = state.disableI8042Enabled,
+                        onCheckedChange = { callbacks.onDisableI8042Changed(it) }
+                    )
+                    SwitchRow(
+                        label = stringResource(R.string.label_enable_nvram),
+                        checked = state.enableNvram,
+                        enabled = state.enableNvramEnabled,
+                        onCheckedChange = { callbacks.onEnableNvramChanged(it) }
+                    )
+                    SettingRow(label = stringResource(R.string.label_nvram_file), iconRes = R.drawable.sysfile) {
+                        LimboDropdown(
+                            options = state.nvramOptions,
+                            selectedIndex = state.nvramSel,
+                            enabled = state.enableNvram && state.nvramEnabled,
+                            modifier = Modifier.width(150.dp),
+                            onSelected = { callbacks.onNvramSelected(it) }
+                        )
+                    }
                     SwitchRow(
                         label = stringResource(R.string.label_enable_mttcg),
                         checked = state.enableMTTCG,

@@ -40,7 +40,7 @@ import java.util.Observer;
 public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatabase, Observer {
     private static final String TAG = "MachineOpenHelper";
 
-    private static final int DATABASE_VERSION = 19;
+    private static final int DATABASE_VERSION = 21;
     private static final String DATABASE_NAME = "LIMBO";
     private static final String MACHINE_TABLE_NAME = "machines";
 
@@ -56,7 +56,9 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             + MachineProperty.HOSTFWD.name() + " TEXT, " + MachineProperty.GUESTFWD.name() + " TEXT, " + MachineProperty.UI.name() + " TEXT, " + MachineProperty.DISABLE_TSC.name() + " INTEGER, "
             + MachineProperty.MOUSE.name() + " TEXT, " + MachineProperty.KEYBOARD.name() + " TEXT, " + MachineProperty.ENABLE_MTTCG.name() + " INTEGER, " + MachineProperty.ENABLE_KVM.name() + " INTEGER , "
             + MachineProperty.HDA_INTERFACE.name() + " TEXT, " + MachineProperty.HDB_INTERFACE.name() + " TEXT, " + MachineProperty.HDC_INTERFACE.name() + " TEXT, " + MachineProperty.HDD_INTERFACE.name() + " TEXT , "
-            + MachineProperty.CDROM_INTERFACE.name() + " TEXT, " + MachineProperty.BIOS.name() + " TEXT "
+            + MachineProperty.CDROM_INTERFACE.name() + " TEXT, " + MachineProperty.BIOS.name() + " TEXT, "
+            + MachineProperty.DISABLE_I8042.name() + " INTEGER, " + MachineProperty.ENABLE_NVRAM.name() + " INTEGER DEFAULT 1, "
+            + MachineProperty.NVRAM_PATH.name() + " TEXT "
             + ");";
 
     private static MachineOpenHelper sInstance;
@@ -191,6 +193,24 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                     + " WHERE " + MachineProperty.ARCH + " IN ('ia64', 'ia64w')"
                     + " AND " + MachineProperty.MACHINETYPE + " = 'itanium-vpc';");
         }
+
+        if (newVersion >= 20 && oldVersion <= 19) {
+            // New per-machine toggle: disable the i8042 PS/2 controller
+            // (ia64 only).  Existing rows get NULL, which reads back as 0
+            // (i8042 enabled), preserving the pre-toggle runtime behavior.
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN "
+                    + MachineProperty.DISABLE_I8042 + " INTEGER;");
+        }
+
+        if (newVersion >= 21 && oldVersion <= 20) {
+            // Per-machine NVRAM control (ia64 only): an enable switch plus
+            // an optional file path.  Existing rows default to enabled (1)
+            // so the previous always-on nvram behavior is preserved.
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN "
+                    + MachineProperty.ENABLE_NVRAM + " INTEGER DEFAULT 1;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN "
+                    + MachineProperty.NVRAM_PATH + " TEXT;");
+        }
     }
 
     public synchronized int insertMachine(Machine machine) {
@@ -240,6 +260,9 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
         stateValues.put(MachineProperty.KEYBOARD.name(), machine.getKeyboard());
         stateValues.put(MachineProperty.ENABLE_MTTCG.name(), machine.getEnableMTTCG());
         stateValues.put(MachineProperty.ENABLE_KVM.name(), machine.getEnableKVM());
+        stateValues.put(MachineProperty.DISABLE_I8042.name(), machine.getDisableI8042());
+        stateValues.put(MachineProperty.ENABLE_NVRAM.name(), machine.getEnableNvram());
+        stateValues.put(MachineProperty.NVRAM_PATH.name(), machine.getNvramPath());
 
         @SuppressLint("SimpleDateFormat")
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -300,7 +323,8 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 + MachineProperty.HOSTFWD + " , " + MachineProperty.GUESTFWD + " , " + MachineProperty.UI + ", " + MachineProperty.DISABLE_TSC + ", "
                 + MachineProperty.MOUSE + ", " + MachineProperty.KEYBOARD + ", " + MachineProperty.ENABLE_MTTCG + ", " + MachineProperty.ENABLE_KVM + ", "
                 + MachineProperty.HDA_INTERFACE + ", " + MachineProperty.HDB_INTERFACE + ", " + MachineProperty.HDC_INTERFACE + ", " + MachineProperty.HDD_INTERFACE + ", "
-                + MachineProperty.CDROM_INTERFACE + ", " + MachineProperty.BIOS + " "
+                + MachineProperty.CDROM_INTERFACE + ", " + MachineProperty.BIOS + ", " + MachineProperty.DISABLE_I8042 + ", "
+                + MachineProperty.ENABLE_NVRAM + ", " + MachineProperty.NVRAM_PATH + " "
                 + " from " + MACHINE_TABLE_NAME
                 + " where " + MachineProperty.STATUS + " in ( " + Config.STATUS_CREATED + " , " + Config.STATUS_PAUSED + " "
                 + " ) " + " and " + MachineProperty.MACHINE_NAME + "=\"" + machine + "\"" + ";";
@@ -369,6 +393,9 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             myMachine.setHddInterface(cur.getString(43));
             myMachine.setCdInterface(cur.getString(44));
             myMachine.setBios(cur.getString(45));
+            myMachine.setDisableI8042(cur.getInt(46));
+            myMachine.setEnableNvram(cur.getInt(47));
+            myMachine.setNvramPath(cur.getString(48));
         }
         cur.close();
 

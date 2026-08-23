@@ -266,7 +266,12 @@
     <string name="label_cpu_model">CPU Model: </string>
     <string name="label_cpu_cores">CPU Cores: </string>
     <string name="label_ram_memory_mb">RAM Memory (MB) </string>
-    <string name="label_enable_mttcg">Enable  MTTCG</string>
+    <string name="label_disable_i8042">Disable i8042</string>
+    <string name="label_enable_nvram">Enable NVRAM</string>
+    <string name="label_nvram_file">NVRAM file</string>
+    <string name="label_nvram_default">Default</string>
+    <string name="label_nvram_new">New</string>
+    <string name="label_enable_mttcg">Enable MTTCG</string>
     <string name="label_enable_kvm">Enable KVM</string>
     <string name="label_disable_hpet">Disable HPET</string>
     <string name="label_disable_tsc">Disable TSC</string>

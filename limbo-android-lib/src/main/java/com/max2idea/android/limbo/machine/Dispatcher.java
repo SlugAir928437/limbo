@@ -194,6 +194,15 @@ public class Dispatcher implements ViewListener {
             case ENABLE_KVM:
                 getMachine().setEnableKVM((convertBoolean(property, value) ? 1 : 0));
                 break;
+            case DISABLE_I8042:
+                getMachine().setDisableI8042((convertBoolean(property, value) ? 1 : 0));
+                break;
+            case ENABLE_NVRAM:
+                getMachine().setEnableNvram((convertBoolean(property, value) ? 1 : 0));
+                break;
+            case NVRAM_PATH:
+                getMachine().setNvramPath(convertString(property, value));
+                break;
             case ENABLE_MTTCG:
                 getMachine().setEnableMTTCG((convertBoolean(property, value) ? 1 : 0));
                 break;

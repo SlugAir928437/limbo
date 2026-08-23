@@ -196,8 +196,7 @@ class VMExecutor extends MachineExecutor {
             paramsList.add("-vnc");
             String vncParam = "";
             if (LimboSettingsManager.getVNCEnablePassword(context)) {
-                //TODO: Allow connections from External
-                // Use with x509 auth and TLS for encryption
+                //TODO: Allow connections from External Use with x509 auth and TLS for encryption
                 vncParam += ":1";
             } else {
                 // Allow connections only from localhost using localsocket without
@@ -215,21 +214,22 @@ class VMExecutor extends MachineExecutor {
             paramsList.add("vc");
 
         } else {
-            //XXX: monitor, serial, and parallel display crashes cause SDL doesn't support more than 1 window
-            paramsList.add("-monitor");
-            paramsList.add("none");
+            // gtk 允许多窗口
+            if(!gtk) {
+                //XXX: monitor, serial, and parallel display crashes cause SDL doesn't support more than 1 window
+                paramsList.add("-monitor");
+                paramsList.add("none");
 
-            paramsList.add("-serial");
-            paramsList.add("none");
-//            paramsList.add("tcp:127.0.0.1:4444,server,nowait");
+                paramsList.add("-serial");
+                paramsList.add("none");
+                // paramsList.add("tcp:127.0.0.1:4444,server,nowait");
 
-            paramsList.add("-parallel");
-            paramsList.add("none");
-
+                paramsList.add("-parallel");
+                paramsList.add("none");
+            }
             paramsList.add("-display");
             if (gtk) {
                 // GTK4 android backend (initialized by LimboGtk on the activity side)
-                // app 已有顶栏且 gtk 自带的顶栏会造成崩溃，默认关闭
                 paramsList.add("gtk");
             } else {
                 paramsList.add("sdl");
@@ -246,11 +246,12 @@ class VMExecutor extends MachineExecutor {
             paramsList.add("-device");
             paramsList.add(getMachine().getMouse());
             // 对于 ia64 架构的虚拟机，需要添加 usb-kbd 设备以支持键鼠
+            // 在i8042=off的情况下无需添加此设备（在 QEMU 中自动添加）
             // FIXME: 在没有控制台的情况下支持 usb-kbd
-            if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+//            if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
 //                paramsList.add("-device");
 //                paramsList.add("usb-kbd");
-            }
+//            }
         }
     }
 
@@ -315,7 +316,6 @@ class VMExecutor extends MachineExecutor {
     }
 
     private void addCpuBoardOptions(ArrayList<String> paramsList) {
-
         //XXX: SMP is not working correctly for some guest OSes
         //so we enable multi core only under KVM
         // anyway regular emulation is not gaining any benefit unless mttcg is enabled but that
@@ -326,15 +326,25 @@ class VMExecutor extends MachineExecutor {
         }
         if (getMachineType() != null && !getMachineType().equals("Default")) {
             String machineParams = getMachineType();
-            // IA-64 only: always append the EFI NVRAM option and disable the
-            // i8042 PS/2 controller.  Windows XP / Server 2003 IA64 text-mode
-            // setup cannot use PS/2, so i8042=off makes QEMU attach a USB
-            // keyboard; without it the "Press any key to boot from CD" prompt
-            // times out and the loader hangs after "Continuing normal boot."
-            // Other architectures must not receive these options.
+            // IA-64 only: i8042=off is appended when the user disables the
+            // i8042 PS/2 controller, and nvram=<path> when NVRAM is enabled
+            // (the app-managed file is used when no explicit path is set).
+            // Windows XP / Server 2003 IA64 text-mode setup cannot use PS/2,
+            // so i8042=off makes QEMU attach a USB keyboard; without it the
+            // "Press any key to boot from CD" prompt times out and the loader
+            // hangs after "Continuing normal boot."  Other architectures must
+            // not receive these options.
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-//                machineParams += ",i8042=off,nvram=./ia64.nvram";
-                machineParams += ",nvram=./ia64.nvram";
+                if (getMachine().getDisableI8042() == 1) {
+                    machineParams += ",i8042=off";
+                }
+                if (getMachine().getEnableNvram() == 1) {
+                    String nvramPath = getMachine().getNvramPath();
+                    if (nvramPath == null || nvramPath.trim().isEmpty()) {
+                        nvramPath = LimboApplication.getNvramFile();
+                    }
+                    machineParams += ",nvram=" + nvramPath;
+                }
             }
             paramsList.add("-M");
             paramsList.add(machineParams);
@@ -639,7 +649,7 @@ class VMExecutor extends MachineExecutor {
         int iaDiskBase = iaDisk ? 1 : 0;
 
         // Hard disks HDA..HDD
-        addDrive(paramsList, Integer.toString(iaDiskBase + 0),
+        addDrive(paramsList, Integer.toString(iaDiskBase),
                 getMachine().getHdaInterface(), "disk", null,
                 getDriveFilePath(getMachine().getHdaImagePath()),
                 isRawImage(getDriveFilePath(getMachine().getHdaImagePath())) ? "raw" : null, cache);
@@ -651,7 +661,7 @@ class VMExecutor extends MachineExecutor {
                 getMachine().getHdcInterface(), "disk", null,
                 getDriveFilePath(getMachine().getHdcImagePath()),
                 isRawImage(getDriveFilePath(getMachine().getHdcImagePath())) ? "raw" : null, cache);
-        if (!iaDisk || iaDiskBase + 3 <= 3) {
+        if (!iaDisk) {
             addDrive(paramsList, Integer.toString(iaDiskBase + 3),
                     getMachine().getHddInterface(), "disk", null,
                     getDriveFilePath(getMachine().getHddImagePath()),

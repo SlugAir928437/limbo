@@ -42,6 +42,9 @@ public class Machine extends Observable {
     private String cpu = "Default";
     private int cpuNum = 1;
     private int memory = 128;
+    private int disableI8042 = 1;
+    private int enableNvram = 1;
+    private String nvramPath;
     private int enableMTTCG;
     private int enableKVM;
     private int disableACPI = 0;
@@ -196,6 +199,42 @@ public class Machine extends Observable {
             this.memory = memory;
             setChanged();
             notifyChanged(MachineProperty.MEMORY, memory);
+        }
+    }
+
+    public int getDisableI8042() {
+        return disableI8042;
+    }
+
+    void setDisableI8042(int disableI8042) {
+        if (this.disableI8042 != disableI8042) {
+            this.disableI8042 = disableI8042;
+            setChanged();
+            notifyChanged(MachineProperty.DISABLE_I8042, disableI8042);
+        }
+    }
+
+    public int getEnableNvram() {
+        return enableNvram;
+    }
+
+    void setEnableNvram(int enableNvram) {
+        if (this.enableNvram != enableNvram) {
+            this.enableNvram = enableNvram;
+            setChanged();
+            notifyChanged(MachineProperty.ENABLE_NVRAM, enableNvram);
+        }
+    }
+
+    public String getNvramPath() {
+        return nvramPath;
+    }
+
+    void setNvramPath(String nvramPath) {
+        if (this.nvramPath == null || !this.nvramPath.equals(nvramPath)) {
+            this.nvramPath = nvramPath;
+            setChanged();
+            notifyChanged(MachineProperty.NVRAM_PATH, nvramPath);
         }
     }
 
@@ -767,7 +806,7 @@ public class Machine extends Observable {
     public enum FileType {
         CDROM, FDA, FDB, SD,
         HDA, HDB, HDC, HDD, SHARED_DIR,
-        KERNEL, INITRD,
+        KERNEL, INITRD, NVRAM,
         EXPORT_DIR, IMAGE_DIR, LOG_DIR, IMPORT_FILE, IMPORT_BIOS_FILE
     }
 

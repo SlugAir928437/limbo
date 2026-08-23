@@ -213,6 +213,9 @@ public class MachineImporter {
                             case "KEYBOARD":
                                 mach.setKeyboard(machineAttr[i].replace("\"", ""));
                                 break;
+                            case "ENABLE_I8042":
+                                mach.setDisableI8042(Integer.parseInt(machineAttr[i].replace("\"", "")));
+                                break;
                             case "ENABLE_MTTCG":
                                 mach.setEnableMTTCG(Integer.parseInt(machineAttr[i].replace("\"", "")));
                                 break;

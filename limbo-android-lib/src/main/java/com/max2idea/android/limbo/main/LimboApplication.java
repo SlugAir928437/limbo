@@ -138,6 +138,15 @@ public class LimboApplication extends Application {
         return getInstance().getCacheDir() + "/limbo/";
     }
 
+    /**
+     * Default persistent EFI NVRAM file (ia64 only).  Lives in the app's
+     * files dir so it survives cache clears; matches the previously
+     * hardcoded /data/data/.../files/ia64.nvram location.
+     */
+    public static String getNvramFile() {
+        return getInstance().getFilesDir() + "/ia64.nvram";
+    }
+
     public static String getTmpFolder() {
         return getBasefileDir() + "var/tmp"; // Do not modify
     }

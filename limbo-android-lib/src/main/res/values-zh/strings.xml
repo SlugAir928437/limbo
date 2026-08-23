@@ -265,6 +265,10 @@
     <string name="label_cpu_model">CPU 型号：</string>
     <string name="label_cpu_cores">CPU 核心数：</string>
     <string name="label_ram_memory_mb">内存大小 (MB)：</string>
+    <string name="label_enable_nvram">启用 NVRAM</string>
+    <string name="label_nvram_file">NVRAM 文件</string>
+    <string name="label_nvram_default">默认</string>
+    <string name="label_nvram_new">新建</string>
     <string name="label_enable_mttcg">启用 MTTCG</string>
     <string name="label_enable_kvm">启用 KVM</string>
     <string name="label_disable_hpet">禁用 HPET</string>

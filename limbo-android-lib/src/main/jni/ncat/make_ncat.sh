@@ -142,6 +142,14 @@ function build_one_abi() {
 }
 
 function main() {
+  # The limbo jni Makefile 'export's its own variables (TARGET_ARCH, APP_ABI,
+  # GNU_HOST, SYSROOT, ...).  Without clearing them they leak into the nmap /
+  # openssl sub-make and end up as stray words on the compiler command line,
+  # e.g. GNU make's implicit rule expands $(TARGET_ARCH) into clang's args.
+  unset TARGET_ARCH APP_ABI APP_ABI_DIR APP_PLATFORM GNU_HOST HOST_PREFIX \
+        EABI SYSROOT NDK_SYSROOT NDK_SYSROOT_INC NDK_INCLUDE ARCH_CFLAGS \
+        ARCH_LD_FLAGS CFLAGS CXXFLAGS 2>/dev/null || true
+
   local abi="${1:-${BUILD_HOST:-arm64-v8a}}"
   mkdir -p "${NCAT_OUT_DIR}/${abi}"
   build_one_abi "${abi}"

@@ -1,0 +1,6 @@
+# Downloaded sources and per-ABI build products
+nmap-*.tgz
+nmap-*/
+openssl-*.tar.gz
+openssl-*/
+lib/

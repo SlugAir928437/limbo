@@ -64,6 +64,11 @@ SYNC_LIBS=rsync -av --exclude libqemu-system-* ../libs/* ../jniLibs/
 LIMBO_PRJ_ROOT=../../../..
 LIMBO_APP_LIBS=$(LIMBO_PRJ_ROOT)/limbo-android-lib/src/main
 
+# ncat (Nmap's netcat) - cross-compiled per BUILD_HOST ABI into jniLibs so
+# Android bundles it as libncat.so (executed at runtime, not dlopen'ed).
+NCAT_BUILD_DIR=$(LIMBO_JNI_ROOT)/ncat
+NCAT_OUT_DIR=$(NDK_PROJECT_PATH)/jniLibs
+
 SYNC_LIBS_X86=rsync -av --include='libqemu-system-x86*.so' \
     --include='gdbserver' --include='gdb.setup' \
     --include='*/' --exclude='*' \
@@ -127,7 +132,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk ncat clean-ncat
 
 default: limbo
 	
@@ -334,6 +339,13 @@ qemu: ndk
 	make _build-qemu
 	make install
 
+ncat: ndk
+	cd $(NCAT_BUILD_DIR) && ANDROID_NDK_ROOT="$(NDK_ROOT)" NCAT_OUT_DIR="$(NCAT_OUT_DIR)" bash make_ncat.sh "$(APP_ABI)"
+
+clean-ncat:
+	-rm -rf "$(NCAT_BUILD_DIR)/lib" $(NCAT_BUILD_DIR)/openssl-* $(NCAT_BUILD_DIR)/nmap-*.tgz $(NCAT_BUILD_DIR)/nmap-*
+	-rm -f $(NCAT_OUT_DIR)/$(APP_ABI_DIR)/libncat.so
+
 install-common:
 	$(CREATE_LIBSDIR)
 	$(INSTALL_LIBS)
@@ -351,6 +363,7 @@ limbo:
 	make deps
 	make config-qemu
 	make qemu
+	make ncat
 	make install
 
 EXPORT_GUEST_ALL=export BUILD_GUEST=x86_64-softmmu,aarch64-softmmu,ia64-softmmu
@@ -367,7 +380,7 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-gtk clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-gtk clean-ncat clean-ndk
 
 clean: 
 	make clean-qemu 

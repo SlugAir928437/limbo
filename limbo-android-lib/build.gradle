@@ -25,6 +25,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        viewBinding = true
     }
     buildTypes {
         release {
@@ -44,6 +45,9 @@ dependencies {
     implementation libs.androidx.appcompat
     implementation libs.material
 
+    // Netcat console layouts (ConstraintLayout)
+    implementation libs.androidx.constraintlayout
+
     // Compose (Jetpack Compose + Material Design 3)
     implementation platform(libs.compose.bom)
     implementation libs.compose.ui
@@ -60,7 +64,6 @@ dependencies {
 
     implementation libs.markwon.core
 
-    implementation project(':nc')
     implementation project(':filepicker')
 }
 tasks.configureEach { task ->

@@ -123,6 +123,7 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug
+
       - name: 上传apk构建产物
         uses: actions/upload-artifact@v7.0.1
         with:

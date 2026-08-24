@@ -26,6 +26,8 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
 import com.max2idea.android.limbo.main.Config;
 
 import java.text.SimpleDateFormat;
@@ -227,7 +229,7 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
         }
     }
 
-    public synchronized int insertMachine(Machine machine) {
+    public synchronized int insertMachine(@NonNull Machine machine) {
         int seqnum = -1;
         SQLiteDatabase db = getWritableDatabase();
 

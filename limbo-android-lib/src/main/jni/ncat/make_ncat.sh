@@ -16,14 +16,19 @@ readonly OPENSSL_DOWNLOAD_URL="https://github.com/openssl/openssl/releases/downl
 readonly OPENSSL_BUILD_DIR="${SCRIPT_DIR}/openssl-${OPENSSL_VERSION}"
 readonly HOST_ARCH='linux-x86_64'
 
-declare -A ANDROID_TARGETS_ABI=(['aarch64-linux-android']='arm64-v8a' \
-                                ['armv7a-linux-androideabi']='armeabi-v7a' \
-                                ['i686-linux-android']='x86' \
-                                ['x86_64-linux-android']='x86_64')
+# Android ABI   -> cross-compile target triple
+declare -A ABI_TO_TARGET=(['arm64-v8a']='aarch64-linux-android' \
+                          ['armeabi-v7a']='armv7a-linux-androideabi' \
+                          ['x86']='i686-linux-android' \
+                          ['x86_64']='x86_64-linux-android')
+
+# Output directory where <abi>/libncat.so is installed.  Defaults to the
+# jniLibs tree of limbo-android-lib (which Android bundles into the APK).
+readonly NCAT_OUT_DIR="${NCAT_OUT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)/jniLibs}"
 
 # Exports variables needed to cross-compile for Android.
 # Args:
-#   $1 Target (from ANDROID_TARGETS)
+#   $1 Target (android target triple)
 function export_make_toolchain() {
   export TARGET="$1"
   export TOOLCHAIN="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${HOST_ARCH}"
@@ -35,14 +40,6 @@ function export_make_toolchain() {
   export LD="${TOOLCHAIN}/bin/ld"
   export RANLIB="${TOOLCHAIN}/bin/llvm-ranlib"
   export STRIP="${TOOLCHAIN}/bin/llvm-strip"
-}
-
-# Initializes the folder structure for libraries.
-function create_lib_folders() {
-  rm -rf libs
-  for target in "${!ANDROID_TARGETS_ABI[@]}"; do
-    mkdir -p "libs/${ANDROID_TARGETS_ABI[$target]}"
-  done
 }
 
 # Extracts Nmap source. Removes it before, if it already exists.
@@ -74,7 +71,7 @@ function patch_source() {
 
 # Cross-compiles openssl for a specified android target.
 # Args:
-#   $1 Target (from ANDROID_TARGETS)
+#   $1 Target (android target triple)
 function cross_compile_openssl() {
   target="$1"
   if [[ "${target}" == 'aarch64-linux-android' ]]; then
@@ -102,9 +99,11 @@ function setup_openssl_dir_for_ncat_build() {
 
 # Cross-compiles nmap for a specified android target.
 # Args:
-#   $1 Target (from ANDROID_TARGETS)
+#   $1 Target (android target triple)
+#   $2 Android ABI (output subdirectory)
 function cross_compile_ncat() {
   export_make_toolchain "$1"
+  local abi="$2"
   ./configure --host "${TARGET}" \
               --without-nping \
               --without-zenmap \
@@ -113,27 +112,39 @@ function cross_compile_ncat() {
               --with-libpcap=included \
               --with-liblua=included
   make build-ncat
-  cp ncat/ncat "../libs/${ANDROID_TARGETS_ABI[$TARGET]}/libncat.so"
+  cp ncat/ncat "${NCAT_OUT_DIR}/${abi}/libncat.so"
+}
+
+# Builds ncat (and its openssl dependency) for a single Android ABI.
+# Args:
+#   $1 Android ABI
+function build_one_abi() {
+  local abi="$1"
+  local target="${ABI_TO_TARGET[$abi]}"
+  if [[ -z "${target}" ]]; then
+    echo "ERROR: unsupported Android ABI: ${abi}" >&2
+    exit 1
+  fi
+  export ANDROID_NDK_ROOT
+  (
+    prepare_openssl_source
+    cd "${OPENSSL_BUILD_DIR}" || exit
+    PATH="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${HOST_ARCH}/bin:${PATH}"
+    cross_compile_openssl "${target}"
+    setup_openssl_dir_for_ncat_build
+  )
+  (
+    prepare_nmap_source
+    patch_source
+    cd "${NMAP_BUILD_DIR}" || exit
+    cross_compile_ncat "${target}" "${abi}"
+  )
 }
 
 function main() {
-  create_lib_folders
-  for target in "${!ANDROID_TARGETS_ABI[@]}"; do
-    export ANDROID_NDK_ROOT
-    (
-      prepare_openssl_source
-      cd "${OPENSSL_BUILD_DIR}" || exit
-      PATH="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin:${PATH}"
-      cross_compile_openssl "${target}"
-      setup_openssl_dir_for_ncat_build
-    )
-    (
-      prepare_nmap_source
-      patch_source
-      cd "${NMAP_BUILD_DIR}" || exit
-      cross_compile_ncat "${target}"
-    )
-  done
+  local abi="${1:-${BUILD_HOST:-arm64-v8a}}"
+  mkdir -p "${NCAT_OUT_DIR}/${abi}"
+  build_one_abi "${abi}"
 }
 
 main "$@"

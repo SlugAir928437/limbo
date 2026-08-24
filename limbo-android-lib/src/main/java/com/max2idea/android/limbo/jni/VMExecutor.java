@@ -216,16 +216,17 @@ class VMExecutor extends MachineExecutor {
         } else {
             // gtk 允许多窗口
             if(!gtk) {
-                //XXX: monitor, serial, and parallel display crashes cause SDL doesn't support more than 1 window
+                // Expose monitor/serial/parallel over TCP (server,nowait) so the nc
+                // module can connect and view the consoles. Raw tcp (not telnet) does
+                // not open an SDL window, avoiding the multi-window SDL limitation.
                 paramsList.add("-monitor");
-                paramsList.add("none");
+                paramsList.add("tcp:127.0.0.1:" + Config.monitorPort + ",server,nowait");
 
                 paramsList.add("-serial");
-                paramsList.add("none");
-                // paramsList.add("tcp:127.0.0.1:4444,server,nowait");
+                paramsList.add("tcp:127.0.0.1:" + Config.serialPort + ",server,nowait");
 
                 paramsList.add("-parallel");
-                paramsList.add("none");
+                paramsList.add("tcp:127.0.0.1:" + Config.parallelPort + ",server,nowait");
             }
             paramsList.add("-display");
             if (gtk) {
@@ -264,7 +265,7 @@ class VMExecutor extends MachineExecutor {
 
     private void addAudioOptions(ArrayList<String> paramsList) {
         if (getSoundCard() != null) {
-            paramsList.add("-soundhw");
+            paramsList.add("-device");
             paramsList.add(getSoundCard());
         }
     }
@@ -627,6 +628,32 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
+     * Resolves the -drive if= interface. A null/empty value falls back to "ide"
+     * (QEMU's default bus) — same as before per-drive interfaces were exposed.
+     */
+    private String resolveDriveInterface(String iface) {
+        if (iface == null || iface.trim().isEmpty())
+            return "ide";
+        return iface;
+    }
+
+    /**
+     * Resolves the -drive format=. A null/empty/"auto" value keeps the legacy
+     * behavior: hard disks get "raw" only for raw images (otherwise auto-detect),
+     * CD-ROMs always use "raw". Any concrete format the user set is used as-is.
+     *
+     * @param explicit      the stored per-drive format (null when unset)
+     * @param path          the image file path (used by the raw detection)
+     * @param isDisk        true for hard disks, false for the CD-ROM
+     */
+    private String resolveDriveFormat(String explicit, String path, boolean isDisk) {
+        if (explicit == null || explicit.trim().isEmpty() || explicit.equals("auto")) {
+            return isDisk ? (isRawImage(path) ? "raw" : null) : "raw";
+        }
+        return explicit;
+    }
+
+    /**
      * Emits all storage devices (HDA..HDD, CDROM, FDA/FDB, SD card and the
      * shared folder) as uniform "-drive" parameters.
      */
@@ -648,24 +675,34 @@ class VMExecutor extends MachineExecutor {
                 || LimboApplication.arch == Config.Arch.ia64w;
         int iaDiskBase = iaDisk ? 1 : 0;
 
-        // Hard disks HDA..HDD
+        // Hard disks HDA..HDD. if= comes from the machine's per-drive interface
+        // (null/empty -> "ide", QEMU's default). format= comes from the machine's
+        // per-drive format when set, otherwise the legacy auto/raw detection.
         addDrive(paramsList, Integer.toString(iaDiskBase),
-                getMachine().getHdaInterface(), "disk", null,
+                resolveDriveInterface(getMachine().getHdaInterface()),
+                "disk", null,
                 getDriveFilePath(getMachine().getHdaImagePath()),
-                isRawImage(getDriveFilePath(getMachine().getHdaImagePath())) ? "raw" : null, cache);
+                resolveDriveFormat(getMachine().getHdaFormat(),
+                        getDriveFilePath(getMachine().getHdaImagePath()), true), cache);
         addDrive(paramsList, Integer.toString(iaDiskBase + 1),
-                getMachine().getHdbInterface(), "disk", null,
+                resolveDriveInterface(getMachine().getHdbInterface()),
+                "disk", null,
                 getDriveFilePath(getMachine().getHdbImagePath()),
-                isRawImage(getDriveFilePath(getMachine().getHdbImagePath())) ? "raw" : null, cache);
+                resolveDriveFormat(getMachine().getHdbFormat(),
+                        getDriveFilePath(getMachine().getHdbImagePath()), true), cache);
         addDrive(paramsList, Integer.toString(iaDiskBase + 2),
-                getMachine().getHdcInterface(), "disk", null,
+                resolveDriveInterface(getMachine().getHdcInterface()),
+                "disk", null,
                 getDriveFilePath(getMachine().getHdcImagePath()),
-                isRawImage(getDriveFilePath(getMachine().getHdcImagePath())) ? "raw" : null, cache);
+                resolveDriveFormat(getMachine().getHdcFormat(),
+                        getDriveFilePath(getMachine().getHdcImagePath()), true), cache);
         if (!iaDisk) {
             addDrive(paramsList, Integer.toString(iaDiskBase + 3),
-                    getMachine().getHddInterface(), "disk", null,
+                    resolveDriveInterface(getMachine().getHddInterface()),
+                    "disk", null,
                     getDriveFilePath(getMachine().getHddImagePath()),
-                    isRawImage(getDriveFilePath(getMachine().getHddImagePath())) ? "raw" : null, cache);
+                    resolveDriveFormat(getMachine().getHddFormat(),
+                            getDriveFilePath(getMachine().getHddImagePath()), true), cache);
         }
 
         // CDROM getMachine().getCDInterface()
@@ -678,13 +715,15 @@ class VMExecutor extends MachineExecutor {
         // Keep the historical if=scsi behavior for every other architecture.
         boolean ia64cd = LimboApplication.arch == Config.Arch.ia64
                 || LimboApplication.arch == Config.Arch.ia64w;
-        if (ia64cd) {
-            addDrive(paramsList, "0", "ide", "cdrom", null,
-                    getDriveFilePath(getMachine().getCdImagePath()), "raw", null);
-        } else {
-            addDrive(paramsList, null, "scsi", "cdrom", null,
-                    getDriveFilePath(getMachine().getCdImagePath()), "raw", null);
+        String cdInterface = getMachine().getCDInterface();
+        if (cdInterface == null || cdInterface.trim().isEmpty()) {
+            // legacy arch default when the user has not overridden the interface
+            cdInterface = ia64cd ? "ide" : "scsi";
         }
+        String cdPath = getDriveFilePath(getMachine().getCdImagePath());
+        addDrive(paramsList, ia64cd ? "0" : null,
+                cdInterface, "cdrom", null,
+                cdPath, resolveDriveFormat(getMachine().getCDFormat(), cdPath, false), null);
 
         // Floppy drives FDA/FDB
         if (Config.enableEmulatedFloppy) {

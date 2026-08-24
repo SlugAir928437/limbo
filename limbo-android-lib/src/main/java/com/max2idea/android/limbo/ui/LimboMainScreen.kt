@@ -1,6 +1,7 @@
 package com.max2idea.android.limbo.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,6 +35,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.limbo.emu.lib.R
 import com.max2idea.android.limbo.ui.components.LimboDropdown
@@ -54,9 +56,7 @@ interface LimboUiCallbacks {
     fun onStopVm()
     fun onRestartVm()
     fun onAddStorageDevice()
-    fun onStorageDeviceTypeChanged(typeIndex: Int, deviceTag: Int)
-    fun onStorageDeviceImageChanged(imageIndex: Int, deviceTag: Int)
-    fun onStorageDeviceRemove(deviceTag: Int)
+    fun onStorageDeviceClicked(deviceTag: Int)
     fun onOpenMenu()
 
     // user interface section
@@ -291,11 +291,9 @@ fun LimboMainScreen(
                     onToggle = { onToggleSection(Section.STORAGE) }
                 ) {
                     state.storageDevices.forEach { device ->
-                        StorageDeviceRow(
+                        StorageDeviceSummaryRow(
                             device = device,
-                            onTypeChanged = { callbacks.onStorageDeviceTypeChanged(it, device.tag) },
-                            onImageChanged = { callbacks.onStorageDeviceImageChanged(it, device.tag) },
-                            onRemove = { callbacks.onStorageDeviceRemove(device.tag) }
+                            onClick = { callbacks.onStorageDeviceClicked(device.tag) }
                         )
                     }
                     Button(
@@ -612,69 +610,56 @@ private fun ControlButtons(state: LimboUiState, callbacks: LimboUiCallbacks) {
 }
 
 @Composable
-private fun StorageDeviceRow(
+private fun StorageDeviceSummaryRow(
     device: StorageDeviceUiState,
-    onTypeChanged: (Int) -> Unit,
-    onImageChanged: (Int) -> Unit,
-    onRemove: () -> Unit
+    onClick: () -> Unit
 ) {
+    val typeLabel = device.typeOptions.getOrNull(device.typeSel) ?: "?"
+    val imageValue = device.imageOptions.getOrNull(device.imageSel) ?: "None"
+    val value = if (imageValue.isNullOrEmpty() || imageValue.equals("None", ignoreCase = true)) "" else imageValue
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
-        Column(Modifier.padding(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                LimboDropdown(
-                    options = device.typeOptions,
-                    selectedIndex = device.typeSel,
-                    enabled = device.enabled,
-                    modifier = Modifier.weight(1.4f),
-                    onSelected = onTypeChanged
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.harddisk),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = Color.Unspecified
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = typeLabel,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
                 )
-                Spacer(Modifier.width(8.dp))
-                if (device.showSize) {
-                    androidx.compose.material3.OutlinedTextField(
-                        value = device.sizeValue,
-                        onValueChange = { device.sizeValue = it },
-                        enabled = device.enabled,
-                        singleLine = true,
-                        modifier = Modifier.weight(0.7f),
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    LimboDropdown(
-                        options = device.sizeUnitOptions,
-                        selectedIndex = device.sizeUnitSel,
-                        enabled = device.enabled,
-                        modifier = Modifier.weight(0.7f),
-                        onSelected = { device.sizeUnitSel = it }
-                    )
-                }
-                IconButton(
-                    onClick = onRemove,
-                    enabled = device.enabled,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.delete),
-                        contentDescription = stringResource(R.string.remove_storage_device),
-                        tint = MaterialTheme.colorScheme.error
+                if (value.isNotEmpty()) {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            LimboDropdown(
-                options = device.imageOptions,
-                selectedIndex = device.imageSel,
-                enabled = device.enabled,
-                modifier = Modifier.fillMaxWidth(),
-                onSelected = onImageChanged
+            Text(
+                text = "›",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

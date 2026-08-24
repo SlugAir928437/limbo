@@ -21,6 +21,11 @@
         android:title="@string/display" />
 
     <item
+        android:id="@+id/itemConsole"
+        android:icon="@drawable/terminal"
+        android:title="@string/nc_console" />
+
+    <item
         android:id="@+id/itemVolume"
         android:icon="@drawable/audiocard"
         android:title="@string/volume"></item>

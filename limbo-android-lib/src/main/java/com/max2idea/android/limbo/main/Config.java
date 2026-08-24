@@ -30,7 +30,6 @@ public class Config {
     public static final int SDL_MOUSE_MIDDLE = 2;
     public static final int SDL_MOUSE_RIGHT = 3;
     public static final int SETTINGS_RETURN_CODE = 1000;
-    public static final int FILEMAN_RETURN_CODE = 1002;
 
     public static final int SDL_REQUEST_CODE = 1007;
     public static final int SDL_QUIT_RESULT_CODE = 1009;
@@ -55,15 +54,12 @@ public class Config {
 
     public static final int OPEN_IMPORT_BIOS_FILE_REQUEST_CODE = 2013;
     public static final int OPEN_IMPORT_BIOS_FILE_ASF_REQUEST_CODE = 2014;
-
-    public static final int STATUS_NULL = -1;
     public static final int STATUS_CREATED = 1000;
     public static final int STATUS_PAUSED = 1001;
     public static final String ACTION_START = "com.max2idea.android.limbo.action.STARTVM";
 
     // GUI Options
     public static final boolean enable_SDL = true;
-    public static final int MAX_CPU_NUM = 8;
 
     // delay
     static int keyDelay = 100;
@@ -74,11 +70,8 @@ public class Config {
 
     public static final String defaultDNSServer = "8.8.8.8";
     // App Config
-    public static final String downloadLink = "https://github.com/limboemu/limbo/wiki/Downloads";
-    public static final String kvmLink = "https://github.com/limboemu/limbo/wiki/KVM";
-    public static final String faqLink = "https://github.com/limboemu/limbo/wiki/FAQ";
-    public static final String toolsLink = "https://github.com/limboemu/limbo/wiki/Tools";
-    public static final String newVersionLink = "https://raw.githubusercontent.com/limboemu/limbo/master/VERSION";
+    public static final String downloadLink = "https://github.com/SlugAir928437/limbo/releases";
+    public static final String newVersionLink = "https://raw.githubusercontent.com/SlugAir928437/limbo/qemu-10.2.1/VERSION";
 
     public static final boolean enableKeyboardLayoutOption = true;
     public static final boolean enableMouseOption = true;
@@ -116,10 +109,6 @@ public class Config {
     //Enable if you build with KVM support, needes android-21 platform
     public static boolean enableKVM = false;
     public static String storagedir = null;
-    //Some OSes don't like emulated multi cores for QEMU 2.9.1 you can disable here
-    /// thought there is also the Disable TSC feature so you don't have to do it here
-    public static boolean enableSMPOnlyOnKVM = false;
-    //set to true if you need to debug native library loading
     public static boolean loadNativeLibsEarly = false;
     //XXX: QEMU 3.1.0 needs the libraries to be loaded from the main thread
     public static boolean loadNativeLibsMainThread = true;
@@ -147,6 +136,10 @@ public class Config {
     //QMP
     public static String QMPServer = "127.0.0.1";
     public static int QMPPort = 4444;
+    // Console ports exposed over TCP so the nc module can connect to serial/monitor/parallel
+    public static int serialPort = 4445;
+    public static int monitorPort = 4446;
+    public static int parallelPort = 4447;
     public static int MAX_DISPLAY_REFRESH_RATE = 100; //Hz
     // VNC Defaults
     public static String defaultVNCHost = "127.0.0.1";

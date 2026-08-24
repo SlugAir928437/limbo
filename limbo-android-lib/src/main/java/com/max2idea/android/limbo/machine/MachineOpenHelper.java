@@ -40,7 +40,7 @@ import java.util.Observer;
 public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatabase, Observer {
     private static final String TAG = "MachineOpenHelper";
 
-    private static final int DATABASE_VERSION = 21;
+    private static final int DATABASE_VERSION = 22;
     private static final String DATABASE_NAME = "LIMBO";
     private static final String MACHINE_TABLE_NAME = "machines";
 
@@ -58,7 +58,10 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             + MachineProperty.HDA_INTERFACE.name() + " TEXT, " + MachineProperty.HDB_INTERFACE.name() + " TEXT, " + MachineProperty.HDC_INTERFACE.name() + " TEXT, " + MachineProperty.HDD_INTERFACE.name() + " TEXT , "
             + MachineProperty.CDROM_INTERFACE.name() + " TEXT, " + MachineProperty.BIOS.name() + " TEXT, "
             + MachineProperty.DISABLE_I8042.name() + " INTEGER, " + MachineProperty.ENABLE_NVRAM.name() + " INTEGER DEFAULT 1, "
-            + MachineProperty.NVRAM_PATH.name() + " TEXT "
+            + MachineProperty.NVRAM_PATH.name() + " TEXT, "
+            + MachineProperty.HDA_FORMAT.name() + " TEXT, " + MachineProperty.HDB_FORMAT.name() + " TEXT, "
+            + MachineProperty.HDC_FORMAT.name() + " TEXT, " + MachineProperty.HDD_FORMAT.name() + " TEXT, "
+            + MachineProperty.CDROM_FORMAT.name() + " TEXT "
             + ");";
 
     private static MachineOpenHelper sInstance;
@@ -211,6 +214,17 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN "
                     + MachineProperty.NVRAM_PATH + " TEXT;");
         }
+
+        if (newVersion >= 22 && oldVersion <= 21) {
+            // Per-drive image format (-drive format=...) for the hard disks
+            // and the CD-ROM.  Existing rows keep NULL, which reads back as
+            // auto-detection, preserving the pre-feature runtime behavior.
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDA_FORMAT + " TEXT;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDB_FORMAT + " TEXT;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDC_FORMAT + " TEXT;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDD_FORMAT + " TEXT;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.CDROM_FORMAT + " TEXT;");
+        }
     }
 
     public synchronized int insertMachine(Machine machine) {
@@ -225,14 +239,19 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
         stateValues.put(MachineProperty.MEMORY.name(), machine.getMemory());
         stateValues.put(MachineProperty.HDA.name(), machine.getHdaImagePath());
         stateValues.put(MachineProperty.HDA_INTERFACE.name(), machine.getHdaInterface());
+        stateValues.put(MachineProperty.HDA_FORMAT.name(), machine.getHdaFormat());
         stateValues.put(MachineProperty.HDB.name(), machine.getHdbImagePath());
         stateValues.put(MachineProperty.HDB_INTERFACE.name(), machine.getHdbInterface());
+        stateValues.put(MachineProperty.HDB_FORMAT.name(), machine.getHdbFormat());
         stateValues.put(MachineProperty.HDC.name(), machine.getHdcImagePath());
         stateValues.put(MachineProperty.HDC_INTERFACE.name(), machine.getHdcInterface());
+        stateValues.put(MachineProperty.HDC_FORMAT.name(), machine.getHdcFormat());
         stateValues.put(MachineProperty.HDD.name(), machine.getHddImagePath());
         stateValues.put(MachineProperty.HDD_INTERFACE.name(), machine.getHddInterface());
+        stateValues.put(MachineProperty.HDD_FORMAT.name(), machine.getHddFormat());
         stateValues.put(MachineProperty.CDROM.name(), machine.getCdImagePath());
         stateValues.put(MachineProperty.CDROM_INTERFACE.name(), machine.getCDInterface());
+        stateValues.put(MachineProperty.CDROM_FORMAT.name(), machine.getCDFormat());
         stateValues.put(MachineProperty.FDA.name(), machine.getFdaImagePath());
         stateValues.put(MachineProperty.FDB.name(), machine.getFdbImagePath());
         stateValues.put(MachineProperty.SHARED_FOLDER.name(), machine.getSharedFolderPath());
@@ -324,7 +343,9 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 + MachineProperty.MOUSE + ", " + MachineProperty.KEYBOARD + ", " + MachineProperty.ENABLE_MTTCG + ", " + MachineProperty.ENABLE_KVM + ", "
                 + MachineProperty.HDA_INTERFACE + ", " + MachineProperty.HDB_INTERFACE + ", " + MachineProperty.HDC_INTERFACE + ", " + MachineProperty.HDD_INTERFACE + ", "
                 + MachineProperty.CDROM_INTERFACE + ", " + MachineProperty.BIOS + ", " + MachineProperty.DISABLE_I8042 + ", "
-                + MachineProperty.ENABLE_NVRAM + ", " + MachineProperty.NVRAM_PATH + " "
+                + MachineProperty.ENABLE_NVRAM + ", " + MachineProperty.NVRAM_PATH + ", "
+                + MachineProperty.HDA_FORMAT + ", " + MachineProperty.HDB_FORMAT + ", " + MachineProperty.HDC_FORMAT + ", "
+                + MachineProperty.HDD_FORMAT + ", " + MachineProperty.CDROM_FORMAT + " "
                 + " from " + MACHINE_TABLE_NAME
                 + " where " + MachineProperty.STATUS + " in ( " + Config.STATUS_CREATED + " , " + Config.STATUS_PAUSED + " "
                 + " ) " + " and " + MachineProperty.MACHINE_NAME + "=\"" + machine + "\"" + ";";
@@ -396,6 +417,11 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             myMachine.setDisableI8042(cur.getInt(46));
             myMachine.setEnableNvram(cur.getInt(47));
             myMachine.setNvramPath(cur.getString(48));
+            myMachine.setHdaFormat(cur.getString(49));
+            myMachine.setHdbFormat(cur.getString(50));
+            myMachine.setHdcFormat(cur.getString(51));
+            myMachine.setHddFormat(cur.getString(52));
+            myMachine.setCdFormat(cur.getString(53));
         }
         cur.close();
 

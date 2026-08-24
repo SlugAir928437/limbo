@@ -82,10 +82,6 @@ public class ArchDefinitions {
             vgaValues.add("virtio-gpu-pci");
         }
 
-        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-            vgaValues.add("ati");
-        }
-
         //XXX: some archs don't support vga on QEMU like SPARC64
         vgaValues.add("nographic");
 

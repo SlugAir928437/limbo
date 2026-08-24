@@ -143,6 +143,22 @@ public class Dispatcher implements ViewListener {
                 break;
             case MEDIA_INTERFACE:
                 setDriveMediaInterface(value);
+                break;
+            case HDA_FORMAT:
+                getMachine().setHdaFormat(convertString(property, value));
+                break;
+            case HDB_FORMAT:
+                getMachine().setHdbFormat(convertString(property, value));
+                break;
+            case HDC_FORMAT:
+                getMachine().setHdcFormat(convertString(property, value));
+                break;
+            case HDD_FORMAT:
+                getMachine().setHddFormat(convertString(property, value));
+                break;
+            case CDROM_FORMAT:
+                getMachine().setCdFormat(convertString(property, value));
+                break;
             case SOUNDCARD:
                 getMachine().setSoundCard(convertString(property, value));
                 break;
@@ -400,6 +416,8 @@ public class Dispatcher implements ViewListener {
     }
 
     private String convertString(MachineProperty property, Object value) {
+        if (value == null)
+            return null;
         if (value instanceof String) {
             return (String) value;
         } else {

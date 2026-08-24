@@ -54,6 +54,10 @@
             android:label="Settings"
             android:exported="false"
             android:theme="@style/Theme.AppCompat"/>
+        <activity
+            android:name="com.max2idea.android.limbo.ui.StorageDeviceEditorActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar"/>
         <service
             android:name="com.max2idea.android.limbo.machine.MachineService"
             android:enabled="true"

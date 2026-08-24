@@ -61,6 +61,11 @@ public class Machine extends Observable {
     private String hdbInterface = "ide";
     private String hdcInterface = "ide";
     private String hddInterface = "ide";
+    // optional per-drive image format (-drive format=...); null = auto-detect
+    private String hdaFormat;
+    private String hdbFormat;
+    private String hdcFormat;
+    private String hddFormat;
 
     private String sharedFolderPath;
     //Removable devices
@@ -73,6 +78,7 @@ public class Machine extends Observable {
     private String fdbImagePath;
     private String sdImagePath;
     private String cdInterface = "ide";
+    private String cdFormat;
     // Default Settings
     private String bootDevice = "Default";
     private String kernel;
@@ -397,6 +403,70 @@ public class Machine extends Observable {
             setChanged();
             notifyChanged(MachineProperty.HDD_INTERFACE, hdInterface);
         }
+    }
+
+    public String getHdaFormat() {
+        return hdaFormat;
+    }
+
+    void setHdaFormat(String format) {
+        if (!stringsEqual(this.hdaFormat, format)) {
+            this.hdaFormat = format;
+            setChanged();
+            notifyChanged(MachineProperty.HDA_FORMAT, format);
+        }
+    }
+
+    public String getHdbFormat() {
+        return hdbFormat;
+    }
+
+    void setHdbFormat(String format) {
+        if (!stringsEqual(this.hdbFormat, format)) {
+            this.hdbFormat = format;
+            setChanged();
+            notifyChanged(MachineProperty.HDB_FORMAT, format);
+        }
+    }
+
+    public String getHdcFormat() {
+        return hdcFormat;
+    }
+
+    void setHdcFormat(String format) {
+        if (!stringsEqual(this.hdcFormat, format)) {
+            this.hdcFormat = format;
+            setChanged();
+            notifyChanged(MachineProperty.HDC_FORMAT, format);
+        }
+    }
+
+    public String getHddFormat() {
+        return hddFormat;
+    }
+
+    void setHddFormat(String format) {
+        if (!stringsEqual(this.hddFormat, format)) {
+            this.hddFormat = format;
+            setChanged();
+            notifyChanged(MachineProperty.HDD_FORMAT, format);
+        }
+    }
+
+    public String getCDFormat() {
+        return cdFormat;
+    }
+
+    void setCdFormat(String format) {
+        if (!stringsEqual(this.cdFormat, format)) {
+            this.cdFormat = format;
+            setChanged();
+            notifyChanged(MachineProperty.CDROM_FORMAT, format);
+        }
+    }
+
+    private static boolean stringsEqual(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
     public String getSharedFolderPath() {

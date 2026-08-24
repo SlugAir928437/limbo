@@ -260,13 +260,6 @@ public class LimboActivityCommon {
             }
         };
 
-        final DialogInterface.OnClickListener helpListener =
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        goToURL(activity, Config.faqLink);
-                    }
-                };
-
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -274,7 +267,7 @@ public class LimboActivityCommon {
                         activity.getString(R.string.TapDeviceFound),
                         activity.getString(R.string.tunDeviceWarning) + ": " + userid + "\n",
                         16, false, activity.getString(android.R.string.ok), okListener,
-                        null, null, activity.getString(R.string.TAPHelp), helpListener);
+                        null, null, null, null);
             }
         });
     }
@@ -286,29 +279,13 @@ public class LimboActivityCommon {
     }
 
     public static void onNetworkUser(final Activity activity) {
-        final DialogInterface.OnClickListener okListener = new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
+        final DialogInterface.OnClickListener okListener = (dialog, which) -> {};
 
-            }
-        };
-
-        final DialogInterface.OnClickListener helpListener =
-                new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
-                        LimboActivityCommon.goToURL(activity, Config.faqLink);
-                    }
-                };
-
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                DialogUtils.UIAlert(activity,
-                        activity.getString(R.string.network),
-                        activity.getString(R.string.externalNetworkWarning),
-                        16, false, activity.getString(android.R.string.ok), okListener,
-                        null, null, activity.getString(R.string.faq), helpListener);
-            }
-        });
+        activity.runOnUiThread(() -> DialogUtils.UIAlert(activity,
+                activity.getString(R.string.network),
+                activity.getString(R.string.externalNetworkWarning),
+                16, false, activity.getString(android.R.string.ok), okListener,
+                null, null, null, null));
     }
 
 

@@ -119,10 +119,17 @@ jobs:
           export USE_GTK=true
           make limbo
 
+      - name: Build NCat
+        run: |
+          cd nc/src/main/cpp
+          export ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/25.2.9519653
+          export PATH=$PATH:$NDK_ROOT
+          ./make_ncat.sh
+
       - name: Gradle 打包 Release
         run: |
           chmod +x ./gradlew
-          ./gradlew :${{ matrix.module }}:assembleRelease --stacktrace
+          ./gradlew :${{ matrix.module }}:assembleRelease
 
       - name: 机签发布 APK
         shell: bash

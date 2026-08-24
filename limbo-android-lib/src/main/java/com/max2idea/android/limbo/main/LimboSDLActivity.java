@@ -65,6 +65,9 @@ import com.max2idea.android.limbo.machine.MachineProperty;
 import com.max2idea.android.limbo.screen.ScreenUtils;
 import com.max2idea.android.limbo.toast.ToastUtils;
 
+import com.werebug.androidnetcat.AndroidNetcatHome;
+import com.werebug.androidnetcat.NetcatSession;
+
 import org.libsdl.app.SDLActivity;
 import org.libsdl.app.SDLAudioManager;
 
@@ -241,6 +244,8 @@ public class LimboSDLActivity extends SDLActivity
             hideToolbar();
         } else if (item.getItemId() == R.id.itemDisplay) {
             promptSDLDisplay();
+        } else if (item.getItemId() == R.id.itemConsole) {
+            promptNcConsole();
         } else if (item.getItemId() == R.id.itemViewLog) {
             Logger.viewLimboLog(this);
         } else if (item.getItemId() == R.id.itemKeyboardMapper) {
@@ -278,6 +283,31 @@ public class LimboSDLActivity extends SDLActivity
             }
         });
         alertDialog.show();
+    }
+
+    private void promptNcConsole() {
+        final String[] items = {
+                getString(R.string.nc_serial),
+                getString(R.string.nc_monitor),
+                getString(R.string.nc_parallel)
+        };
+        final int[] ports = {Config.serialPort, Config.monitorPort, Config.parallelPort};
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.nc_console_prompt)
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        openNcConsole("nc " + Config.defaultVNCHost + " " + ports[which]);
+                        dialog.dismiss();
+                    }
+                })
+                .show();
+    }
+
+    private void openNcConsole(String cmd) {
+        Intent intent = new Intent(this, NetcatSession.class);
+        intent.putExtra(AndroidNetcatHome.netcat_cmd_string, cmd);
+        startActivity(intent);
     }
 
     public void hideToolbar() {

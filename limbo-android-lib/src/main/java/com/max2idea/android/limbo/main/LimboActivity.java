@@ -70,6 +70,7 @@ import com.max2idea.android.limbo.toast.ToastUtils;
 import com.max2idea.android.limbo.ui.LimboComposeBridge;
 import com.max2idea.android.limbo.ui.LimboUiCallbacks;
 import com.max2idea.android.limbo.ui.LimboUiState;
+import com.max2idea.android.limbo.ui.StorageDeviceEditorActivity;
 import com.max2idea.android.limbo.ui.StorageDeviceUiState;
 import com.max2idea.android.limbo.updates.UpdateChecker;
 
@@ -107,7 +108,6 @@ public class LimboActivity extends AppCompatActivity implements
     private static final int CREATE = 9;
     private static final int DISCARD_VM_STATE = 11;
     private static final int SETTINGS = 13;
-    private static final int TOOLS = 14;
     private static final int IMPORT_BIOS_FILE = 15;
 
     // disk mapping
@@ -117,6 +117,8 @@ public class LimboActivity extends AppCompatActivity implements
     public View parent;
     private boolean machineLoaded = false;
     private FileType browseFileType = null;
+    // device (row) being edited in StorageDeviceEditorActivity; -1 = adding a new device
+    private int pendingStorageEditTag = -1;
 
     // Compose UI state
     private final LimboUiState uiState = new LimboUiState();
@@ -740,17 +742,11 @@ public class LimboActivity extends AppCompatActivity implements
             notifyFieldChange(MachineProperty.ENABLE_KVM, false);
         };
 
-        DialogInterface.OnClickListener helpListener = (dialog, which) -> {
-            uiState.setEnableKVM(false);
-            notifyFieldChange(MachineProperty.ENABLE_KVM, false);
-            LimboActivityCommon.goToURL(this, Config.kvmLink);
-        };
-
         DialogUtils.UIAlert(this, getString(R.string.EnableKVM),
                 getString(R.string.EnableKVMWarning),
                 16, false, getString(android.R.string.ok),
                 okListener, getString(android.R.string.cancel),
-                cancelListener, getString(R.string.KVMHelp), helpListener);
+                cancelListener, null, null);
     }
 
     private void promptEnableMTTCG() {
@@ -762,32 +758,23 @@ public class LimboActivity extends AppCompatActivity implements
             notifyFieldChange(MachineProperty.ENABLE_MTTCG, false);
             uiState.setEnableMTTCG(false);
         };
-        DialogInterface.OnClickListener helpListener = (dialog, which) -> {
-            uiState.setEnableMTTCG(false);
-            notifyFieldChange(MachineProperty.ENABLE_MTTCG, false);
-            LimboActivityCommon.goToURL(this, Config.faqLink);
-        };
         DialogUtils.UIAlert(this, getString(R.string.enableMTTCG),
                 getString(R.string.enableMTTCGWarning),
                 16, false, getString(android.R.string.ok), okListener,
-                getString(android.R.string.cancel), cancelListener, getString(R.string.mttcgHelp), helpListener);
+                getString(android.R.string.cancel), cancelListener, null, null);
     }
 
     private void promptMultiCPU(String cpuNum) {
         DialogInterface.OnClickListener okListener = (dialog, which) ->
                 notifyFieldChange(MachineProperty.CPUNUM, cpuNum);
         DialogInterface.OnClickListener cancelListener = (dialog, which) -> uiState.setCpuNumValue("1");
-        DialogInterface.OnClickListener helpListener = (dialog, which) -> {
-            uiState.setCpuNumValue("1");
-            LimboActivityCommon.goToURL(this, Config.faqLink);
-        };
         DialogUtils.UIAlert(this, getString(R.string.multipleVCPU),
                 getString(R.string.multipleVCPUWarning)
                         + (LimboApplication.arch == Config.Arch.x86_64
                         ? getString(R.string.disableTSCInstructions) : "")
                         + " " + getString(R.string.DoYouWantToContinue),
                 16, false, getString(android.R.string.ok), okListener,
-                getString(android.R.string.cancel), cancelListener, getString(R.string.vCPUHelp), helpListener);
+                getString(android.R.string.cancel), cancelListener, null, null);
     }
 
     private void promptDriveInterface(MachineProperty machineDriveName) {
@@ -1742,7 +1729,7 @@ public class LimboActivity extends AppCompatActivity implements
                 ToastUtils.toastShort(activity, getString(R.string.ImageFilenameCannotBeEmpty));
             else {
                 String templateImage = getTemplateForSize(bytes);
-                String filePath = null;
+                String filePath;
                 if (templateImage != null) {
                     if (!image.endsWith(".qcow2")) {
                         image += ".qcow2";
@@ -1835,6 +1822,11 @@ public class LimboActivity extends AppCompatActivity implements
             finish();
             if (MachineController.getInstance().isRunning()) {
                 notifyAction(MachineAction.STOP_VM, null);
+            }
+        } else if (requestCode == StorageDeviceEditorActivity.REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                applyStorageDeviceEditorResult(data, pendingStorageEditTag);
+                pendingStorageEditTag = -1;
             }
         } else if (requestCode == Config.OPEN_IMPORT_FILE_REQUEST_CODE || requestCode == Config.OPEN_IMPORT_FILE_ASF_REQUEST_CODE) {
             String file = requestCode == Config.OPEN_IMPORT_FILE_ASF_REQUEST_CODE
@@ -2086,9 +2078,6 @@ public class LimboActivity extends AppCompatActivity implements
             case SETTINGS:
                 showSettings();
                 break;
-            case TOOLS:
-                LimboActivityCommon.goToURL(this, Config.toolsLink);
-                break;
             case EXPORT:
                 MachineExporter.promptExport(this);
                 break;
@@ -2122,7 +2111,6 @@ public class LimboActivity extends AppCompatActivity implements
         else if (label.equals(getString(R.string.ImportMachines))) return IMPORT;
         else if (label.equals(getString(R.string.ImportBIOSFile))) return IMPORT_BIOS_FILE;
         else if (label.equals(getString(R.string.Settings))) return SETTINGS;
-        else if (label.equals(getString(R.string.advancedTools))) return TOOLS;
         else if (label.equals(getString(R.string.ViewLog))) return VIEWLOG;
         else if (label.equals(getString(R.string.Changelog))) return CHANGELOG;
         else if (label.equals(getString(R.string.License))) return LICENSE;
@@ -2144,7 +2132,6 @@ public class LimboActivity extends AppCompatActivity implements
         }
         items.add(getString(R.string.ImportBIOSFile));
         items.add(getString(R.string.Settings));
-        items.add(getString(R.string.advancedTools));
         items.add(getString(R.string.ViewLog));
         items.add(getString(R.string.Changelog));
         items.add(getString(R.string.License));
@@ -2422,6 +2409,19 @@ public class LimboActivity extends AppCompatActivity implements
 
     @Override
     public void onAddStorageDevice() {
+        openStorageEditor(-1);
+    }
+
+    @Override
+    public void onStorageDeviceClicked(int deviceTag) {
+        openStorageEditor(deviceTag);
+    }
+
+    /**
+     * Opens the single-device editor ([StorageDeviceEditorActivity]).
+     * @param deviceTag the row being edited, or -1 to add a new device.
+     */
+    private void openStorageEditor(int deviceTag) {
         if (MachineController.getInstance().isRunning()) {
             ToastUtils.toastShort(this, getString(R.string.VMRunning));
             return;
@@ -2430,32 +2430,251 @@ public class LimboActivity extends AppCompatActivity implements
             ToastUtils.toastShort(this, getString(R.string.SelectOrCreateVirtualMachineFirst));
             return;
         }
-        addStorageDeviceRow(null);
+        boolean edit = deviceTag >= 0;
+        Intent intent = new Intent(this, StorageDeviceEditorActivity.class);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_MODE,
+                edit ? StorageDeviceEditorActivity.MODE_EDIT : StorageDeviceEditorActivity.MODE_NEW);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_EDIT_TAG, deviceTag);
+
+        DeviceType[] types = getAvailableDeviceTypes();
+        String[] labels = new String[types.length];
+        String[] fileTypes = new String[types.length];
+        boolean[] createImage = new boolean[types.length];
+        boolean[] canIf = new boolean[types.length];
+        for (int i = 0; i < types.length; i++) {
+            labels[i] = getString(types[i].labelRes);
+            // HARD_DISK's static fileType is null (it maps to HDA..HDD at runtime),
+            // so fall back to HDA to enable browsing/creating disk images in the editor.
+            String ftName = "";
+            if (types[i].fileType != null) {
+                ftName = types[i].fileType.name();
+            } else if (types[i] == DeviceType.HARD_DISK) {
+                ftName = FileType.HDA.name();
+            }
+            fileTypes[i] = ftName;
+            createImage[i] = types[i].createImage;
+            // only hard disks and CD-ROMs expose -drive if=/format=
+            canIf[i] = types[i] == DeviceType.HARD_DISK || types[i] == DeviceType.CDROM;
+        }
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_LABELS, labels);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_FILE_TYPES, fileTypes);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_CREATE_IMAGE, createImage);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_CAN_IF, canIf);
+
+        // -drive if=/format= selector options (empty value = keep the default)
+        String[] ifValues = {"", "ide", "scsi", "virtio", "sata", "nvme"};
+        String[] ifLabels = {getString(R.string.label_default), getString(R.string.storage_if_ide),
+                "SCSI", getString(R.string.storage_if_virtio), "SATA", "NVMe"};
+        String[] formatValues = {"", "raw", "qcow2", "qcow", "vmdk", "vhdx", "vdi", "vpc", "parallels"};
+        String[] formatLabels = {getString(R.string.label_auto), "RAW", "QCOW2", "QCOW", "VMDK",
+                "VHDX", "VDI", "VPC", getString(R.string.storage_fmt_parallels)};
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_IF_LABELS, ifLabels);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_IF_VALUES, ifValues);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_FORMAT_LABELS, formatLabels);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_FORMAT_VALUES, formatValues);
+
+        if (edit && deviceTag < storageEntries.size()) {
+            StorageEntry e = storageEntries.get(deviceTag);
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_TYPE_SEL, getTypePosition(e.deviceType));
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_SIZE,
+                    e.ui.getSizeValue() != null ? e.ui.getSizeValue() : "4");
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_SIZE_UNIT_SEL, e.ui.getSizeUnitSel());
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_IMAGE, getMachineDriveValue(e.fileType));
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_IF_SEL,
+                    indexOfValue(ifValues, driveInterfaceValue(e)));
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_FORMAT_SEL,
+                    indexOfValue(formatValues, driveFormatValue(e)));
+        } else {
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_TYPE_SEL, 0);
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_SIZE, "4");
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_SIZE_UNIT_SEL, 0);
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_IMAGE, "");
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_IF_SEL, 0);
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_FORMAT_SEL, 0);
+        }
+        pendingStorageEditTag = edit ? deviceTag : -1;
+        startActivityForResult(intent, StorageDeviceEditorActivity.REQUEST_CODE);
     }
 
-    @Override
-    public void onStorageDeviceTypeChanged(int typeIndex, int deviceTag) {
-        if (deviceTag < 0 || deviceTag >= storageEntries.size())
+    private void applyStorageDeviceEditorResult(Intent data, int editTag) {
+        if (data == null || getMachine() == null)
             return;
-        StorageEntry entry = storageEntries.get(deviceTag);
-        if (getMachine() == null)
+        if (data.getBooleanExtra(StorageDeviceEditorActivity.EXTRA_REMOVE, false)) {
+            if (editTag >= 0 && editTag < storageEntries.size())
+                removeStorageDeviceRow(storageEntries.get(editTag));
+            updateSummary();
             return;
+        }
+
+        int typeSel = data.getIntExtra(StorageDeviceEditorActivity.EXTRA_TYPE_SEL, 0);
         DeviceType[] types = getAvailableDeviceTypes();
-        if (typeIndex < 0 || typeIndex >= types.length)
+        if (typeSel < 0 || typeSel >= types.length)
             return;
-        DeviceType type = types[typeIndex];
+        DeviceType devType = types[typeSel];
+
+        String image = data.getStringExtra(StorageDeviceEditorActivity.EXTRA_IMAGE);
+        if (image == null || image.isEmpty())
+            image = "None";
+
+        // file type used for browsing/creating disk images (HARD_DISK resolves to HDA here)
+        String ftName = data.getStringExtra(StorageDeviceEditorActivity.EXTRA_FILE_TYPE);
+        FileType targetFtype = (ftName != null && !ftName.isEmpty())
+                ? Machine.FileType.valueOf(ftName) : null;
+
+        // create a brand new disk image when requested
+        String newImageName = data.getStringExtra(StorageDeviceEditorActivity.EXTRA_NEW_IMAGE_NAME);
+        if (newImageName != null && !newImageName.isEmpty() && targetFtype != null) {
+            long bytes = data.getLongExtra(StorageDeviceEditorActivity.EXTRA_NEW_IMAGE_SIZE_BYTES, -1L);
+            if (LimboSettingsManager.getImagesDir(this) == null) {
+                ToastUtils.toastLong(this, getString(R.string.chooseDirToCreateImage));
+                changeImagesDir();
+                return;
+            }
+            String created = createImageFile(newImageName, bytes, targetFtype);
+            if (created == null)
+                return;
+            image = created;
+        }
+
+        if (editTag >= 0 && editTag < storageEntries.size()) {
+            StorageEntry entry = storageEntries.get(editTag);
+            // apply type change to the target device type
+            if (entry.deviceType != devType) {
+                if (!applyDeviceType(entry, devType)) {
+                    return; // type rejected (e.g. max count reached); leave entry untouched
+                }
+            }
+            entry.ui.setSizeValue(data.getStringExtra(StorageDeviceEditorActivity.EXTRA_SIZE) != null
+                    ? data.getStringExtra(StorageDeviceEditorActivity.EXTRA_SIZE) : entry.ui.getSizeValue());
+            entry.ui.setSizeUnitSel(data.getIntExtra(StorageDeviceEditorActivity.EXTRA_SIZE_UNIT_SEL,
+                    entry.ui.getSizeUnitSel()));
+            applyDriveSettings(entry, data);
+            applyImageToEntry(entry, image);
+        } else {
+            // adding a new device row, then set its image/size
+            int before = storageEntries.size();
+            addStorageDeviceRow(devType);
+            if (storageEntries.size() == before)
+                return; // not added (type at max count)
+            StorageEntry entry = storageEntries.get(storageEntries.size() - 1);
+            entry.ui.setSizeValue(data.getStringExtra(StorageDeviceEditorActivity.EXTRA_SIZE) != null
+                    ? data.getStringExtra(StorageDeviceEditorActivity.EXTRA_SIZE) : entry.ui.getSizeValue());
+            entry.ui.setSizeUnitSel(data.getIntExtra(StorageDeviceEditorActivity.EXTRA_SIZE_UNIT_SEL,
+                    entry.ui.getSizeUnitSel()));
+            applyDriveSettings(entry, data);
+            applyImageToEntry(entry, image);
+        }
+        updateSummary();
+    }
+
+    /** Returns the safe search index of {@code v} in {@code values}, defaulting to 0. */
+    private static int indexOfValue(String[] values, String v) {
+        if (values == null)
+            return 0;
+        if (v != null) {
+            for (int i = 0; i < values.length; i++) {
+                if (v.equals(values[i]))
+                    return i;
+            }
+        }
+        return 0;
+    }
+
+    /** Current interface (-drive if=) of an entry's drive, or null when it has none. */
+    private String driveInterfaceValue(StorageEntry e) {
+        if (getMachine() == null)
+            return null;
+        if (e.deviceType == DeviceType.HARD_DISK) {
+            switch (e.hardDiskSlot) {
+                case 0: return getMachine().getHdaInterface();
+                case 1: return getMachine().getHdbInterface();
+                case 2: return getMachine().getHdcInterface();
+                case 3: return getMachine().getHddInterface();
+            }
+        } else if (e.deviceType == DeviceType.CDROM) {
+            return getMachine().getCDInterface();
+        }
+        return null;
+    }
+
+    /** Current image format (-drive format=) of an entry's drive, or null. */
+    private String driveFormatValue(StorageEntry e) {
+        if (getMachine() == null)
+            return null;
+        if (e.deviceType == DeviceType.HARD_DISK) {
+            switch (e.hardDiskSlot) {
+                case 0: return getMachine().getHdaFormat();
+                case 1: return getMachine().getHdbFormat();
+                case 2: return getMachine().getHdcFormat();
+                case 3: return getMachine().getHddFormat();
+            }
+        } else if (e.deviceType == DeviceType.CDROM) {
+            return getMachine().getCDFormat();
+        }
+        return null;
+    }
+
+    /** The MachineProperty identifying the drive, used for -drive if=. Null when unsupported. */
+    private MachineProperty driveInterfaceProp(StorageEntry e) {
+        if (e.deviceType == DeviceType.HARD_DISK) {
+            switch (e.hardDiskSlot) {
+                case 0: return MachineProperty.HDA;
+                case 1: return MachineProperty.HDB;
+                case 2: return MachineProperty.HDC;
+                case 3: return MachineProperty.HDD;
+            }
+        } else if (e.deviceType == DeviceType.CDROM) {
+            return MachineProperty.CDROM;
+        }
+        return null;
+    }
+
+    /** The MachineProperty identifying the drive, used for -drive format=. Null when unsupported. */
+    private MachineProperty driveFormatProp(StorageEntry e) {
+        if (e.deviceType == DeviceType.HARD_DISK) {
+            switch (e.hardDiskSlot) {
+                case 0: return MachineProperty.HDA_FORMAT;
+                case 1: return MachineProperty.HDB_FORMAT;
+                case 2: return MachineProperty.HDC_FORMAT;
+                case 3: return MachineProperty.HDD_FORMAT;
+            }
+        } else if (e.deviceType == DeviceType.CDROM) {
+            return MachineProperty.CDROM_FORMAT;
+        }
+        return null;
+    }
+
+    /**
+     * Persists the -drive if=/format= chosen in the editor onto the machine.
+     * An empty value means "keep default" and clears the per-drive setting.
+     */
+    private void applyDriveSettings(StorageEntry e, Intent data) {
+        if (e.deviceType != DeviceType.HARD_DISK && e.deviceType != DeviceType.CDROM)
+            return;
+        MachineProperty ifProp = driveInterfaceProp(e);
+        if (ifProp != null) {
+            String ifValue = data.getStringExtra(StorageDeviceEditorActivity.EXTRA_IF);
+            notifyFieldChange(MachineProperty.MEDIA_INTERFACE,
+                    new Object[]{ifProp, (ifValue == null || ifValue.trim().isEmpty() ? null : ifValue)});
+        }
+        MachineProperty fmtProp = driveFormatProp(e);
+        if (fmtProp != null) {
+            String fmtValue = data.getStringExtra(StorageDeviceEditorActivity.EXTRA_FORMAT);
+            notifyFieldChange(fmtProp, fmtValue == null || fmtValue.trim().isEmpty() ? null : fmtValue);
+        }
+    }
+
+    /** Applies an already-resolved type change to an existing entry. Returns false if rejected. */
+    private boolean applyDeviceType(StorageEntry entry, DeviceType type) {
         if (type == entry.deviceType)
-            return;
-        // check if the selected type already reached max count
+            return true;
         if (countDeviceType(type) >= type.maxCount) {
             ToastUtils.toastShort(this, getString(R.string.device_already_exists));
-            entry.ui.setTypeSel(getTypePosition(entry.deviceType));
-            return;
+            return false;
         }
         if (type == DeviceType.HARD_DISK && getFreeHardDiskSlot() < 0) {
             ToastUtils.toastShort(this, getString(R.string.device_already_exists));
-            entry.ui.setTypeSel(getTypePosition(entry.deviceType));
-            return;
+            return false;
         }
         // release old drive
         clearDrive(entry);
@@ -2474,60 +2693,53 @@ public class LimboActivity extends AppCompatActivity implements
         if (entry.fileType != null) {
             diskMapping.put(entry.fileType, new DiskInfo(null, entry.property));
         }
-        if (entry.removable) {
-            if (entry.property != null) {
-                notifyFieldChange(MachineProperty.DRIVE_ENABLED, new Object[]{entry.property, true});
-            }
+        if (entry.removable && entry.property != null) {
+            notifyFieldChange(MachineProperty.DRIVE_ENABLED, new Object[]{entry.property, true});
         }
-        entry.ui.setTypeSel(typeIndex);
+        entry.ui.setTypeSel(getTypePosition(type));
         updateStorageDeviceSizeVisibility(entry);
         reassignHardDiskSlots();
         populateStorageDeviceImageAdapter(entry, null);
+        return true;
     }
 
-    @Override
-    public void onStorageDeviceImageChanged(int imageIndex, int deviceTag) {
-        if (deviceTag < 0 || deviceTag >= storageEntries.size())
+    /** Unconditionally sets the drive image value (path or "None") on an entry. */
+    private void applyImageToEntry(StorageEntry entry, String image) {
+        if ("None".equals(image)) {
+            clearDrive(entry);
+            seMachineDriveValue(entry.fileType, null);
             return;
-        StorageEntry entry = storageEntries.get(deviceTag);
-        if (getMachine() == null)
-            return;
-        if (imageIndex < 0 || imageIndex >= entry.ui.getImageOptions().size())
-            return;
-        String value = entry.ui.getImageOptions().get(imageIndex);
-        if (entry.createImage && imageIndex == 1) {
-            // New -> create image with custom size
-            long sizeBytes = getSelectedSizeBytes(entry);
-            if (entry.fileType != null)
-                promptImageName(this, entry.fileType, sizeBytes);
-            entry.ui.setImageSel(0);
-        } else if (imageIndex == (entry.createImage ? 2 : 1)) {
-            // Open...
-            if (entry.fileType != null) {
-                browseFileType = entry.fileType;
-                if (entry.sharedFolder) {
-                    LimboFileManager.browse(this, browseFileType, Config.OPEN_SHARED_DIR_REQUEST_CODE);
-                } else {
-                    LimboFileManager.browse(this, browseFileType, Config.OPEN_IMAGE_FILE_REQUEST_CODE);
-                }
-            }
-            entry.ui.setImageSel(0);
-        } else if (imageIndex == 0) {
-            // None
-            entry.ui.setImageSel(0);
-            notifyDriveChanged(entry, value);
-        } else {
-            // recent files
-            entry.ui.setImageSel(imageIndex);
-            notifyDriveChanged(entry, value);
+        }
+        List<String> opts = new ArrayList<>(entry.ui.getImageOptions());
+        if (!opts.contains(image)) {
+            opts.add(image);
+        }
+        entry.ui.setImageOptions(opts);
+        entry.ui.setImageSel(opts.indexOf(image));
+        notifyDriveChanged(entry, image);
+        seMachineDriveValue(entry.fileType, image);
+        if (entry.fileType != null) {
+            MachineFilePaths.insertRecentFilePath(entry.fileType, image);
         }
     }
 
-    @Override
-    public void onStorageDeviceRemove(int deviceTag) {
-        if (deviceTag < 0 || deviceTag >= storageEntries.size())
-            return;
-        removeStorageDeviceRow(storageEntries.get(deviceTag));
+    /** Creates a disk image file from a name + size, reusing the template/raw logic. */
+    private String createImageFile(String imageName, long bytes, FileType fileType) {
+        String image = imageName;
+        String templateImage = getTemplateForSize(bytes < 0 ? -1 : bytes);
+        String filePath;
+        if (templateImage != null) {
+            if (!image.endsWith(".qcow2")) {
+                image += ".qcow2";
+            }
+            filePath = FileUtils.createImgFromTemplate(this, templateImage, image, fileType);
+        } else {
+            if (!image.endsWith(".img") && !image.endsWith(".raw")) {
+                image += ".img";
+            }
+            filePath = FileUtils.createRawImage(this, bytes, image, fileType);
+        }
+        return filePath;
     }
 
     @Override

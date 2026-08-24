@@ -60,6 +60,7 @@ dependencies {
 
     implementation libs.markwon.core
 
+    implementation project(':nc')
     implementation project(':filepicker')
 }
 tasks.configureEach { task ->

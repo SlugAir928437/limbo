@@ -47,7 +47,6 @@
     <string name="keyboard">键盘</string>
     <string name="mouse">鼠标</string>
     <string name="desktopMode">桌面模式</string>
-    <string name="advancedTools">高级工具</string>
     <string name="discardVMState">丢弃虚拟机状态</string>
     <string name="discardVMInstructions">虚拟机已暂停。如果丢弃状态，您可能会丢失数据。是否继续？</string>
     <string name="tapUserId">TAP 用户 ID</string>
@@ -236,8 +235,21 @@
 
     <!-- 硬编码文本提取中文翻译 - 布局文件 -->
     <string name="title_storage_devices">存储设备</string>
-    <string name="add_storage_device">+ 添加设备</string>
+    <string name="add_storage_device">添加/更改</string>
     <string name="remove_storage_device">移除设备</string>
+    <string name="title_storage_device_editor">存储设备</string>
+    <string name="label_storage_type">类型</string>
+    <string name="label_storage_size">容量</string>
+    <string name="label_storage_image">镜像</string>
+    <string name="label_new_image_name">镜像名称</string>
+    <string name="new_image">新建</string>
+    <string name="label_storage_interface">接口</string>
+    <string name="label_storage_format">格式</string>
+    <string name="label_default">默认</string>
+    <string name="label_auto">自动</string>
+    <string name="storage_if_ide">IDE</string>
+    <string name="storage_if_virtio">VirtIO</string>
+    <string name="storage_fmt_parallels">Parallels</string>
     <string name="type_hard_disk">硬盘</string>
     <string name="type_cdrom">光驱</string>
     <string name="type_floppy_a">软盘 A</string>

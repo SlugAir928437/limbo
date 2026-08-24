@@ -11,6 +11,11 @@
     <string name="disconnect">Disconnect</string>
     <string name="external_mouse">External Mouse</string>
     <string name="monitor">QEMU Monitor</string>
+    <string name="nc_console">Console</string>
+    <string name="nc_console_prompt">Select console</string>
+    <string name="nc_serial">Serial Console</string>
+    <string name="nc_monitor">QEMU Monitor</string>
+    <string name="nc_parallel">Parallel Port</string>
     <string name="stretch_to_screen">Stretch to Screen</string>
     <string name="fit_to_screen">Fit to Screen</string>
     <string name="zoom_in">Zoom In</string>
@@ -48,7 +53,6 @@
     <string name="keyboard">Keyboard</string>
     <string name="mouse">Mouse</string>
     <string name="desktopMode">Desktop Mode</string>
-    <string name="advancedTools">Advanced Tools</string>
     <string name="discardVMState">Discard VM State</string>
     <string name="discardVMInstructions">The VM is Paused. If you discard the state you might lose data. Continue?</string>
     <string name="tapUserId">TAP User Id</string>
@@ -237,8 +241,21 @@
 
     <!-- Hardcoded text extraction - Layout files -->
     <string name="title_storage_devices">Storage Devices</string>
-    <string name="add_storage_device">+ Add Device</string>
+    <string name="add_storage_device">Add/Change</string>
     <string name="remove_storage_device">Remove device</string>
+    <string name="title_storage_device_editor">Storage Device</string>
+    <string name="label_storage_type">Type</string>
+    <string name="label_storage_size">Size</string>
+    <string name="label_storage_image">Image</string>
+    <string name="label_new_image_name">New image name</string>
+    <string name="new_image">New</string>
+    <string name="label_storage_interface">Interface</string>
+    <string name="label_storage_format">Format</string>
+    <string name="label_default">Default</string>
+    <string name="label_auto">Auto</string>
+    <string name="storage_if_ide">IDE</string>
+    <string name="storage_if_virtio">VirtIO</string>
+    <string name="storage_fmt_parallels">Parallels</string>
     <string name="type_hard_disk">Hard Disk</string>
     <string name="type_cdrom">CDROM</string>
     <string name="type_floppy_a">Floppy A</string>

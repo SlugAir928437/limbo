@@ -29,6 +29,13 @@ android {
             }
         }
     }
+    // libncat.so 需要被 /system/bin/sh 直接执行，必须让原生库存放到安装后
+    // 的 nativeLibraryDir，因此关闭 in-place 加载。
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11

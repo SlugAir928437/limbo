@@ -6,10 +6,12 @@
         <activity
             android:name=".AndroidNetcatHome"
             android:exported="false"
+            android:resizeableActivity="true"
             android:theme="@style/Theme.AppCompat"/>
         <activity
             android:name=".NetcatSession"
             android:exported="false"
+            android:resizeableActivity="true"
             android:theme="@style/Theme.AppCompat"/>
     </application>
 </manifest>

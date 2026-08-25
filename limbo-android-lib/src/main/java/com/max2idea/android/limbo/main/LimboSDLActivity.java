@@ -309,6 +309,9 @@ public class LimboSDLActivity extends SDLActivity
     private void openNcConsole(String cmd) {
         Intent intent = new Intent(this, NetcatSession.class);
         intent.putExtra(AndroidNetcatHome.netcat_cmd_string, cmd);
+        // 以独立任务启动，使 ncat 控制台能作为一个可拆分窗口，
+        // 与 SDL 模拟器任务在系统分屏中并排显示（配合 resizeableActivity）。
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
         startActivity(intent);
     }
 

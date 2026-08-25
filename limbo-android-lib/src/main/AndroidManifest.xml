@@ -58,15 +58,6 @@
             android:name="com.max2idea.android.limbo.ui.StorageDeviceEditorActivity"
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar"/>
-        <!-- Netcat (ncat) console -->
-        <activity
-            android:name="com.werebug.androidnetcat.AndroidNetcatHome"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat"/>
-        <activity
-            android:name="com.werebug.androidnetcat.NetcatSession"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat"/>
         <service
             android:name="com.max2idea.android.limbo.machine.MachineService"
             android:enabled="true"

@@ -19,6 +19,8 @@ Copyright (C) Max Kastanas 2012
 package com.max2idea.android.limbo.main;
 
 import androidx.appcompat.app.AlertDialog;
+
+import android.annotation.SuppressLint;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -729,6 +731,7 @@ public class LimboSDLActivity extends SDLActivity
         }, 5000);
     }
 
+    @SuppressLint("MissingSuperCall")
     public void onBackPressed() {
         if (mKeyMapManager != null && mKeyMapManager.isEditMode()) {
             toggleKeyMapper();
@@ -748,7 +751,7 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     @Override
-    public void onConfigurationChanged(Configuration newConfig) {
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         invalidateOptionsMenu();
         updateLayout(newConfig.orientation);
@@ -776,12 +779,8 @@ public class LimboSDLActivity extends SDLActivity
         ScrollView s = new ScrollView(this);
         s.addView(t);
         alertDialog.setView(s);
-        alertDialog.setButton(android.app.Dialog.BUTTON_POSITIVE, getString(R.string.Ok), new DialogInterface.OnClickListener() {
-
-            public void onClick(DialogInterface dialog, int which) {
-                alertDialog.cancel();
-            }
-        });
+        alertDialog.setButton(android.app.Dialog.BUTTON_POSITIVE, getString(R.string.Ok),
+                (dialog, which) -> alertDialog.cancel());
         alertDialog.show();
     }
 
@@ -914,24 +913,20 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     public void sendRightClick() {
-        Thread t = new Thread(new Runnable() {
-            public void run() {
-                // we use a finger tool type to add the delay
-                sendMouseEvent(Config.SDL_MOUSE_RIGHT, MotionEvent.ACTION_DOWN, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
-                sendMouseEvent(Config.SDL_MOUSE_RIGHT, MotionEvent.ACTION_UP, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
-            }
+        Thread t = new Thread(() -> {
+            // we use a finger tool type to add the delay
+            sendMouseEvent(Config.SDL_MOUSE_RIGHT, MotionEvent.ACTION_DOWN, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
+            sendMouseEvent(Config.SDL_MOUSE_RIGHT, MotionEvent.ACTION_UP, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
         });
         t.start();
     }
 
 
     public void sendMiddleClick() {
-        Thread t = new Thread(new Runnable() {
-            public void run() {
-                // we use a finger tool type to add the delay
-                sendMouseEvent(Config.SDL_MOUSE_MIDDLE, MotionEvent.ACTION_DOWN, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
-                sendMouseEvent(Config.SDL_MOUSE_MIDDLE, MotionEvent.ACTION_UP, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
-            }
+        Thread t = new Thread(() -> {
+            // we use a finger tool type to add the delay
+            sendMouseEvent(Config.SDL_MOUSE_MIDDLE, MotionEvent.ACTION_DOWN, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
+            sendMouseEvent(Config.SDL_MOUSE_MIDDLE, MotionEvent.ACTION_UP, MotionEvent.TOOL_TYPE_FINGER, 0, 0);
         });
         t.start();
     }
@@ -1038,31 +1033,28 @@ public class LimboSDLActivity extends SDLActivity
                                 final float x, final float y, final long delayMs) {
         if(resettingLayout)
             return;
-        mouseEventsExecutor.submit(new Runnable() {
-            @Override
-            public void run() {
-                boolean relative = isRelativeMode(toolType);
-                if (mKeyMapManager.processMouseMap(button, action)) {
-                    return;
-                }
-                if (delayMs > 0 && toolType != MotionEvent.TOOL_TYPE_MOUSE)
-                    delay(delayMs);
-                //XXX: for mouse events we use our jni compatibility extensions instead of the sdl native functions
-                // SDLActivity.onSDLNativeMouse(button, action, x, y);
-                float nx = x;
-                float ny = y;
-                LimboSDLSurface.MouseState mouseState = ((LimboSDLSurface) mSurface).mouseState;
-                if (mouseState.isDoubleTap()) {
-                    nx = mouseState.taps.get(0).x;
-                    ny = mouseState.taps.get(0).y;
-                }
+        mouseEventsExecutor.submit(() -> {
+            boolean relative = isRelativeMode(toolType);
+            if (mKeyMapManager.processMouseMap(button, action)) {
+                return;
+            }
+            if (delayMs > 0 && toolType != MotionEvent.TOOL_TYPE_MOUSE)
+                delay(delayMs);
+            //XXX: for mouse events we use our jni compatibility extensions instead of the sdl native functions
+            // SDLActivity.onSDLNativeMouse(button, action, x, y);
+            float nx = x;
+            float ny = y;
+            LimboSDLSurface.MouseState mouseState = ((LimboSDLSurface) mSurface).mouseState;
+            if (mouseState.isDoubleTap()) {
+                nx = mouseState.taps.get(0).x;
+                ny = mouseState.taps.get(0).y;
+            }
 //                Log.d(TAG, "sendMouseEvent button: " + button + ", action: " + action
 //                        + ", relative: " + relative + ", nx = " + nx + ", ny = " + ny
 //                        + ", delay = " + delayMs);
-                notifyAction(MachineAction.SEND_MOUSE_EVENT, new Object[]{button, action, relative ? 1 : 0, nx, ny});
-                if (delayMs > 0 && toolType != MotionEvent.TOOL_TYPE_MOUSE)
-                    delay(delayMs);
-            }
+            notifyAction(MachineAction.SEND_MOUSE_EVENT, new Object[]{button, action, relative ? 1 : 0, nx, ny});
+            if (delayMs > 0 && toolType != MotionEvent.TOOL_TYPE_MOUSE)
+                delay(delayMs);
         });
     }
 
@@ -1073,21 +1065,18 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     private void sendKeyEvent(final KeyEvent event, final int keycode, final boolean down, final long delayMs) {
-        keyEventsExecutor.submit(new Runnable() {
-            @Override
-            public void run() {
-                if (mKeyMapManager != null && mKeyMapManager.processKeyMap(event)) {
-                    return;
-                }
-                if (delayMs > 0)
-                    delay(delayMs);
+        keyEventsExecutor.submit(() -> {
+            if (mKeyMapManager != null && mKeyMapManager.processKeyMap(event)) {
+                return;
+            }
+            if (delayMs > 0)
+                delay(delayMs);
 //                Log.d(TAG, "sendKeyEvent: " + ", keycode = " + keycode + ", down = " + down
 //                + ", delay = " + delayMs);
-                if (down)
-                    SDLActivity.onNativeKeyDown(keycode);
-                else {
-                    SDLActivity.onNativeKeyUp(keycode);
-                }
+            if (down)
+                SDLActivity.onNativeKeyDown(keycode);
+            else {
+                SDLActivity.onNativeKeyUp(keycode);
             }
         });
     }
@@ -1123,12 +1112,9 @@ public class LimboSDLActivity extends SDLActivity
                 break;
             case MachineContinued:
                 machineRunning = true;
-                new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        invalidateOptionsMenu();
-                        ((LimboSDLSurface) mSurface).refreshSurfaceView();
-                    }
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    invalidateOptionsMenu();
+                    ((LimboSDLSurface) mSurface).refreshSurfaceView();
                 }, 1000);
                 break;
         }

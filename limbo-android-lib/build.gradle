@@ -25,7 +25,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-        viewBinding = true
     }
     buildTypes {
         release {
@@ -45,9 +44,6 @@ dependencies {
     implementation libs.androidx.appcompat
     implementation libs.material
 
-    // Netcat console layouts (ConstraintLayout)
-    implementation libs.androidx.constraintlayout
-
     // Compose (Jetpack Compose + Material Design 3)
     implementation platform(libs.compose.bom)
     implementation libs.compose.ui
@@ -64,7 +60,8 @@ dependencies {
 
     implementation libs.markwon.core
 
-    implementation project(':filepicker')
+    implementation project(':limbo-android-lib:filepicker')
+    implementation project(":limbo-android-lib:nc")
 }
 tasks.configureEach { task ->
     if (task.name.startsWith('compile') && task.name.endsWith('Ndk')) {

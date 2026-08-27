@@ -132,7 +132,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk ncat clean-ncat
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-qemu
 
 default: limbo
 	
@@ -358,6 +358,7 @@ install:
 	$(SYNC_LIBS_IA64)
 
 limbo:
+	make fetch
 	make ndk
 	make config-deps
 	make deps
@@ -365,6 +366,103 @@ limbo:
 	make qemu
 	make ncat
 	make install
+
+# ---------------------------------------------------------------------------
+# 源码获取与补丁（把 build workflow 里的“下载代码 / 打补丁”收进 Makefile）
+# 幂等：目标目录已就绪则跳过。qemu 按 BUILD_GUEST 自动选择：
+#   x86/arm (i386/x86_64/arm/aarch64) -> 官方 QEMU + GTK4 补丁
+#   ia64（或空）                    -> 仓库内 IA-64 fork（submodule）
+# ---------------------------------------------------------------------------
+QEMU_OFFICIAL_TAG   := v11.0.0
+QEMU_OFFICIAL_URL   := https://gitlab.com/qemu-project/qemu.git
+QEMU_OFFICIAL_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0.patch
+QEMU_OFFICIAL_MARK  := $(LIMBO_JNI_ROOT)/qemu/.gtk4-official
+GLIB_URL            := https://gitlab.gnome.org/GNOME/glib.git
+GLIB_COMMIT         := ed3abf0b5221d613a333ed5b118b2f2acc66acd3
+LIBFFI_TGZ          := https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz
+PIXMAN_TGZ          := https://www.cairographics.org/releases/pixman-0.43.4.tar.gz
+PIXMAN_TGZ_ALT      := https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz
+SDL2_TGZ            := https://www.libsdl.org/release/SDL2-2.0.8.tar.gz
+
+# x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用仓库内 IA-64 fork
+ifneq ($(filter x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu,$(BUILD_GUEST)),)
+QEMU_USE_OFFICIAL := yes
+else
+QEMU_USE_OFFICIAL := no
+endif
+
+fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-qemu
+
+fetch-glib:
+	@if [ ! -d "$(LIMBO_JNI_ROOT)/glib/.git" ] || [ ! -f "$(LIMBO_JNI_ROOT)/glib/meson.build" ]; then \
+		echo ">> GET glib @ $(GLIB_COMMIT)"; \
+		rm -rf "$(LIMBO_JNI_ROOT)/glib"; \
+		git init "$(LIMBO_JNI_ROOT)/glib" && \
+		git -C "$(LIMBO_JNI_ROOT)/glib" remote add origin $(GLIB_URL) && \
+		git -C "$(LIMBO_JNI_ROOT)/glib" fetch --depth 1 origin $(GLIB_COMMIT) && \
+		git -C "$(LIMBO_JNI_ROOT)/glib" checkout FETCH_HEAD && \
+		git -C "$(LIMBO_JNI_ROOT)/glib" apply "$(LIMBO_JNI_ROOT)/patches/glib-2.89.3.patch"; \
+	else \
+		echo ">> glib 已存在，跳过"; \
+	fi
+
+fetch-libffi:
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/libffi/configure.ac" ]; then \
+		echo ">> GET libffi 3.5.2"; \
+		rm -f /tmp/libffi-3.5.2.tar.gz; \
+		wget --quiet --timeout=60 $(LIBFFI_TGZ) -O /tmp/libffi-3.5.2.tar.gz || \
+			wget --quiet --timeout=60 $(LIBFFI_TGZ) -O /tmp/libffi-3.5.2.tar.gz; \
+		rm -rf /tmp/libffi-3.5.2; \
+		tar -xzf /tmp/libffi-3.5.2.tar.gz -C /tmp && \
+		mv -f /tmp/libffi-3.5.2 "$(LIMBO_JNI_ROOT)/libffi"; \
+	else \
+		echo ">> libffi 已存在，跳过"; \
+	fi
+
+fetch-pixman:
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/pixman/meson.build" ]; then \
+		echo ">> GET pixman 0.43.4"; \
+		rm -f /tmp/pixman-0.43.4.tar.gz; \
+		wget --quiet --timeout=60 $(PIXMAN_TGZ) -O /tmp/pixman-0.43.4.tar.gz || \
+			wget --quiet --timeout=60 $(PIXMAN_TGZ_ALT) -O /tmp/pixman-0.43.4.tar.gz; \
+		rm -rf /tmp/pixman-0.43.4; \
+		tar -xzf /tmp/pixman-0.43.4.tar.gz -C /tmp && \
+		mv -f /tmp/pixman-0.43.4 "$(LIMBO_JNI_ROOT)/pixman"; \
+	else \
+		echo ">> pixman 已存在，跳过"; \
+	fi
+
+fetch-sdl2:
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/SDL2/configure" ]; then \
+		echo ">> GET SDL2 2.0.8"; \
+		rm -f /tmp/SDL2-2.0.8.tar.gz; \
+		wget --quiet --timeout=60 $(SDL2_TGZ) -O /tmp/SDL2-2.0.8.tar.gz || \
+			wget --quiet --timeout=60 $(SDL2_TGZ) -O /tmp/SDL2-2.0.8.tar.gz; \
+		rm -rf /tmp/SDL2-2.0.8; \
+		tar -xzf /tmp/SDL2-2.0.8.tar.gz -C /tmp && \
+		mv -f /tmp/SDL2-2.0.8 "$(LIMBO_JNI_ROOT)/SDL2" && \
+		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8.patch" ); \
+	else \
+		echo ">> SDL2 已存在，跳过"; \
+	fi
+
+fetch-qemu:
+	@echo ">> fetch-qemu: BUILD_GUEST='$(BUILD_GUEST)' 使用官方?=$(QEMU_USE_OFFICIAL)"
+	@if [ "$(QEMU_USE_OFFICIAL)" = "yes" ]; then \
+		if [ ! -f "$(QEMU_OFFICIAL_MARK)" ]; then \
+			if [ ! -f "$(QEMU_OFFICIAL_PATCH)" ]; then \
+				echo "ERROR: $(QEMU_OFFICIAL_PATCH) 缺失，需 git add 提交后再构建"; exit 1; \
+			fi; \
+			echo ">> x86/arm guest: 下载官方 QEMU $(QEMU_OFFICIAL_TAG) + 应用 GTK4 补丁"; \
+			rm -rf "$(LIMBO_JNI_ROOT)/qemu"; \
+			git clone --depth 1 --branch $(QEMU_OFFICIAL_TAG) --single-branch $(QEMU_OFFICIAL_URL) "$(LIMBO_JNI_ROOT)/qemu" && \
+			git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(QEMU_OFFICIAL_PATCH)" && \
+			touch "$(QEMU_OFFICIAL_MARK)"; \
+		fi; \
+		echo ">> official qemu 就绪（GTK4 补丁已应用）"; \
+	else \
+		echo ">> 使用仓库内 IA-64 fork（submodule）, 无需下载"; \
+	fi
 
 EXPORT_GUEST_ALL=export BUILD_GUEST=x86_64-softmmu,aarch64-softmmu,ia64-softmmu
 

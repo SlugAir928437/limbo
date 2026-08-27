@@ -5,15 +5,26 @@ on:
   workflow_dispatch:
     inputs:
       build_guest:
-        description: 'QEMU Emulator type'
+        description: 'QEMU 模拟架构（单选；x86/arm 使用官方 QEMU，ia64 使用 IA-64 fork）'
         required: true
         default: 'ia64-softmmu'
-        type: string
+        type: choice
+        options:
+          - i386-softmmu
+          - x86_64-softmmu
+          - arm-softmmu
+          - aarch64-softmmu
+          - ia64-softmmu
       build_host:
-        description: 'Android device type'
+        description: 'Android 设备 ABI（单选）'
         required: true
         default: 'arm64-v8a'
-        type: string
+        type: choice
+        options:
+          - armeabi-v7a
+          - arm64-v8a
+          - x86
+          - x86_64
 
 jobs:
   build_linux:
@@ -26,6 +37,12 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: true
+
+      # 源码获取 / 补丁应用统一收进 jni/Makefile 的 fetch 目标：
+      #   x86/arm 模拟架构  -> 下载官方 QEMU v11.0.0 + 应用 qemu-v11.0.0.patch
+      #                       （并下载 glib/libffi/pixman/sdl2）
+      #   ia64              -> 使用 checkout 带入的仓库内 IA-64 fork（submodule）
+      # 下方仅保留环境准备与构建，构建前的依赖下载全部由 `make limbo -> make fetch` 完成。
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -48,59 +65,8 @@ jobs:
           # (fail early instead of mid-build)
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
-      - name: 克隆代码
-        env:
-          # 防止 git 在遇到认证提示时无限期挂起
-          GIT_TERMINAL_PROMPT: '0'
-          GIT_HTTP_LOW_SPEED_TIME: '30'
-          GIT_HTTP_LOW_SPEED_LIMIT: '1024'
-        run: |
-          #Make sure you're under the jni directory
-          cd ./limbo-android-lib/src/main/jni
-
-          # glib / pixman / libffi are git-ignored in this repo and their
-          # source trees are not shipped, so the CI fetches them from the same
-          # wrap sources the gtk4android submodule describes:
-          #   glib  2.89.3  (wrap-git: gitlab.gnome.org, fixed commit ed3abf0b
-          #                  + patches/glib-hack.patch, tracked in this repo)
-          #   libffi 3.5.2  (wrap-file: github release tarball)
-          #   pixman 0.43.4 (wrap-file: cairographics tarball)
-
-          ##### GET glib
-          git init glib
-          cd glib
-          git remote add origin https://gitlab.gnome.org/GNOME/glib.git
-          timeout 120 git fetch --depth 1 origin ed3abf0b5221d613a333ed5b118b2f2acc66acd3
-          git checkout FETCH_HEAD
-          git apply ../patches/glib-hack.patch
-          cd ..
-
-          ##### GET libffi
-          wget --quiet --timeout=60 https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/ || \
-          wget --quiet --timeout=60 https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/
-          tar -xzf /tmp/libffi-3.5.2.tar.gz
-          mv libffi-3.5.2 libffi
-
-          ##### GET pixman
-          wget --quiet --timeout=60 https://www.cairographics.org/releases/pixman-0.43.4.tar.gz -P /tmp/ || \
-          wget --quiet --timeout=60 https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz -P /tmp/
-          tar -xzf /tmp/pixman-0.43.4.tar.gz
-          mv pixman-0.43.4 pixman
-
-          # sanity check: the sources were fetched
-          test -f glib/meson.build
-          test -f pixman/meson.build
-          test -f libffi/configure.ac
-
-          ##### GET SDL2
-          wget --quiet --timeout=60 https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/ || \
-          wget --quiet --timeout=60 https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/
-          tar -xzf /tmp/SDL2-2.0.8.tar.gz
-          mv SDL2-2.0.8 SDL2
-
-          cd SDL2
-          patch -p1 < ../patches/sdl2-2.0.8.patch
-
+      # 依赖源码（glib/libffi/pixman/SDL2）与 QEMU 源码均已由 jni/Makefile 的
+      # fetch 目标在 `make limbo` 时下载并应用补丁，此处不再重复克隆。
       - name: 缓存 meson wrap 下载 (pcre2 等)
         uses: actions/cache@v4
         with:

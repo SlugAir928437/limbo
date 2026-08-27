@@ -1,6 +1,6 @@
 [submodule "limbo-android-lib/src/main/jni/qemu"]
 	path = limbo-android-lib/src/main/jni/qemu
-	url = https://github.com/SlugAir928437/qemu-system-ia64
+	url = https://github.com/FreshingAir/qemu-system-ia64
 [submodule "limbo-android-lib/src/main/jni/gtk4android"]
 	path = limbo-android-lib/src/main/jni/gtk4android
 	url = https://github.com/SlugAir928437/gtk4android

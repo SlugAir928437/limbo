@@ -67,7 +67,6 @@ import com.max2idea.android.limbo.machine.MachineProperty;
 import com.max2idea.android.limbo.screen.ScreenUtils;
 import com.max2idea.android.limbo.toast.ToastUtils;
 
-import com.werebug.androidnetcat.AndroidNetcatHome;
 import com.werebug.androidnetcat.NetcatSession;
 
 import org.libsdl.app.SDLActivity;
@@ -108,6 +107,7 @@ public class LimboSDLActivity extends SDLActivity
     private boolean quit = false;
     private View mGap;
     private boolean resettingLayout;
+    private NetcatSession netcatSession;
 
     public void showHints() {
         ToastUtils.toastShortTop(this, getString(R.string.PressVolumeDownForRightClick));
@@ -307,12 +307,10 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     private void openNcConsole(String cmd) {
-        Intent intent = new Intent(this, NetcatSession.class);
-        intent.putExtra(AndroidNetcatHome.netcat_cmd_string, cmd);
-        // 以独立任务启动，使 ncat 控制台能作为一个可拆分窗口，
-        // 与 SDL 模拟器任务在系统分屏中并排显示（配合 resizeableActivity）。
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
-        startActivity(intent);
+        // 以 MaterialAlertDialog 弹出 ncat 控制台。
+        // 需由本 Activity 持有强引用，防止 NetcatWorker 的 WeakReference 使其被回收。
+        netcatSession = new NetcatSession(this);
+        netcatSession.show(cmd);
     }
 
     public void hideToolbar() {

@@ -1,6 +1,5 @@
 package com.werebug.androidnetcat
 
-import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
@@ -8,11 +7,10 @@ import com.werebug.androidnetcat.databinding.ActivityNetcatHomeBinding
 
 class AndroidNetcatHome : AppCompatActivity(), View.OnClickListener {
 
-    companion object {
-        const val netcat_cmd_string: String = "NETCAT_CMD"
-    }
-
     private lateinit var binding: ActivityNetcatHomeBinding
+
+    // 持有 NetcatSession 强引用，防止 worker 的 WeakReference 导致其被回收
+    private var netcatSession: NetcatSession? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,8 +29,8 @@ class AndroidNetcatHome : AppCompatActivity(), View.OnClickListener {
     }
 
     private fun startNetcatSessionActivity(cmd: String) {
-        val launchNetcatSession = Intent(this, NetcatSession::class.java)
-        launchNetcatSession.putExtra(netcat_cmd_string, cmd)
-        startActivity(launchNetcatSession)
+        val session = NetcatSession(this)
+        netcatSession = session
+        session.show(cmd)
     }
 }

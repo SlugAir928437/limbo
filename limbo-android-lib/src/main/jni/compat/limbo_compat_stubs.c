@@ -227,3 +227,84 @@ ssize_t getrandom(void *buf, size_t buflen, unsigned int flags)
     close(fd);
     return total;
 }
+
+/* ========================================================================
+ * copy_file_range() — Copy a range of data between two file descriptors.
+ *
+ * QEMU uses this in block/file-posix.c (handle_aiocb_copy_range,
+ * raw_co_copy_range_to) to offload copies to the kernel.  The glibc/bionic
+ * wrapper is only exposed on Android API 27+; on API 24 the symbol is
+ * undefined at link time.  We try the real syscall first, and on ENOSYS
+ * fall back to a read/write loop.
+ * ======================================================================== */
+
+#ifndef COPY_FILE_RANGE_CLONE
+#define COPY_FILE_RANGE_CLONE 0x040000
+#endif
+
+static ssize_t limbo_copy_file_range(int fd_in, loff_t *off_in,
+                                     int fd_out, loff_t *off_out,
+                                     size_t len, unsigned int flags)
+{
+#ifdef __NR_copy_file_range
+    ssize_t ret = (ssize_t)syscall(__NR_copy_file_range, fd_in, off_in,
+                                   fd_out, off_out, len, flags);
+    if (ret >= 0 || errno != ENOSYS) {
+        return ret;
+    }
+    /* Fall through to generic emulation */
+#else
+    (void)flags;
+#endif
+
+    /* Generic emulation: read from source, write to destination. */
+    size_t copied = 0;
+    char buf[65536];
+    while (copied < len) {
+        size_t to_read = len - copied;
+        if (to_read > sizeof(buf)) {
+            to_read = sizeof(buf);
+        }
+
+        size_t got = 0;
+        do {
+            ssize_t n = pread(fd_in, buf + got, to_read - got,
+                              (off_in && *off_in >= 0)
+                                  ? *off_in + copied + got : -1);
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                return -1;
+            }
+            if (n == 0) break;
+            got += (size_t)n;
+        } while (got < to_read);
+
+        if (got == 0) {
+            break; /* EOF */
+        }
+
+        size_t written = 0;
+        while (written < got) {
+            ssize_t n = pwrite(fd_out, buf + written, got - written,
+                               (off_out && *off_out >= 0)
+                                   ? *off_out + copied + written : -1);
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                return -1;
+            }
+            written += (size_t)n;
+        }
+        copied += written;
+    }
+
+    if (off_in && *off_in >= 0) *off_in += (loff_t)copied;
+    if (off_out && *off_out >= 0) *off_out += (loff_t)copied;
+    return (ssize_t)copied;
+}
+
+ssize_t copy_file_range(int fd_in, loff_t *off_in,
+                        int fd_out, loff_t *off_out,
+                        size_t len, unsigned int flags)
+{
+    return limbo_copy_file_range(fd_in, off_in, fd_out, off_out, len, flags);
+}

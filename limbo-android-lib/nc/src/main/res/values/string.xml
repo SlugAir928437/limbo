@@ -3,6 +3,7 @@
     <!-- Netcat (ncat) console -->
     <string name="nc_input_hint">Ex: ncat --help</string>
     <string name="ed_type_your_message">Message</string>
+    <string name="btn_send_text">Send</string>
     <string name="error_missing_nc">Start your command with nc or ncat. See examples.</string>
     <string name="main_credits">ncat for Android\nCreated by Werebug (https://werebug.com)</string>
     <string name="main_disclaimer">This application is a wrapper around the ncat binary cross-compiled for Android from the Nmap source (https://nmap.org). This is not an official Nmap application. </string>

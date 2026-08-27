@@ -1,55 +1,48 @@
 package com.werebug.androidnetcat
 
-import android.os.Bundle
-import android.view.MenuItem
+import android.content.Context
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.werebug.androidnetcat.databinding.ActivityNetcatSessionBinding
 import java.lang.ref.WeakReference
 
-class NetcatSession : AppCompatActivity(), View.OnClickListener {
+/**
+ * Netcat 会话控制台，以 MaterialAlertDialog 形式弹出，替代原先独立的 Activity。
+ * 由调用方持有强引用（配合 NetcatWorker 内部的 WeakReference）以保持存活。
+ */
+class NetcatSession(private val context: Context) : View.OnClickListener {
 
     private lateinit var binding: ActivityNetcatSessionBinding
     private lateinit var worker: NetcatWorker
+    private var dialog: AlertDialog? = null
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding = ActivityNetcatSessionBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+    fun show(ncCmd: String) {
+        binding = ActivityNetcatSessionBinding.inflate(LayoutInflater.from(context))
 
-        val ncCmd = intent.getStringExtra(AndroidNetcatHome.netcat_cmd_string).toString().trim()
-        title = ncCmd
         val ncCmdArgv = ncCmd.split(" ").toMutableList()
-        val ncatPath = applicationInfo.nativeLibraryDir + "/libncat.so"
+        val ncatPath = context.applicationInfo.nativeLibraryDir + "/libncat.so"
         if (ncCmdArgv[0] != "nc" && ncCmdArgv[0] != "ncat") {
-            showErrorToast(R.string.error_missing_nc)
-            finish()
+            Toast.makeText(context, R.string.error_missing_nc, Toast.LENGTH_SHORT).show()
+            return
         }
         ncCmdArgv.removeAt(0)
         ncCmdArgv.add(0, ncatPath)
         val shellWrappedArgv = listOf("/system/bin/sh", "-c", ncCmdArgv.joinToString(" "))
+
         worker = NetcatWorker(shellWrappedArgv, WeakReference(this))
-        worker.start()
+        dialog = MaterialAlertDialogBuilder(context, R.style.Theme_NetcatSession_Dialog)
+            .setTitle(ncCmd)
+            .setView(binding.root)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> worker.halt() }
+            .setOnDismissListener { worker.halt() }
+            .create()
 
         binding.btnSendText.setOnClickListener(this)
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                onBackPressedDispatcher.onBackPressed()
-                true
-            }
-
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    override fun onDestroy() {
-        worker.halt()
-        super.onDestroy()
+        worker.start()
+        dialog?.show()
     }
 
     override fun onClick(v: View?) {
@@ -62,13 +55,11 @@ class NetcatSession : AppCompatActivity(), View.OnClickListener {
         }
     }
 
-    private fun showErrorToast(text: Int) {
-        Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
-    }
-
     fun appendToOutputView(message: String) {
         val newText = "${binding.tvConnection.text}${message}"
         binding.tvConnection.text = newText
+        // 有新内容时自动滚动到底部
+        binding.scrollConnection.post { binding.scrollConnection.fullScroll(View.FOCUS_DOWN) }
     }
 
     fun disableMessageViews() {

@@ -75,6 +75,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--disable-curses --disable-cocoa --enable-gtk \
 	--disable-usb-redir \
 	--disable-libusb \
+	--disable-xkbcommon \
 	--enable-sdl \
 	--audio-drv-list=sdl \
 	--enable-coroutine-pool \

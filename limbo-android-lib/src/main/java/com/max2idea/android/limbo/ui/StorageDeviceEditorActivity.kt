@@ -40,6 +40,7 @@ import com.max2idea.android.limbo.machine.Machine
 import com.max2idea.android.limbo.machine.MachineFilePaths
 import com.max2idea.android.limbo.main.Config
 import com.max2idea.android.limbo.main.LimboFileManager
+import com.max2idea.android.limbo.main.LimboSettingsManager
 import com.max2idea.android.limbo.ui.components.LimboDropdown
 import com.max2idea.android.limbo.ui.theme.LimboTheme
 import com.max2idea.android.limbo.toast.ToastUtils
@@ -88,6 +89,9 @@ class StorageDeviceEditorActivity : ComponentActivity() {
 
         @JvmField
         val REQUEST_CODE = 4001
+
+        /** Folder-pick request code used when confirming a new disk image (choose save location). */
+        const val SAVE_DIR_REQUEST_CODE = 4002
     }
 
     private lateinit var typeLabels: Array<String>
@@ -250,6 +254,16 @@ class StorageDeviceEditorActivity : ComponentActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        // 选择创建后的保存文件夹:选定后自动使用该磁盘路径并退出;取消则停留本页
+        if (requestCode == SAVE_DIR_REQUEST_CODE) {
+            if (resultCode == RESULT_OK && data != null) {
+                val dir = FileUtils.getDirPathFromIntent(this, data)
+                if (!dir.isNullOrEmpty()) {
+                    saveNewImageWithDir(dir)
+                }
+            }
+            return
+        }
         // a browse shows the literal "Open" label while it runs; revert to "None" if it was cancelled/failed
         if (resultCode != RESULT_OK || data == null) {
             val ft = runCatching { Machine.FileType.valueOf(currentFileType()) }.getOrNull()
@@ -283,18 +297,8 @@ class StorageDeviceEditorActivity : ComponentActivity() {
                 ToastUtils.toastShort(this, getString(R.string.ImageFilenameCannotBeEmpty))
                 return
             }
-            val result = Intent()
-            result.putExtra(EXTRA_REMOVE, false)
-            result.putExtra(EXTRA_TYPE_SEL, typeSel)
-            result.putExtra(EXTRA_FILE_TYPE, currentFileType())
-            result.putExtra(EXTRA_CREATE_IMAGE, create)
-            result.putExtra(EXTRA_NEW_IMAGE_NAME, newImageName.trim())
-            result.putExtra(EXTRA_NEW_IMAGE_SIZE_BYTES, selectedSizeBytes())
-            result.putExtra(EXTRA_IMAGE, "None")
-            result.putExtra(EXTRA_IF, ifValues.getOrNull(ifSel) ?: "")
-            result.putExtra(EXTRA_FORMAT, formatValues.getOrNull(formatSel) ?: "")
-            setResult(RESULT_OK, result)
-            finish()
+            // 确定创建前先选择保存文件夹,选定后使用该磁盘路径并返回
+            LimboFileManager.browse(this, Machine.FileType.IMAGE_DIR, SAVE_DIR_REQUEST_CODE)
             return
         }
 
@@ -310,6 +314,23 @@ class StorageDeviceEditorActivity : ComponentActivity() {
             result.putExtra(EXTRA_SIZE_UNIT_SEL, sizeUnitSel)
         }
         result.putExtra(EXTRA_IMAGE, selectedImageValue())
+        setResult(RESULT_OK, result)
+        finish()
+    }
+
+    /** Uses the picked folder as the save location for the new disk image and returns/exit the page. */
+    private fun saveNewImageWithDir(dir: String) {
+        LimboSettingsManager.setImagesDir(this, dir)
+        val result = Intent()
+        result.putExtra(EXTRA_REMOVE, false)
+        result.putExtra(EXTRA_TYPE_SEL, typeSel)
+        result.putExtra(EXTRA_FILE_TYPE, currentFileType())
+        result.putExtra(EXTRA_CREATE_IMAGE, isCreateImage())
+        result.putExtra(EXTRA_NEW_IMAGE_NAME, newImageName.trim())
+        result.putExtra(EXTRA_NEW_IMAGE_SIZE_BYTES, selectedSizeBytes())
+        result.putExtra(EXTRA_IMAGE, "None")
+        result.putExtra(EXTRA_IF, ifValues.getOrNull(ifSel) ?: "")
+        result.putExtra(EXTRA_FORMAT, formatValues.getOrNull(formatSel) ?: "")
         setResult(RESULT_OK, result)
         finish()
     }
@@ -377,9 +398,6 @@ class StorageDeviceEditorActivity : ComponentActivity() {
                     navigationIcon = {
                         TextButton(onClick = { finish() }) { Text(stringResource(R.string.Cancel)) }
                     },
-                    actions = {
-                        TextButton(onClick = onSave) { Text(stringResource(R.string.Ok)) }
-                    },
                     colors = TopAppBarDefaults.topAppBarColors()
                 )
             }
@@ -422,7 +440,8 @@ class StorageDeviceEditorActivity : ComponentActivity() {
                     )
                 }
 
-                if (createImage) {
+                // 仅在选择"创建(新镜像)"时才显示大小和名称选项
+                if (showNewImageField) {
                     Spacer(Modifier.padding(top = 12.dp))
                     Text(stringResource(R.string.label_storage_size), style = MaterialTheme.typography.titleSmall)
                     Row(
@@ -445,18 +464,16 @@ class StorageDeviceEditorActivity : ComponentActivity() {
                             onSelected = onSizeUnitSelected
                         )
                     }
-                    if (showNewImageField) {
-                        Spacer(Modifier.padding(top = 12.dp))
-                        Text(stringResource(R.string.label_new_image_name), style = MaterialTheme.typography.titleSmall)
-                        OutlinedTextField(
-                            value = newImageName,
-                            onValueChange = onNewImageNameChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyLarge,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-                        )
-                    }
+                    Spacer(Modifier.padding(top = 12.dp))
+                    Text(stringResource(R.string.label_new_image_name), style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = newImageName,
+                        onValueChange = onNewImageNameChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                    )
                 }
 
                 Spacer(Modifier.padding(top = 12.dp))

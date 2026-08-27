@@ -23,3 +23,12 @@ qemu-orig
 /libffi
 /pixman
 /SDL2
+
+build_arm32
+build_arm64
+build_x86
+build_x86_64
+build_x86_iter.sh
+run_iter.sh
+sochk.sh
+sochk2.sh

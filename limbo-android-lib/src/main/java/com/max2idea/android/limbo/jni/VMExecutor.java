@@ -638,6 +638,23 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
+     * Computes the -drive bus index (unit) for a hard disk on a given slot.
+     *
+     * On the IA-64 machine the boot CD-ROM is fixed at if=ide index 0, so IDE
+     * hard disks are offset by +1 (slot 0 -> index 1).  A drive on the LSI SCSI
+     * bus is a different address space: its index maps 1:1 to the SCSI target
+     * ID, and the EFI firmware exposes the disk at Scsi(0,0).  To be recognized
+     * by the firmware the first SCSI disk must therefore sit at target 0, i.e.
+     * its slot (0) with no offset.  Non-IA-64 targets use the bare slot as well.
+     */
+    private int ia64DriveIndex(boolean iaDisk, String iface, int slot) {
+        if (!iaDisk || "scsi".equals(iface)) {
+            return slot;
+        }
+        return slot + 1;
+    }
+
+    /**
      * Resolves the -drive format=. A null/empty/"auto" value keeps the legacy
      * behavior: hard disks get "raw" only for raw images (otherwise auto-detect),
      * CD-ROMs always use "raw". Any concrete format the user set is used as-is.
@@ -673,33 +690,43 @@ class VMExecutor extends MachineExecutor {
         // (SYSTEM_THREAD_EXCEPTION_NOT_HANDLED) in the Symbios SCSI driver.
         boolean iaDisk = LimboApplication.arch == Config.Arch.ia64
                 || LimboApplication.arch == Config.Arch.ia64w;
-        int iaDiskBase = iaDisk ? 1 : 0;
 
         // Hard disks HDA..HDD. if= comes from the machine's per-drive interface
         // (null/empty -> "ide", QEMU's default). format= comes from the machine's
         // per-drive format when set, otherwise the legacy auto/raw detection.
-        addDrive(paramsList, Integer.toString(iaDiskBase),
-                resolveDriveInterface(getMachine().getHdaInterface()),
-                "disk", null,
+        //
+        // IMPORTANT (IA-64): on the ia64-vpc machine the boot CD-ROM owns if=ide
+        // index 0, so IDE hard disks must start at index 1.  But the LSI SCSI bus
+        // is a separate address space: for a drive on it, -drive index maps 1:1 to
+        // the SCSI target ID (scsi index 0 -> target 0).  The EFI firmware exposes
+        // a SCSI disk at its exact device path Pci(4,0)/Scsi(0,0); bumping the
+        // index to 1 (our legacy IDE-only offset) silently moves the disk to
+        // target 1, where the firmware neither enumerates nor boots it.  So the
+        // +1 offset is applied to the IDE bus only; SCSI drives start at target 0,
+        // matching the Windows command line ("if=scsi,index=0") that is known to
+        // work in the EFI Shell.
+        String ifaceHda = resolveDriveInterface(getMachine().getHdaInterface());
+        String ifaceHdb = resolveDriveInterface(getMachine().getHdbInterface());
+        String ifaceHdc = resolveDriveInterface(getMachine().getHdcInterface());
+        String ifaceHdd = resolveDriveInterface(getMachine().getHddInterface());
+        addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHda, 0)),
+                ifaceHda, "disk", null,
                 getDriveFilePath(getMachine().getHdaImagePath()),
                 resolveDriveFormat(getMachine().getHdaFormat(),
                         getDriveFilePath(getMachine().getHdaImagePath()), true), cache);
-        addDrive(paramsList, Integer.toString(iaDiskBase + 1),
-                resolveDriveInterface(getMachine().getHdbInterface()),
-                "disk", null,
+        addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHdb, 1)),
+                ifaceHdb, "disk", null,
                 getDriveFilePath(getMachine().getHdbImagePath()),
                 resolveDriveFormat(getMachine().getHdbFormat(),
                         getDriveFilePath(getMachine().getHdbImagePath()), true), cache);
-        addDrive(paramsList, Integer.toString(iaDiskBase + 2),
-                resolveDriveInterface(getMachine().getHdcInterface()),
-                "disk", null,
+        addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHdc, 2)),
+                ifaceHdc, "disk", null,
                 getDriveFilePath(getMachine().getHdcImagePath()),
                 resolveDriveFormat(getMachine().getHdcFormat(),
                         getDriveFilePath(getMachine().getHdcImagePath()), true), cache);
         if (!iaDisk) {
-            addDrive(paramsList, Integer.toString(iaDiskBase + 3),
-                    resolveDriveInterface(getMachine().getHddInterface()),
-                    "disk", null,
+            addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHdd, 3)),
+                    ifaceHdd, "disk", null,
                     getDriveFilePath(getMachine().getHddImagePath()),
                     resolveDriveFormat(getMachine().getHddFormat(),
                             getDriveFilePath(getMachine().getHddImagePath()), true), cache);

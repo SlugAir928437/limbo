@@ -36,12 +36,13 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v6
         with:
-          submodules: true
+          submodules: false
 
-      # 源码获取 / 补丁应用统一收进 jni/Makefile 的 fetch 目标：
+      # 源码获取 / 补丁应用统一收进 jni/Makefile 的 fetch 目标（qemu/gtk4android
+      # 已取消 git submodule，全部由 make fetch 克隆）：
       #   x86/arm 模拟架构  -> 下载官方 QEMU v11.0.0 + 应用 qemu-v11.0.0.patch
-      #                       （并下载 glib/libffi/pixman/sdl2）
-      #   ia64              -> 使用 checkout 带入的仓库内 IA-64 fork（submodule）
+      #   ia64              -> 下载 IA-64 fork（FreshingAir/qemu-system-ia64）
+      #   gtk4android       -> 下载 SlugAir928437/gtk4android
       # 下方仅保留环境准备与构建，构建前的依赖下载全部由 `make limbo -> make fetch` 完成。
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -65,8 +66,8 @@ jobs:
           # (fail early instead of mid-build)
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
-      # 依赖源码（glib/libffi/pixman/SDL2）与 QEMU 源码均已由 jni/Makefile 的
-      # fetch 目标在 `make limbo` 时下载并应用补丁，此处不再重复克隆。
+      # 依赖源码（glib/libffi/pixman/SDL2）与 QEMU/gtk4android 源码均已由
+      # jni/Makefile 的 fetch 目标在 `make limbo` 时下载并应用补丁，此处不再克隆。
       - name: 缓存 meson wrap 下载 (pcre2 等)
         uses: actions/cache@v4
         with:

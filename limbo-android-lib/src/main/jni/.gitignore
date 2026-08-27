@@ -19,6 +19,9 @@
 
 #Don't check in just provide patches
 qemu-orig
+# vendor sources fetched by `make fetch` (no longer git submodules)
+/qemu
+/gtk4android
 /glib
 /libffi
 /pixman

@@ -132,7 +132,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-qemu
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-qemu fetch-gtk4android
 
 default: limbo
 	
@@ -256,7 +256,9 @@ config-gtk: ndk pkg-config-link ffi glib pixman
 	fi
 	cd $(LIMBO_JNI_ROOT)/gtk4android && rm -rf "$(GTK_BUILD_DIR)" "$(GTK_INSTALL_DIR)"
 	@if [ -d "$(GTK_BUILD_DIR).subprojects-save" ]; then \
-		mkdir -p "$(GTK_BUILD_DIR)"; mv "$(GTK_BUILD_DIR).subprojects-save" "$(GTK_BUILD_DIR)/subprojects"; \
+		mkdir -p "$(GTK_BUILD_DIR)"; \
+		cp -a "$(GTK_BUILD_DIR).subprojects-save" "$(GTK_BUILD_DIR)/subprojects"; \
+		rm -rf "$(GTK_BUILD_DIR).subprojects-save"; \
 	fi
 	# mirror the jni shared-lib trees under the NDK sysroot: pkg-config prefixes
 	# -I/-L with the sysroot when a cross config carries sys_root, and these
@@ -370,13 +372,18 @@ limbo:
 # ---------------------------------------------------------------------------
 # 源码获取与补丁（把 build workflow 里的“下载代码 / 打补丁”收进 Makefile）
 # 幂等：目标目录已就绪则跳过。qemu 按 BUILD_GUEST 自动选择：
-#   x86/arm (i386/x86_64/arm/aarch64) -> 官方 QEMU + GTK4 补丁
-#   ia64（或空）                    -> 仓库内 IA-64 fork（submodule）
+#   x86/arm (i386/x86_64/arm/aarch64) -> 官方 QEMU + GTK4 补丁（qemu-v11.0.0.patch）
+#   ia64（或空）                    -> IA-64 fork（FreshingAir/qemu-system-ia64）
+# gtk4android 亦由此处克隆（不再以 git submodule 形式存在于仓库）。
 # ---------------------------------------------------------------------------
 QEMU_OFFICIAL_TAG   := v11.0.0
 QEMU_OFFICIAL_URL   := https://gitlab.com/qemu-project/qemu.git
 QEMU_OFFICIAL_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0.patch
 QEMU_OFFICIAL_MARK  := $(LIMBO_JNI_ROOT)/qemu/.gtk4-official
+QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
+QEMU_FORK_BRANCH    := main
+GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
+GTK4_BRANCH         := master
 GLIB_URL            := https://gitlab.gnome.org/GNOME/glib.git
 GLIB_COMMIT         := ed3abf0b5221d613a333ed5b118b2f2acc66acd3
 LIBFFI_TGZ          := https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz
@@ -384,14 +391,14 @@ PIXMAN_TGZ          := https://www.cairographics.org/releases/pixman-0.43.4.tar.
 PIXMAN_TGZ_ALT      := https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz
 SDL2_TGZ            := https://www.libsdl.org/release/SDL2-2.0.8.tar.gz
 
-# x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用仓库内 IA-64 fork
+# x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用 IA-64 fork
 ifneq ($(filter x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu,$(BUILD_GUEST)),)
 QEMU_USE_OFFICIAL := yes
 else
 QEMU_USE_OFFICIAL := no
 endif
 
-fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-qemu
+fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-gtk4android fetch-qemu
 
 fetch-glib:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/glib/.git" ] || [ ! -f "$(LIMBO_JNI_ROOT)/glib/meson.build" ]; then \
@@ -461,7 +468,22 @@ fetch-qemu:
 		fi; \
 		echo ">> official qemu 就绪（GTK4 补丁已应用）"; \
 	else \
-		echo ">> 使用仓库内 IA-64 fork（submodule）, 无需下载"; \
+		if [ ! -d "$(LIMBO_JNI_ROOT)/qemu/.git" ]; then \
+			echo ">> ia64 guest: 下载 IA-64 fork $(QEMU_FORK_BRANCH)"; \
+			rm -rf "$(LIMBO_JNI_ROOT)/qemu"; \
+			git clone --depth 1 --branch $(QEMU_FORK_BRANCH) --single-branch $(QEMU_FORK_URL) "$(LIMBO_JNI_ROOT)/qemu"; \
+		else \
+			echo ">> qemu fork 已存在，跳过"; \
+		fi; \
+	fi
+
+fetch-gtk4android:
+	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \
+		echo ">> GET gtk4android @ $(GTK4_BRANCH)"; \
+		rm -rf "$(LIMBO_JNI_ROOT)/gtk4android"; \
+		git clone --depth 1 --branch $(GTK4_BRANCH) --single-branch $(GTK4_URL) "$(LIMBO_JNI_ROOT)/gtk4android"; \
+	else \
+		echo ">> gtk4android 已存在，跳过"; \
 	fi
 
 EXPORT_GUEST_ALL=export BUILD_GUEST=x86_64-softmmu,aarch64-softmmu,ia64-softmmu

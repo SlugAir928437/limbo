@@ -132,7 +132,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-qemu fetch-gtk4android
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-qemu fetch-gtk4android
 
 default: limbo
 	
@@ -233,6 +233,31 @@ pixman: ndk
 clean-pixman:
 	-rm -rf "$(PIXMAN_BUILD_DIR)" "$(PIXMAN_INSTALL_DIR)" "$(PIXMAN_CROSS_FILE)"
 
+# libslirp: the QEMU "user" network backend. Built as a static lib against the
+# cross glib so QEMU's `-net user,model=e1000` works on Android.
+# config-slirp must run after glib so slirp's pkg-config finds glib-2.0.
+config-slirp: ndk pkg-config-link ffi glib
+	$(CREATE_SLIRP_MESON_CROSS_FILE)
+	cd $(LIMBO_JNI_ROOT)/slirp && rm -rf "$(SLIRP_BUILD_DIR)"
+	# .tarball-version pins the version so build-aux/git-version-gen does not
+	# abort on a version that mismatches meson.project_version().
+	cd $(LIMBO_JNI_ROOT)/slirp && test -f .tarball-version || echo "4.7.0" > .tarball-version
+	cd $(LIMBO_JNI_ROOT)/slirp && \
+	PKG_CONFIG_PATH="$(GLIB_PKG_CONFIG_DIR)" \
+	meson setup "$(SLIRP_BUILD_DIR)" . \
+	--cross-file "$(SLIRP_CROSS_FILE)"
+
+slirp: ndk
+	ninja -C "$(SLIRP_BUILD_DIR)" -j $(BUILD_THREADS) libslirp.a
+	DESTDIR= ninja -C "$(SLIRP_BUILD_DIR)" install
+	# android-qemu-build.mak expects libslirp.a at qemu/slirp/libslirp.a for the
+	# relinked libqemu-system-*.so, so mirror it there.
+	mkdir -p "$(LIMBO_JNI_ROOT)/qemu/slirp"
+	cp -f "$(SLIRP_INSTALL_DIR)/lib/libslirp.a" "$(LIMBO_JNI_ROOT)/qemu/slirp/libslirp.a"
+
+clean-slirp:
+	-rm -rf "$(SLIRP_BUILD_DIR)" "$(SLIRP_INSTALL_DIR)" "$(SLIRP_CROSS_FILE)"
+
 # GTK4 (gtk4android) display stack, only built when USE_GTK=true
 # gtk builds against the jni shared libs (glib/pixman/libffi), so they must
 # be built (and their .pc files generated) before we can configure GTK.
@@ -322,9 +347,9 @@ clean-qemu:
 	-rm -rf ../assets/roms/* 
 	-rm -rf $(LIMBO_APP_LIBS)/assets/roms/*
 
-config-deps: ndk config-ffi config-glib config-pixman $(if $(USE_GTK),config-gtk)
+config-deps: ndk config-ffi config-glib config-pixman config-slirp $(if $(USE_GTK),config-gtk)
 
-deps: ndk glib pixman $(if $(USE_GTK),gtk)
+deps: ndk glib pixman slirp $(if $(USE_GTK),gtk)
 
 _build-qemu: ndk 
 	make _qemu
@@ -390,6 +415,9 @@ LIBFFI_TGZ          := https://github.com/libffi/libffi/releases/download/v3.5.2
 PIXMAN_TGZ          := https://www.cairographics.org/releases/pixman-0.43.4.tar.gz
 PIXMAN_TGZ_ALT      := https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz
 SDL2_TGZ            := https://www.libsdl.org/release/SDL2-2.0.8.tar.gz
+SLIRP_URL            := https://gitlab.freedesktop.org/slirp/libslirp.git
+# revision pinned in qemu/subprojects/slirp.wrap (libslirp 4.7.0)
+SLIRP_COMMIT         := 26be815b86e8d49add8c9a8b320239b9594ff03d
 
 # x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用 IA-64 fork
 ifneq ($(filter x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu,$(BUILD_GUEST)),)
@@ -398,7 +426,18 @@ else
 QEMU_USE_OFFICIAL := no
 endif
 
-fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-gtk4android fetch-qemu
+fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-gtk4android fetch-qemu
+
+fetch-slirp:
+	@if [ ! -d "$(LIMBO_JNI_ROOT)/slirp/.git" ] || [ ! -f "$(LIMBO_JNI_ROOT)/slirp/meson.build" ]; then \
+		echo ">> GET libslirp @ $(SLIRP_COMMIT)"; \
+		rm -rf "$(LIMBO_JNI_ROOT)/slirp"; \
+		git clone $(SLIRP_URL) "$(LIMBO_JNI_ROOT)/slirp" && \
+		git -C "$(LIMBO_JNI_ROOT)/slirp" checkout "$(SLIRP_COMMIT)" && \
+		git -C "$(LIMBO_JNI_ROOT)/slirp" apply "$(LIMBO_JNI_ROOT)/patches/slirp-cross-build.patch"; \
+	else \
+		echo ">> libslirp 已存在，跳过"; \
+	fi
 
 fetch-glib:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/glib/.git" ] || [ ! -f "$(LIMBO_JNI_ROOT)/glib/meson.build" ]; then \
@@ -500,13 +539,14 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-gtk clean-ncat clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-gtk clean-ncat clean-ndk
 
 clean: 
 	make clean-qemu 
 	make clean-ffi 
 	make clean-glib 
 	make clean-pixman
+	make clean-slirp
 	make clean-gtk
 	make clean-ndk
 	-find . -name "*.d" -exec rm -rf {} \;

@@ -17,8 +17,8 @@ libdir = 'lib'
 bindir = 'bin'
 buildtype = '@GTK_BUILDTYPE@'
 default_library = 'shared'
-c_link_args = ['-Wl,--build-id=sha1']
-cpp_link_args = ['-Wl,--build-id=sha1']
+c_link_args = ['-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+cpp_link_args = ['-Wl,--build-id=sha1', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
 
 # NOTE: no sys_root here on purpose.  Setting it would make pkg-config prefix
 # every -I/-L with the sysroot, which breaks the absolute paths of the jni

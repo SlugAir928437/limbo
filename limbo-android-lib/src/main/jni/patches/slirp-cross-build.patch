@@ -1,0 +1,40 @@
+diff --git a/meson.build b/meson.build
+index 7e7d8189..dee5643a 100644
+--- a/meson.build
++++ b/meson.build
+@@ -151,21 +151,23 @@ lib = library('slirp', sources,
+   install : install_devel or get_option('default_library') == 'shared',
+ )
+ 
+-pingtest = executable('pingtest', 'test/pingtest.c',
+-  link_with: [ lib ],
+-  include_directories: [ 'src' ],
+-  dependencies : [ platform_deps ]
+-)
++if not meson.is_cross_build()
++  pingtest = executable('pingtest', 'test/pingtest.c',
++    link_with: [ lib ],
++    include_directories: [ 'src' ],
++    dependencies : [ platform_deps ]
++  )
+ 
+-test('ping', pingtest)
++  test('ping', pingtest)
+ 
+-ncsitest = executable('ncsitest', 'test/ncsitest.c',
+-  link_with: [lib],
+-  include_directories: ['src'],
+-  dependencies: [glib_dep, platform_deps]
+-)
++  ncsitest = executable('ncsitest', 'test/ncsitest.c',
++    link_with: [lib],
++    include_directories: ['src'],
++    dependencies: [glib_dep, platform_deps]
++  )
+ 
+-test('ncsi', ncsitest)
++  test('ncsi', ncsitest)
++endif
+ 
+ if install_devel
+   install_headers(['src/libslirp.h'], subdir : 'slirp')

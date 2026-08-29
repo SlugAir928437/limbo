@@ -5,8 +5,9 @@
 # Last version with gcc support is 14b 
 #NDK_ROOT = /home/dev/tools/ndk/android-ndk-r14b
 #USE_GCC?=true
-# Or use r25c with clang
-NDK_ROOT ?= /home/huang/android-ndk-r25c
+# r28+ required: provides 16 KB page-size defaults and the clang linker
+# flags (-Wl,-z,max-page-size=16384) that keep native libs 16 KB aligned.
+NDK_ROOT ?= /home/huang/android-ndk-r28c
 USE_GCC?=false
 
 ### the ndk api should be the same as the minSdkVersion in your AndroidManifest.xml 

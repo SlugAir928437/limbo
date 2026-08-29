@@ -27,6 +27,7 @@ import android.view.Gravity;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.limbo.emu.lib.R;
 import com.max2idea.android.limbo.files.FileUtils;
@@ -41,6 +42,7 @@ import com.max2idea.android.limbo.main.LimboSettingsManager;
 import com.max2idea.android.limbo.qmp.QmpClient;
 import com.max2idea.android.limbo.toast.ToastUtils;
 
+import org.jetbrains.annotations.Contract;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -336,7 +338,12 @@ class VMExecutor extends MachineExecutor {
             // hangs after "Continuing normal boot."  Other architectures must
             // not receive these options.
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-                if (getMachine().getDisableI8042() == 1) {
+                // "i8042" machine property exists only on the IA-64 VPC machines
+                // (itanium-vpc / ia64-vpc / itanium2-vpc). The HP workstation
+                // models (hp-i2000 / hp-zx6000) have no i8042 controller, so
+                // appending i8042=off there makes QEMU reject the machine and
+                // fail to start.
+                if (machineParams.contains("vpc") && getMachine().getDisableI8042() == 1) {
                     machineParams += ",i8042=off";
                 }
                 if (getMachine().getEnableNvram() == 1) {
@@ -392,7 +399,11 @@ class VMExecutor extends MachineExecutor {
             }
         }
 
-        if (cpu != null && !cpu.equals("Default")) {
+        // The HP workstation models (hp-i2000 / hp-zx6000) hard-require their own
+        // CPU (Merced / Madison-zx6000) and reject a -cpu override, so never pass a
+        // user-selected CPU for them; QEMU then uses the machine default CPU.
+        boolean isHpMachine = getMachineType() != null && getMachineType().startsWith("hp-");
+        if (!isHpMachine && cpu != null && !cpu.equals("Default")) {
             paramsList.add("-cpu");
             paramsList.add(cpu);
         }
@@ -638,23 +649,6 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * Computes the -drive bus index (unit) for a hard disk on a given slot.
-     *
-     * On the IA-64 machine the boot CD-ROM is fixed at if=ide index 0, so IDE
-     * hard disks are offset by +1 (slot 0 -> index 1).  A drive on the LSI SCSI
-     * bus is a different address space: its index maps 1:1 to the SCSI target
-     * ID, and the EFI firmware exposes the disk at Scsi(0,0).  To be recognized
-     * by the firmware the first SCSI disk must therefore sit at target 0, i.e.
-     * its slot (0) with no offset.  Non-IA-64 targets use the bare slot as well.
-     */
-    private int ia64DriveIndex(boolean iaDisk, String iface, int slot) {
-        if (!iaDisk || "scsi".equals(iface)) {
-            return slot;
-        }
-        return slot + 1;
-    }
-
-    /**
      * Resolves the -drive format=. A null/empty/"auto" value keeps the legacy
      * behavior: hard disks get "raw" only for raw images (otherwise auto-detect),
      * CD-ROMs always use "raw". Any concrete format the user set is used as-is.
@@ -663,6 +657,7 @@ class VMExecutor extends MachineExecutor {
      * @param path          the image file path (used by the raw detection)
      * @param isDisk        true for hard disks, false for the CD-ROM
      */
+    @Nullable @Contract("null, _, false -> !null")
     private String resolveDriveFormat(String explicit, String path, boolean isDisk) {
         if (explicit == null || explicit.trim().isEmpty() || explicit.equals("auto")) {
             return isDisk ? (isRawImage(path) ? "raw" : null) : "raw";
@@ -671,84 +666,83 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
+     * Resolves the -drive cache=. A concrete per-drive value the user set is
+     * used as-is; null/empty falls back to the global cache setting (which is
+     * already null when the user chose "default").
+     */
+    private String resolveDriveCache(String explicit, String fallback) {
+        if (explicit != null && !explicit.trim().isEmpty()) {
+            return explicit.trim();
+        }
+        return fallback;
+    }
+
+    /**
      * Emits all storage devices (HDA..HDD, CDROM, FDA/FDB, SD card and the
      * shared folder) as uniform "-drive" parameters.
      */
     public void addDrives(ArrayList<String> paramsList) {
-        String cache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
-        if (cache == null || cache.equals("default"))
-            cache = null;
-
-        // The IA-64 machine exposes an LSI SCSI HBA and a CMD646 legacy IDE
-        // controller.  Windows XP/Server 2003 IA64 ships with in-box IDE/ATAPI
-        // and LSI/Symbios SCSI drivers but has no SATA/AHCI driver, so the
-        // whole IA-64 storage stack is put on the CMD646 legacy IDE bus: the
-        // boot CD-ROM is its primary master (if=ide index 0) and hard disks
-        // follow at index 1 so they never collide with the CD.  Routing the
-        // target disk to the LSI SCSI HBA instead gives the installer a
-        // graphical blue-screen with STOP 0x7E
-        // (SYSTEM_THREAD_EXCEPTION_NOT_HANDLED) in the Symbios SCSI driver.
-        boolean iaDisk = LimboApplication.arch == Config.Arch.ia64
-                || LimboApplication.arch == Config.Arch.ia64w;
+        // Global fallback cache mode from settings ("default"/empty -> no cache=).
+        String globalCache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
+        if (globalCache == null || globalCache.equals("default"))
+            globalCache = null;
 
         // Hard disks HDA..HDD. if= comes from the machine's per-drive interface
         // (null/empty -> "ide", QEMU's default). format= comes from the machine's
         // per-drive format when set, otherwise the legacy auto/raw detection.
-        //
-        // IMPORTANT (IA-64): on the ia64-vpc machine the boot CD-ROM owns if=ide
-        // index 0, so IDE hard disks must start at index 1.  But the LSI SCSI bus
-        // is a separate address space: for a drive on it, -drive index maps 1:1 to
-        // the SCSI target ID (scsi index 0 -> target 0).  The EFI firmware exposes
-        // a SCSI disk at its exact device path Pci(4,0)/Scsi(0,0); bumping the
-        // index to 1 (our legacy IDE-only offset) silently moves the disk to
-        // target 1, where the firmware neither enumerates nor boots it.  So the
-        // +1 offset is applied to the IDE bus only; SCSI drives start at target 0,
-        // matching the Windows command line ("if=scsi,index=0") that is known to
-        // work in the EFI Shell.
+        // cache= comes from the machine's per-drive cache when the user set one,
+        // otherwise falls back to the global disk-cache setting.
+        // The HP workstation models (hp-i2000 / hp-zx6000) wire their on-board
+        // storage through the IFB (82468GX) / CMD649 IDE controller only; their
+        // firmware boots from IDE, and -drive if=scsi would land on a PCI SCSI
+        // HBA (isp12160 / lsi53c895a) the firmware cannot read. Force IDE for
+        // them regardless of the configured per-drive interface (the VPC models
+        // keep riding the LSI on-board SCSI).
+        boolean isHp = getMachineType() != null && getMachineType().startsWith("hp-");
         String ifaceHda = resolveDriveInterface(getMachine().getHdaInterface());
         String ifaceHdb = resolveDriveInterface(getMachine().getHdbInterface());
         String ifaceHdc = resolveDriveInterface(getMachine().getHdcInterface());
         String ifaceHdd = resolveDriveInterface(getMachine().getHddInterface());
-        addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHda, 0)),
-                ifaceHda, "disk", null,
-                getDriveFilePath(getMachine().getHdaImagePath()),
-                resolveDriveFormat(getMachine().getHdaFormat(),
-                        getDriveFilePath(getMachine().getHdaImagePath()), true), cache);
-        addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHdb, 1)),
-                ifaceHdb, "disk", null,
-                getDriveFilePath(getMachine().getHdbImagePath()),
-                resolveDriveFormat(getMachine().getHdbFormat(),
-                        getDriveFilePath(getMachine().getHdbImagePath()), true), cache);
-        addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHdc, 2)),
-                ifaceHdc, "disk", null,
-                getDriveFilePath(getMachine().getHdcImagePath()),
-                resolveDriveFormat(getMachine().getHdcFormat(),
-                        getDriveFilePath(getMachine().getHdcImagePath()), true), cache);
-        if (!iaDisk) {
-            addDrive(paramsList, Integer.toString(ia64DriveIndex(iaDisk, ifaceHdd, 3)),
-                    ifaceHdd, "disk", null,
-                    getDriveFilePath(getMachine().getHddImagePath()),
-                    resolveDriveFormat(getMachine().getHddFormat(),
-                            getDriveFilePath(getMachine().getHddImagePath()), true), cache);
+        if (isHp) {
+            ifaceHda = "ide";
+            ifaceHdb = "ide";
+            ifaceHdc = "ide";
+            ifaceHdd = "ide";
         }
+        String fmtHda = resolveDriveFormat(getMachine().getHdaFormat(),
+                getDriveFilePath(getMachine().getHdaImagePath()), true);
+        String fmtHdb = resolveDriveFormat(getMachine().getHdbFormat(),
+                getDriveFilePath(getMachine().getHdbImagePath()), true);
+        String fmtHdc = resolveDriveFormat(getMachine().getHdcFormat(),
+                getDriveFilePath(getMachine().getHdcImagePath()), true);
+        String fmtHdd = resolveDriveFormat(getMachine().getHddFormat(),
+                getDriveFilePath(getMachine().getHddImagePath()), true);
+        String cacheHda = resolveDriveCache(getMachine().getHdaCache(), globalCache);
+        String cacheHdb = resolveDriveCache(getMachine().getHdbCache(), globalCache);
+        String cacheHdc = resolveDriveCache(getMachine().getHdcCache(), globalCache);
+        String cacheHdd = resolveDriveCache(getMachine().getHddCache(), globalCache);
+        addDrive(paramsList, "0",
+                ifaceHda, "disk", null,
+                getDriveFilePath(getMachine().getHdaImagePath()), fmtHda, cacheHda);
+        addDrive(paramsList, "1",
+                ifaceHdb, "disk", null,
+                getDriveFilePath(getMachine().getHdbImagePath()), fmtHdb, cacheHdb);
+        addDrive(paramsList, "2",
+                ifaceHdc, "disk", null,
+                getDriveFilePath(getMachine().getHdcImagePath()), fmtHdc, cacheHdc);
+        addDrive(paramsList, "3",
+                ifaceHdd, "disk", null,
+                getDriveFilePath(getMachine().getHddImagePath()), fmtHdd, cacheHdd);
 
-        // CDROM getMachine().getCDInterface()
-        // IA-64: the boot CD-ROM is wired to the CMD646 legacy PCI IDE
-        // controller as primary master (if=ide index 0), so the firmware boots
-        // from it and Windows XP/Server 2003 IA64 reads it with its in-box
-        // IDE/ATAPI driver.  The other interfaces cannot install 2003: an LSI
-        // SCSI CD-ROM hangs the firmware's SCSI path, and a SATA/AHCI CD-ROM
-        // has no Windows IA64 driver ("txtsetup.inf is corrupt or missing").
-        // Keep the historical if=scsi behavior for every other architecture.
-        boolean ia64cd = LimboApplication.arch == Config.Arch.ia64
-                || LimboApplication.arch == Config.Arch.ia64w;
-        String cdInterface = getMachine().getCDInterface();
-        if (cdInterface == null || cdInterface.trim().isEmpty()) {
-            // legacy arch default when the user has not overridden the interface
-            cdInterface = ia64cd ? "ide" : "scsi";
+        // CDROM getMachine().getCDInterface(). The interface is used as
+        // configured (null/empty falls back to QEMU's default via
+        // resolveDriveInterface), e.g. "scsi" for IA-64 boot media.
+        String cdInterface = resolveDriveInterface(getMachine().getCDInterface());
+        if (isHp) {
+            cdInterface = "ide";
         }
         String cdPath = getDriveFilePath(getMachine().getCdImagePath());
-        addDrive(paramsList, ia64cd ? "0" : null,
+        addDrive(paramsList, null,
                 cdInterface, "cdrom", null,
                 cdPath, resolveDriveFormat(getMachine().getCDFormat(), cdPath, false), null);
 
@@ -974,6 +968,14 @@ class VMExecutor extends MachineExecutor {
         if (driveProperty == MachineProperty.CDROM) {
             if (LimboApplication.arch == Config.Arch.ia64
                     || LimboApplication.arch == Config.Arch.ia64w) {
+                // The IA-64 VPC models hang the CD-ROM on the on-board LSI SCSI
+                // (unit 4 -> "scsi0-cd4"). The HP workstation models wire storage
+                // through the IFB/CMD649 IDE controller instead, so their CD is a
+                // regular IDE CD device (best-effort name; channel/unit depend on
+                // how many hard disks occupy the 4-unit IDE bus at runtime).
+                if (getMachineType() != null && getMachineType().startsWith("hp-")) {
+                    return cdDeviceName;
+                }
                 return "scsi0-cd4";
             }
             return cdDeviceName;

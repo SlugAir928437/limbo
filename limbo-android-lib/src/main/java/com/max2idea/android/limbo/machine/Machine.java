@@ -66,6 +66,11 @@ public class Machine extends Observable {
     private String hdbFormat;
     private String hdcFormat;
     private String hddFormat;
+    // optional per-drive cache mode (-drive cache=...); null/empty = default
+    private String hdaCache;
+    private String hdbCache;
+    private String hdcCache;
+    private String hddCache;
 
     private String sharedFolderPath;
     //Removable devices
@@ -465,6 +470,54 @@ public class Machine extends Observable {
         }
     }
 
+    public String getHdaCache() {
+        return hdaCache;
+    }
+
+    void setHdaCache(String cache) {
+        if (!stringsEqual(this.hdaCache, cache)) {
+            this.hdaCache = cache;
+            setChanged();
+            notifyChanged(MachineProperty.HDA_CACHE, cache);
+        }
+    }
+
+    public String getHdbCache() {
+        return hdbCache;
+    }
+
+    void setHdbCache(String cache) {
+        if (!stringsEqual(this.hdbCache, cache)) {
+            this.hdbCache = cache;
+            setChanged();
+            notifyChanged(MachineProperty.HDB_CACHE, cache);
+        }
+    }
+
+    public String getHdcCache() {
+        return hdcCache;
+    }
+
+    void setHdcCache(String cache) {
+        if (!stringsEqual(this.hdcCache, cache)) {
+            this.hdcCache = cache;
+            setChanged();
+            notifyChanged(MachineProperty.HDC_CACHE, cache);
+        }
+    }
+
+    public String getHddCache() {
+        return hddCache;
+    }
+
+    void setHddCache(String cache) {
+        if (!stringsEqual(this.hddCache, cache)) {
+            this.hddCache = cache;
+            setChanged();
+            notifyChanged(MachineProperty.HDD_CACHE, cache);
+        }
+    }
+
     private static boolean stringsEqual(String a, String b) {
         return a == null ? b == null : a.equals(b);
     }
@@ -793,26 +846,27 @@ public class Machine extends Observable {
             // so the text-mode installer gets a USB keyboard (PS/2 is not
             // operational during XP IA64 text setup) and nvram=./ia64.nvram.
             //
-            // The CMD646 legacy IDE bus serves the entire IA-64 storage stack:
-            // the boot CD-ROM is its primary master and hard disks ride on the
-            // same controller.  Windows XP/Server 2003 IA64 ships with in-box
-            // IDE/ATAPI and LSI/Symbios SCSI drivers, but the target disk must
-            // NOT sit on the LSI SCSI HBA: the third-party SCSI driver faults
-            // there once setup enters the graphical install environment and the
-            // machine blue-screens with STOP 0x0000007E
-            // (SYSTEM_THREAD_EXCEPTION_NOT_HANDLED). Keeping every IA64 drive
-            // on the IDE bus means the installer only ever loads its proven
-            // in-box IDE/ATAPI driver, which already reads the boot CD.
-            // A SATA/AHCI drive stays avoided (no Windows AHCI driver) and an
-            // LSI SCSI boot CD-ROM hangs this firmware.
+            // The ia64-vpc machine (alias itanium2-vpc) exposes an on-board
+            // LSI SCSI HBA and its block default type is IF_SCSI, so the
+            // whole IA-64 storage stack (boot CD-ROM and hard disks) sits on
+            // the SCSI bus — this matches the project's known-good Windows
+            // command line ("if=scsi,...") and the boot installation-media
+            // example in qemu/README.md.  A -drive if=ide on this machine is
+            // instead picked up by the ICH9 AHCI (SATA) controller, which
+            // neither the EFI firmware nor Windows XP/Server 2003 IA64 (which
+            // ships LSI/Symbios SCSI and IDE/ATAPI drivers but no SATA/AHCI
+            // driver) can use to read the install CD.  VMExecutor additionally
+            // passes i8042=off so the text-mode installer gets a USB keyboard
+            // (PS/2 is not operational during XP IA64 text setup) and
+            // nvram=./ia64.nvram.
             machineType = "ia64-vpc";
             cpu = "Default";
             networkCard = "Default";
-            hdaInterface = "ide";
-            hdbInterface = "ide";
-            hdcInterface = "ide";
-            hddInterface = "ide";
-            cdInterface = "ide";
+            hdaInterface = "scsi";
+            hdbInterface = "scsi";
+            hdcInterface = "scsi";
+            hddInterface = "scsi";
+            cdInterface = "scsi";
         }
     }
 

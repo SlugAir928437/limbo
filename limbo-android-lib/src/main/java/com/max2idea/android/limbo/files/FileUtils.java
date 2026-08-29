@@ -637,30 +637,6 @@ public class FileUtils {
         }
     }
 
-    public static String createImgFromTemplate(Context context, String templateImage, String destImage, FileType imgType) {
-
-        String imagesDir = LimboSettingsManager.getImagesDir(context);
-        String displayName = null;
-        String filePath = null;
-        if (imagesDir.startsWith("content://")) {
-            Uri imagesDirUri = Uri.parse(imagesDir);
-            Uri fileCreatedUri = FileInstaller.installImageTemplateToSDCard(context, templateImage,
-                    imagesDirUri, "hdtemplates", destImage);
-            if (fileCreatedUri != null) {
-                displayName = FileUtils.getFullPathFromDocumentFilePath(fileCreatedUri.toString());
-                filePath = fileCreatedUri.toString();
-            }
-        } else {
-            filePath = FileInstaller.installImageTemplateToExternalStorage(context, templateImage, imagesDir, "hdtemplates", destImage);
-            displayName = filePath;
-        }
-        if (displayName != null) {
-            ToastUtils.toastShort(context, context.getString(R.string.ImageCreated) + ": " + displayName);
-            return filePath;
-        }
-        return null;
-    }
-
     // Creates an empty raw disk image of the given size (bytes).
     public static String createRawImage(Context context, long sizeBytes, String destImage, FileType imgType) {
         String imagesDir = LimboSettingsManager.getImagesDir(context);

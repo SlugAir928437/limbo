@@ -5,7 +5,7 @@ Limbo 是一款运行在 Android 上的虚拟机模拟器，基于 [QEMU](https:
 本项目在此前的 Limbo（原作者 limboemu）基础上，扩展了 **IA-64** 架构模拟支持，并通过 GTK 4 图形栈在 Android 上提供接近原生的窗口化渲染体验。
 
 ## 特别感谢
-三方组件
+引用组件
  * [limboemu/limbo](https://github.com/limboemu/limbo)
  * [syunnPC/qemu-system-ia64](https://github.com/syunnPC/qemu-system-ia64)
  * [ruvolof/nc-for-android](https://github.com/ruvolof/nc-for-android)
@@ -13,11 +13,11 @@ Limbo 是一款运行在 Android 上的虚拟机模拟器，基于 [QEMU](https:
  * [getActivity/XXPermissions](https://github.com/getActivity/XXPermissions)
 
 仓库维护者
- * [我](https://github.com/FreshingAir)
- * <img width="32" height="32" alt="deepseek-color" src=".github/deepseek-color.svg" />
- * <img width="32" height="32" alt="sensenova-color" src=".github/sensenova-color.svg" />
- * <img width="32" height="32" alt="doubao-color" src=".github/doubao-color.svg" />
- * <img width="32" height="32" alt="kimi-color" src=".github/kimi-color.svg" />
+ * [FreshingAir](https://github.com/FreshingAir)
+ * <img width="32" height="32" alt="深度求索" src=".github/deepseek-color.svg" />
+ * <img width="32" height="32" alt="商汤日日新" src=".github/sensenova-color.svg" />
+ * <img width="32" height="32" alt="豆包" src=".github/doubao-color.svg" />
+ * <img width="32" height="32" alt="月之暗面" src=".github/kimi-color.svg" />
 
 ## License
 

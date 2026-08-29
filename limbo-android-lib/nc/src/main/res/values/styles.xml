@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Netcat session as a Material Design dialog -->
-    <style name="Theme.NetcatSession.Dialog" parent="Theme.MaterialComponents.DayNight.Dialog">
+    <!-- Netcat session as a Material 3 dialog (matched with the app's M3 theme).
+         Using a MaterialComponents (M2) dialog theme inside a Material3 activity
+         left the dialog content blank; keep the dialog on Material3. -->
+    <style name="Theme.NetcatSession.Dialog" parent="Theme.Material3.DayNight.Dialog">
         <item name="colorPrimary">#6750A4</item>
         <item name="colorPrimaryVariant">#4F378B</item>
         <item name="colorSecondary">#6750A4</item>

@@ -245,6 +245,8 @@
     <string name="new_image">新建</string>
     <string name="label_storage_interface">接口</string>
     <string name="label_storage_format">格式</string>
+    <string name="label_storage_cache">缓存</string>
+    <string name="hint_storage_cache">留空则使用默认</string>
     <string name="label_default">默认</string>
     <string name="label_auto">自动</string>
     <string name="storage_if_ide">IDE</string>

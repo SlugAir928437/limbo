@@ -51,7 +51,7 @@ jobs:
       - name: Setup Android SDK Tools
         uses: android-actions/setup-android@v3.2.1
         with:
-          packages: 'ndk;25.2.9519653'
+          packages: 'ndk;28.2.13676358'
 
       - name: 安装依赖
         run: |
@@ -111,7 +111,7 @@ jobs:
       - name: Build QEMU
         run: |
           cd limbo-android-lib/src/main/jni
-          export NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/25.2.9519653
+          export NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/28.2.13676358
           export PATH=$PATH:$NDK_ROOT
           export BUILD_THREADS=$(nproc)
           export BUILD_GUEST=${{ matrix.build_guest }}

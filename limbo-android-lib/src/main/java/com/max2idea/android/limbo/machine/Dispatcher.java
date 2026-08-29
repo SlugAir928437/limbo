@@ -159,6 +159,18 @@ public class Dispatcher implements ViewListener {
             case CDROM_FORMAT:
                 getMachine().setCdFormat(convertString(property, value));
                 break;
+            case HDA_CACHE:
+                getMachine().setHdaCache(convertString(property, value));
+                break;
+            case HDB_CACHE:
+                getMachine().setHdbCache(convertString(property, value));
+                break;
+            case HDC_CACHE:
+                getMachine().setHdcCache(convertString(property, value));
+                break;
+            case HDD_CACHE:
+                getMachine().setHddCache(convertString(property, value));
+                break;
             case SOUNDCARD:
                 getMachine().setSoundCard(convertString(property, value));
                 break;

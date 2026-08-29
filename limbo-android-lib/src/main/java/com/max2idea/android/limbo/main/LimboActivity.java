@@ -1728,19 +1728,8 @@ public class LimboActivity extends AppCompatActivity implements
             if (image.trim().isEmpty())
                 ToastUtils.toastShort(activity, getString(R.string.ImageFilenameCannotBeEmpty));
             else {
-                String templateImage = getTemplateForSize(bytes);
                 String filePath;
-                if (templateImage != null) {
-                    if (!image.endsWith(".qcow2")) {
-                        image += ".qcow2";
-                    }
-                    filePath = FileUtils.createImgFromTemplate(this, templateImage, image, fileType);
-                } else {
-                    if (!image.endsWith(".img") && !image.endsWith(".raw")) {
-                        image += ".img";
-                    }
-                    filePath = FileUtils.createRawImage(this, bytes, image, fileType);
-                }
+                filePath = FileUtils.createRawImage(this, bytes, image, fileType);
                 if (filePath != null) {
                     updateDrive(fileType, filePath);
                     alertDialog.dismiss();
@@ -2441,6 +2430,7 @@ public class LimboActivity extends AppCompatActivity implements
         String[] fileTypes = new String[types.length];
         boolean[] createImage = new boolean[types.length];
         boolean[] canIf = new boolean[types.length];
+        boolean[] canCache = new boolean[types.length];
         for (int i = 0; i < types.length; i++) {
             labels[i] = getString(types[i].labelRes);
             // HARD_DISK's static fileType is null (it maps to HDA..HDD at runtime),
@@ -2455,11 +2445,14 @@ public class LimboActivity extends AppCompatActivity implements
             createImage[i] = types[i].createImage;
             // only hard disks and CD-ROMs expose -drive if=/format=
             canIf[i] = types[i] == DeviceType.HARD_DISK || types[i] == DeviceType.CDROM;
+            // only hard disks expose a per-drive -drive cache=
+            canCache[i] = types[i] == DeviceType.HARD_DISK;
         }
         intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_LABELS, labels);
         intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_FILE_TYPES, fileTypes);
         intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_CREATE_IMAGE, createImage);
         intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_CAN_IF, canIf);
+        intent.putExtra(StorageDeviceEditorActivity.EXTRA_TYPE_CAN_CACHE, canCache);
 
         // -drive if=/format= selector options (empty value = keep the default)
         String[] ifValues = {"", "ide", "scsi", "virtio", "sata", "nvme"};
@@ -2484,6 +2477,8 @@ public class LimboActivity extends AppCompatActivity implements
                     indexOfValue(ifValues, driveInterfaceValue(e)));
             intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_FORMAT_SEL,
                     indexOfValue(formatValues, driveFormatValue(e)));
+            String cacheInit = driveCacheValue(e);
+            intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_CACHE, cacheInit != null ? cacheInit : "");
         } else {
             intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_TYPE_SEL, 0);
             intent.putExtra(StorageDeviceEditorActivity.EXTRA_INIT_SIZE, "4");
@@ -2644,6 +2639,34 @@ public class LimboActivity extends AppCompatActivity implements
         return null;
     }
 
+    /** Current per-drive cache mode (-drive cache=) of an entry's drive, or null. */
+    private String driveCacheValue(StorageEntry e) {
+        if (getMachine() == null)
+            return null;
+        if (e.deviceType == DeviceType.HARD_DISK) {
+            switch (e.hardDiskSlot) {
+                case 0: return getMachine().getHdaCache();
+                case 1: return getMachine().getHdbCache();
+                case 2: return getMachine().getHdcCache();
+                case 3: return getMachine().getHddCache();
+            }
+        }
+        return null;
+    }
+
+    /** The MachineProperty identifying the drive, used for -drive cache=. Null when unsupported. */
+    private MachineProperty driveCacheProp(StorageEntry e) {
+        if (e.deviceType == DeviceType.HARD_DISK) {
+            switch (e.hardDiskSlot) {
+                case 0: return MachineProperty.HDA_CACHE;
+                case 1: return MachineProperty.HDB_CACHE;
+                case 2: return MachineProperty.HDC_CACHE;
+                case 3: return MachineProperty.HDD_CACHE;
+            }
+        }
+        return null;
+    }
+
     /**
      * Persists the -drive if=/format= chosen in the editor onto the machine.
      * An empty value means "keep default" and clears the per-drive setting.
@@ -2661,6 +2684,11 @@ public class LimboActivity extends AppCompatActivity implements
         if (fmtProp != null) {
             String fmtValue = data.getStringExtra(StorageDeviceEditorActivity.EXTRA_FORMAT);
             notifyFieldChange(fmtProp, fmtValue == null || fmtValue.trim().isEmpty() ? null : fmtValue);
+        }
+        MachineProperty cacheProp = driveCacheProp(e);
+        if (cacheProp != null) {
+            String cacheValue = data.getStringExtra(StorageDeviceEditorActivity.EXTRA_CACHE);
+            notifyFieldChange(cacheProp, cacheValue == null || cacheValue.trim().isEmpty() ? null : cacheValue.trim());
         }
     }
 
@@ -2726,19 +2754,11 @@ public class LimboActivity extends AppCompatActivity implements
     /** Creates a disk image file from a name + size, reusing the template/raw logic. */
     private String createImageFile(String imageName, long bytes, FileType fileType) {
         String image = imageName;
-        String templateImage = getTemplateForSize(bytes < 0 ? -1 : bytes);
         String filePath;
-        if (templateImage != null) {
-            if (!image.endsWith(".qcow2")) {
-                image += ".qcow2";
-            }
-            filePath = FileUtils.createImgFromTemplate(this, templateImage, image, fileType);
-        } else {
-            if (!image.endsWith(".img") && !image.endsWith(".raw")) {
-                image += ".img";
-            }
-            filePath = FileUtils.createRawImage(this, bytes, image, fileType);
+        if (!image.endsWith(".img") && !image.endsWith(".raw")) {
+            image += ".img";
         }
+        filePath = FileUtils.createRawImage(this, bytes, image, fileType);
         return filePath;
     }
 

@@ -6,13 +6,11 @@ plugins {
 android {
     namespace 'com.limbo.emu.lib'
     compileSdk {
-        //noinspection GradleDependency
         version = release(37)
     }
 
     defaultConfig {
         minSdk 24
-        //noinspection OldTargetApi
         targetSdk 37
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

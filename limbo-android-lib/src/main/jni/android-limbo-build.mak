@@ -38,6 +38,12 @@ ARCH_CFLAGS := -D__LIMBO__ -D__ANDROID__ -DANDROID -D__linux__ -DCONFIG_LINUX $(
   $(USE_PLATFORM21_FLAGS) $(USE_PLATFORM26_FLAGS)
 ARCH_LD_FLAGS=
 
+# 16 KB page-size alignment: on Android 15+ 16 KB page devices every loaded
+# library must have its ELF LOAD segments aligned to 16384, otherwise dlopen()
+# fails. Applied to the QEMU core lib via ARCH_LD_FLAGS (android-qemu-build.mak).
+MAX_PAGE_SIZE_LD_FLAGS=-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384
+ARCH_LD_FLAGS += $(MAX_PAGE_SIZE_LD_FLAGS)
+
 ifeq ($(BUILD_HOST), arm64-v8a)
 ######### Armv8 64 bit (Newest ARM phones only, Supports VNC, Needs android-21)
 include $(LIMBO_JNI_ROOT)/android-config/android-device-config/android-armv8.mak
@@ -157,8 +163,23 @@ PIXMAN_INSTALL_DIR := $(LIMBO_JNI_ROOT)/pixman/android-install/$(APP_ABI)
 PIXMAN_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-pixman-android-cross.ini
 PIXMAN_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-pixman-android-cross.ini.in
 
+# libslirp: provides the QEMU "user" (SLIRP) network backend, the NIC model
+# (e1000) itself lives in hw/net/ and is already enabled via IA64_VPC_NETWORK.
+# Built from jni/slirp as a static lib (needs cross glib, like qemu), installed
+# into android-install and fed to QEMU through pkg-config (slirp.pc) so meson
+# sets CONFIG_SLIRP and links -lslirp.  libslirp.a is ALSO copied to
+# qemu/slirp/libslirp.a where android-qemu-build.mak's relink expects it.
+SLIRP_BUILD_DIR := $(LIMBO_JNI_ROOT)/slirp/build-android-$(APP_ABI)
+SLIRP_INSTALL_DIR := $(LIMBO_JNI_ROOT)/slirp/android-install/$(APP_ABI)
+SLIRP_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-slirp-android-cross.ini
+SLIRP_PKG_CONFIG_DIR := $(SLIRP_INSTALL_DIR)/lib/pkgconfig
+
 # NOTE: GTK_PKG_CONFIG_DIR must be defined before this line (:= evaluates immediately)
-PKG_CONFIG_PATH := $(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR):$(PKG_CONFIG_PATH)
+# An empty trailing path component (a bare ':') makes pkg-config append the
+# host system dirs, leaking host-only packages (libpmem, vte, ...) into the
+# Android cross-build - so only append ':' + env PKG_CONFIG_PATH when non-empty.
+# slirp must be visible to QEMU's configure here so CONFIG_SLIRP gets enabled.
+PKG_CONFIG_PATH := $(SLIRP_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 
 CREATE_PKG_CONFIG_LINK = \
 	if [ ! -x "$(PKG_CONFIG_LINK)" ]; then \
@@ -221,6 +242,22 @@ CREATE_PIXMAN_MESON_CROSS_FILE = \
 		-e 's|@NDK_PROJECT_PATH@|$(NDK_PROJECT_PATH)|g' \
 		-e 's|@APP_ABI@|$(APP_ABI)|g' \
 		"$(PIXMAN_CROSS_FILE_TEMPLATE)" > "$(PIXMAN_CROSS_FILE)"
+
+CREATE_SLIRP_MESON_CROSS_FILE = \
+	sed \
+		-e 's|@CC@|$(CC)|g' \
+		-e 's|@AR@|$(AR)|g' \
+		-e 's|@STRIP@|$(STRIP)|g' \
+		-e 's|@PKG_CONFIG@|$(PKG_CONFIG)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		-e 's|@SLIRP_INSTALL_DIR@|$(SLIRP_INSTALL_DIR)|g' \
+		-e 's|@TARGET_TRIPLE@|$(TARGET_PREFIX)$(NDK_PLATFORM_API)|g' \
+		-e 's|@SYSROOT@|$(SYSROOT)|g' \
+		-e 's|@LIMBO_JNI_ROOT@|$(LIMBO_JNI_ROOT)|g' \
+		-e 's|@NDK_PROJECT_PATH@|$(NDK_PROJECT_PATH)|g' \
+		-e 's|@APP_ABI@|$(APP_ABI)|g' \
+		"$(LIMBO_JNI_ROOT)/android-config/meson-slirp-android-cross.ini.in" > "$(SLIRP_CROSS_FILE)"
 
 CREATE_GTK_MESON_CROSS_FILE = \
 	sed \

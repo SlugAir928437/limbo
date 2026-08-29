@@ -71,6 +71,9 @@ public class ArchDefinitions {
                 || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64
                 || LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
             vgaValues.add("std");
+            // ATI VGA is available when libqemu-system-*.*.so was built with CONFIG_ATI_VGA;
+            // this is an experimental PCI vga option and may not be supported by every board
+            vgaValues.add("ati");
         }
 
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64) {

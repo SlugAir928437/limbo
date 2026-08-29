@@ -25,6 +25,7 @@ qemu-orig
 /glib
 /libffi
 /pixman
+/slirp
 /SDL2
 
 build_arm32

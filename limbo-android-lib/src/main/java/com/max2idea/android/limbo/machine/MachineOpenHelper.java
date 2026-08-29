@@ -42,7 +42,7 @@ import java.util.Observer;
 public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatabase, Observer {
     private static final String TAG = "MachineOpenHelper";
 
-    private static final int DATABASE_VERSION = 22;
+    private static final int DATABASE_VERSION = 23;
     private static final String DATABASE_NAME = "LIMBO";
     private static final String MACHINE_TABLE_NAME = "machines";
 
@@ -63,7 +63,9 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             + MachineProperty.NVRAM_PATH.name() + " TEXT, "
             + MachineProperty.HDA_FORMAT.name() + " TEXT, " + MachineProperty.HDB_FORMAT.name() + " TEXT, "
             + MachineProperty.HDC_FORMAT.name() + " TEXT, " + MachineProperty.HDD_FORMAT.name() + " TEXT, "
-            + MachineProperty.CDROM_FORMAT.name() + " TEXT "
+            + MachineProperty.CDROM_FORMAT.name() + " TEXT, "
+            + MachineProperty.HDA_CACHE.name() + " TEXT, " + MachineProperty.HDB_CACHE.name() + " TEXT, "
+            + MachineProperty.HDC_CACHE.name() + " TEXT, " + MachineProperty.HDD_CACHE.name() + " TEXT "
             + ");";
 
     private static MachineOpenHelper sInstance;
@@ -227,6 +229,16 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDD_FORMAT + " TEXT;");
             db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.CDROM_FORMAT + " TEXT;");
         }
+
+        if (newVersion >= 23 && oldVersion <= 22) {
+            // Per-drive cache mode (-drive cache=...) for the hard disks.
+            // Existing rows keep NULL, which reads back as default
+            // (-drive cache= omitted), preserving the pre-feature behavior.
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDA_CACHE + " TEXT;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDB_CACHE + " TEXT;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDC_CACHE + " TEXT;");
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.HDD_CACHE + " TEXT;");
+        }
     }
 
     public synchronized int insertMachine(@NonNull Machine machine) {
@@ -254,6 +266,10 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
         stateValues.put(MachineProperty.CDROM.name(), machine.getCdImagePath());
         stateValues.put(MachineProperty.CDROM_INTERFACE.name(), machine.getCDInterface());
         stateValues.put(MachineProperty.CDROM_FORMAT.name(), machine.getCDFormat());
+        stateValues.put(MachineProperty.HDA_CACHE.name(), machine.getHdaCache());
+        stateValues.put(MachineProperty.HDB_CACHE.name(), machine.getHdbCache());
+        stateValues.put(MachineProperty.HDC_CACHE.name(), machine.getHdcCache());
+        stateValues.put(MachineProperty.HDD_CACHE.name(), machine.getHddCache());
         stateValues.put(MachineProperty.FDA.name(), machine.getFdaImagePath());
         stateValues.put(MachineProperty.FDB.name(), machine.getFdbImagePath());
         stateValues.put(MachineProperty.SHARED_FOLDER.name(), machine.getSharedFolderPath());
@@ -347,7 +363,9 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 + MachineProperty.CDROM_INTERFACE + ", " + MachineProperty.BIOS + ", " + MachineProperty.DISABLE_I8042 + ", "
                 + MachineProperty.ENABLE_NVRAM + ", " + MachineProperty.NVRAM_PATH + ", "
                 + MachineProperty.HDA_FORMAT + ", " + MachineProperty.HDB_FORMAT + ", " + MachineProperty.HDC_FORMAT + ", "
-                + MachineProperty.HDD_FORMAT + ", " + MachineProperty.CDROM_FORMAT + " "
+                + MachineProperty.HDD_FORMAT + ", " + MachineProperty.CDROM_FORMAT + ", "
+                + MachineProperty.HDA_CACHE + ", " + MachineProperty.HDB_CACHE + ", "
+                + MachineProperty.HDC_CACHE + ", " + MachineProperty.HDD_CACHE + " "
                 + " from " + MACHINE_TABLE_NAME
                 + " where " + MachineProperty.STATUS + " in ( " + Config.STATUS_CREATED + " , " + Config.STATUS_PAUSED + " "
                 + " ) " + " and " + MachineProperty.MACHINE_NAME + "=\"" + machine + "\"" + ";";
@@ -424,6 +442,10 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             myMachine.setHdcFormat(cur.getString(51));
             myMachine.setHddFormat(cur.getString(52));
             myMachine.setCdFormat(cur.getString(53));
+            myMachine.setHdaCache(cur.getString(54));
+            myMachine.setHdbCache(cur.getString(55));
+            myMachine.setHdcCache(cur.getString(56));
+            myMachine.setHddCache(cur.getString(57));
         }
         cur.close();
 

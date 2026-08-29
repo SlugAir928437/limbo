@@ -72,5 +72,6 @@ gitsync.sh
 
 push.sh
 
-# TRAE generated analysis artifacts
-.trae-html-share-packages/
+.archive_compare
+
+.kotlin

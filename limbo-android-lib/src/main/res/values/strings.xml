@@ -252,6 +252,8 @@
     <string name="new_image">New</string>
     <string name="label_storage_interface">Interface</string>
     <string name="label_storage_format">Format</string>
+    <string name="label_storage_cache">Cache</string>
+    <string name="hint_storage_cache">empty = default</string>
     <string name="label_default">Default</string>
     <string name="label_auto">Auto</string>
     <string name="storage_if_ide">IDE</string>

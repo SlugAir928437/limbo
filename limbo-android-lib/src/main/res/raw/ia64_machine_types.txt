@@ -1,4 +1,6 @@
 itanium-vpc
 ia64-vpc
 itanium2-vpc
+hp-i2000
+hp-zx6000
 none

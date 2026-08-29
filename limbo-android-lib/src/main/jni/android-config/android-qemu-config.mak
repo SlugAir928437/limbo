@@ -79,7 +79,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--enable-sdl \
 	--audio-drv-list=sdl \
 	--enable-coroutine-pool \
-	--disable-tools --disable-libnfs --disable-tpm --disable-libiscsi --disable-docs --disable-rdma --disable-brlapi --disable-curl --disable-vde --disable-netmap --disable-cap-ng --disable-attr --disable-guest-agent --disable-pie --disable-rbd  --disable-lzo  --disable-snappy --disable-seccomp --disable-bzip2 --disable-glusterfs --disable-install-blobs --disable-werror --disable-gnutls --disable-nettle --disable-user \
+	--disable-tools --disable-libnfs --disable-tpm --disable-libiscsi --disable-docs --disable-rdma --disable-brlapi --disable-curl --disable-vde --disable-netmap --disable-cap-ng --disable-attr --disable-guest-agent --disable-pie --disable-rbd  --disable-lzo  --disable-snappy --disable-seccomp --disable-zstd --disable-bzip2 --disable-glusterfs --disable-libssh --disable-blkio --disable-install-blobs --disable-werror --disable-gnutls --disable-nettle --disable-user \
 	--extra-ldflags=" \
 	-L$(LIMBO_JNI_ROOT)/../obj/local/$(APP_ABI) \
 	-lcompat-limbo \

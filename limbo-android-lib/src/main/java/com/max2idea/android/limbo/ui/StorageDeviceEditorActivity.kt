@@ -60,6 +60,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         const val EXTRA_TYPE_FILE_TYPES = "type_file_types"
         const val EXTRA_TYPE_CREATE_IMAGE = "type_create_image"
         const val EXTRA_TYPE_CAN_IF = "type_can_if"
+        const val EXTRA_TYPE_CAN_CACHE = "type_can_cache"
         const val EXTRA_INIT_TYPE_SEL = "init_type_sel"
         const val EXTRA_INIT_SIZE = "init_size"
         const val EXTRA_INIT_SIZE_UNIT_SEL = "init_size_unit_sel"
@@ -70,6 +71,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         const val EXTRA_FORMAT_VALUES = "format_values"
         const val EXTRA_INIT_IF_SEL = "init_if_sel"
         const val EXTRA_INIT_FORMAT_SEL = "init_format_sel"
+        const val EXTRA_INIT_CACHE = "init_cache"
 
         // result extras
         const val EXTRA_REMOVE = "remove"
@@ -83,6 +85,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         const val EXTRA_NEW_IMAGE_SIZE_BYTES = "new_image_size_bytes"
         const val EXTRA_IF = "if"
         const val EXTRA_FORMAT = "format"
+        const val EXTRA_CACHE = "cache"
 
         const val MODE_NEW = "new"
         const val MODE_EDIT = "edit"
@@ -98,6 +101,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
     private lateinit var typeFileTypes: Array<String>
     private lateinit var typeCreateImage: BooleanArray
     private lateinit var typeCanIf: BooleanArray
+    private lateinit var typeCanCache: BooleanArray
     private lateinit var ifLabels: Array<String>
     private lateinit var ifValues: Array<String>
     private lateinit var formatLabels: Array<String>
@@ -113,6 +117,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
     private var imageSel by mutableIntStateOf(0)
     private var ifSel by mutableIntStateOf(0)
     private var formatSel by mutableIntStateOf(0)
+    private var cacheValue by mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -124,6 +129,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         typeFileTypes = i.getStringArrayExtra(EXTRA_TYPE_FILE_TYPES) ?: arrayOf()
         typeCreateImage = i.getBooleanArrayExtra(EXTRA_TYPE_CREATE_IMAGE) ?: BooleanArray(0)
         typeCanIf = i.getBooleanArrayExtra(EXTRA_TYPE_CAN_IF) ?: BooleanArray(0)
+        typeCanCache = i.getBooleanArrayExtra(EXTRA_TYPE_CAN_CACHE) ?: BooleanArray(0)
         ifLabels = i.getStringArrayExtra(EXTRA_IF_LABELS) ?: arrayOf(getString(R.string.label_default))
         ifValues = i.getStringArrayExtra(EXTRA_IF_VALUES) ?: arrayOf("")
         formatLabels = i.getStringArrayExtra(EXTRA_FORMAT_LABELS) ?: arrayOf(getString(R.string.label_auto))
@@ -133,6 +139,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         sizeUnitSel = i.getIntExtra(EXTRA_INIT_SIZE_UNIT_SEL, 0)
         ifSel = i.getIntExtra(EXTRA_INIT_IF_SEL, 0)
         formatSel = i.getIntExtra(EXTRA_INIT_FORMAT_SEL, 0)
+        cacheValue = i.getStringExtra(EXTRA_INIT_CACHE) ?: ""
 
         rebuildImageOptions(i.getStringExtra(EXTRA_INIT_IMAGE))
 
@@ -163,6 +170,9 @@ class StorageDeviceEditorActivity : ComponentActivity() {
                     formatLabels = formatLabels.toList(),
                     formatSel = formatSel,
                     onFormatSelected = { formatSel = it },
+                    canConfigCache = canConfigCache(),
+                    cacheValue = cacheValue,
+                    onCacheChange = { cacheValue = it },
                     imageOptions = imageOptions,
                     imageSel = imageSel,
                     onImageSelected = ::onImageSelected,
@@ -180,6 +190,9 @@ class StorageDeviceEditorActivity : ComponentActivity() {
 
     private fun canConfigIf(): Boolean =
         typeSel in typeCanIf.indices && typeCanIf[typeSel]
+
+    private fun canConfigCache(): Boolean =
+        typeSel in typeCanCache.indices && typeCanCache[typeSel]
 
     private fun currentFileType(): String =
         if (typeSel in typeFileTypes.indices) typeFileTypes[typeSel] else ""
@@ -309,6 +322,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         result.putExtra(EXTRA_CREATE_IMAGE, create)
         result.putExtra(EXTRA_IF, ifValues.getOrNull(ifSel) ?: "")
         result.putExtra(EXTRA_FORMAT, formatValues.getOrNull(formatSel) ?: "")
+        result.putExtra(EXTRA_CACHE, cacheValue.trim())
         if (create) {
             result.putExtra(EXTRA_SIZE, sizeValue)
             result.putExtra(EXTRA_SIZE_UNIT_SEL, sizeUnitSel)
@@ -331,6 +345,7 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         result.putExtra(EXTRA_IMAGE, "None")
         result.putExtra(EXTRA_IF, ifValues.getOrNull(ifSel) ?: "")
         result.putExtra(EXTRA_FORMAT, formatValues.getOrNull(formatSel) ?: "")
+        result.putExtra(EXTRA_CACHE, cacheValue.trim())
         setResult(RESULT_OK, result)
         finish()
     }
@@ -379,6 +394,9 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         formatLabels: List<String>,
         formatSel: Int,
         onFormatSelected: (Int) -> Unit,
+        canConfigCache: Boolean,
+        cacheValue: String,
+        onCacheChange: (String) -> Unit,
         imageOptions: List<String>,
         imageSel: Int,
         onImageSelected: (Int) -> Unit,
@@ -437,6 +455,20 @@ class StorageDeviceEditorActivity : ComponentActivity() {
                         selectedIndex = formatSel,
                         modifier = Modifier.fillMaxWidth(),
                         onSelected = onFormatSelected
+                    )
+                }
+
+                if (canConfigCache) {
+                    Spacer(Modifier.padding(top = 12.dp))
+                    Text(stringResource(R.string.label_storage_cache), style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = cacheValue,
+                        onValueChange = onCacheChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text(stringResource(R.string.hint_storage_cache)) },
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
                     )
                 }
 

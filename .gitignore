@@ -75,3 +75,9 @@ push.sh
 .archive_compare
 
 .kotlin
+
+# Machine-generated meson cross files (NDK path / toolchain specific)
+/limbo-android-lib/src/main/jni/android-config/meson-android-arm64-v8a.ini
+/limbo-android-lib/src/main/jni/android-config/meson-gtk4-android-cross.ini
+/limbo-android-lib/src/main/jni/android-config/meson-pixman-android-cross.ini
+/limbo-android-lib/src/main/jni/android-config/meson-slirp-android-cross.ini

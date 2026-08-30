@@ -10,9 +10,40 @@
 NDK_ROOT ?= /home/huang/android-ndk-r28c
 USE_GCC?=false
 
-### the ndk api should be the same as the minSdkVersion in your AndroidManifest.xml 
+### the ndk api should be the same as the minSdkVersion in your AndroidManifest.xml
+###
+### Android API compatibility window (api24-37):
+### The native build is compiled against the LOWEST API of the supported window
+### (ANDROID_API=24, identical to the Gradle minSdk). A .so linked against
+### android-N only pulls in symbols that already exist since API N, so the SAME
+### .so runs on every device from api24 up to api$(NDK_MAX_API) (37 = Gradle
+### targetSdk/compileSdk) WITHOUT requiring one build per API level.
+### The compat layer (compat/limbo_compat.h) already guards per-API bionic
+### features with __ANDROID_API__<NN (strchrnul, shm_open, getrandom,
+### timespec_get, close_range), and the 16 KB page-size linker flags cover
+### Android 15+ / API 35+ 16 KB-page devices.
+### DO NOT raise ANDROID_API above 24 unless you knowingly accept dropping
+### support for the lower devices inside this api24-37 window.
 ANDROID_API ?= 24
 NDK_PLATFORM_API=$(ANDROID_API)
+
+# Lowest API in the supported compatibility window (= Gradle minSdk)
+NDK_MIN_API ?= 24
+# Highest API the JNI build supports (= Gradle targetSdk/compileSdk, here 37)
+NDK_MAX_API ?= 37
+
+# Guard: refuse an ANDROID_API outside the api24-37 window so we can never
+# silently emit a .so that runs on none of the supported devices.
+API_IN_RANGE := $(shell test $(NDK_PLATFORM_API) -ge $(NDK_MIN_API) -a $(NDK_PLATFORM_API) -le $(NDK_MAX_API) && echo 1 || echo 0)
+ifeq ($(API_IN_RANGE),0)
+$(error ANDROID_API=$(NDK_PLATFORM_API) is outside the supported api$(NDK_MIN_API)-$(NDK_MAX_API) window)
+endif
+
+$(info SUPPORTED API WINDOW = api$(NDK_MIN_API)-$(NDK_MAX_API) (building against android$(NDK_PLATFORM_API)))
+
+# Platform feature macros below only tell the sources which bionic features are
+# available in the *build* platform; they never require a newer device, so the
+# api24-37 device window stays fully covered regardless of these toggles.
 
 # Set to true if you use platform-21 or above
 USE_NDK_PLATFORM21 ?= true

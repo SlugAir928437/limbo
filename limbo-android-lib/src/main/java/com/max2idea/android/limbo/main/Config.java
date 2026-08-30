@@ -165,7 +165,7 @@ public class Config {
 
     //enable tracing
     // make sure you have access to the dir/files below
-    public static boolean enableTracingLog = false;
+    public static boolean enableTracingLog = BuildConfig.DEBUG;
     public static final String traceDir = "/sdcard/limbo/tmp/trace";
     public static final String traceEventsFile = "/sdcard/limbo/tmp/events";
     public static final String traceLogFile = "/sdcard/limbo/log.txt";

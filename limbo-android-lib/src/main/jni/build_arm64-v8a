@@ -1,4 +1,5 @@
-export NDK_ROOT=/home/huang/android-ndk-r25c
+#!/bin/bash
+export NDK_ROOT=/home/huang/android-ndk-r28c
 export PATH=$PATH:$NDK_ROOT
 export BUILD_THREADS=$(nproc --all)
 export BUILD_GUEST='ia64-softmmu'

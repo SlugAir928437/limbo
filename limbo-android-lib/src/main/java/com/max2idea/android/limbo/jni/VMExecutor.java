@@ -938,7 +938,7 @@ class VMExecutor extends MachineExecutor {
                 QmpClient.sendCommand(QmpClient.getResetCommand());
             } else {
                 //XXX: Qmp command only halts the VM but doesn't exit so we use force close
-//            QmpClient.sendCommand(QmpClient.powerDown());
+                // QmpClient.sendCommand(QmpClient.powerDown());
                 stop(restart);
             }
         }).start();

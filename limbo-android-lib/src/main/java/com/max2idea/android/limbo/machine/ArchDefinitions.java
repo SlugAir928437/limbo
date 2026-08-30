@@ -76,6 +76,12 @@ public class ArchDefinitions {
             vgaValues.add("ati");
         }
 
+        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+            // NVIDIA Quadro2 Pro PCI VGA, provided by the merged experimental HP
+            // i2000/zx6000 machines via '-vga quadro2'; experimental like ati
+            vgaValues.add("quadro2");
+        }
+
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64) {
             vgaValues.add("cirrus");
             vgaValues.add("vmware");

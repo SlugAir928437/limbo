@@ -22,6 +22,7 @@
 
 /* For syscall() */
 #include <sys/syscall.h>
+#include <time.h>
 
 #include "limbo_logutils.h"
 
@@ -307,4 +308,20 @@ ssize_t copy_file_range(int fd_in, loff_t *off_in,
                         size_t len, unsigned int flags)
 {
     return limbo_copy_file_range(fd_in, off_in, fd_out, off_out, len, flags);
+}
+
+/* ========================================================================
+ * timespec_get() — C11 API absent from bionic before API 29. Used by the
+ * QEMU uftrace TCG plugin. Delegates to clock_gettime(CLOCK_REALTIME).
+ * ======================================================================== */
+
+int timespec_get(struct timespec *ts, int base)
+{
+    if (base != TIME_UTC) {
+        return 0;
+    }
+    if (clock_gettime(CLOCK_REALTIME, ts) == 0) {
+        return base;
+    }
+    return 0;
 }

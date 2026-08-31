@@ -18,6 +18,8 @@ Copyright (C) Max Kastanas 2012
  */
 package com.max2idea.android.limbo.main;
 
+import android.os.Environment;
+
 import com.limbo.emu.lib.BuildConfig;
 
 /**
@@ -98,8 +100,6 @@ public class Config {
     //TODO: enable immersive mode at some point in time
     public static boolean enableImmersiveMode = false;
 
-    //TODO: add in settings
-    public static boolean legacyDrives = false;
     public static boolean syncFilesOnClose = true;
 
     public enum Arch {
@@ -166,9 +166,9 @@ public class Config {
     //enable tracing
     // make sure you have access to the dir/files below
     public static boolean enableTracingLog = BuildConfig.DEBUG;
-    public static final String traceDir = "/sdcard/limbo/tmp/trace";
-    public static final String traceEventsFile = "/sdcard/limbo/tmp/events";
-    public static final String traceLogFile = "/sdcard/limbo/log.txt";
+    public static final String traceDir = Environment.getExternalStorageDirectory().getPath() + "/limbo/tmp/trace";
+    public static final String traceEventsFile = Environment.getExternalStorageDirectory().getPath() + "/limbo/tmp/events";
+    public static final String traceLogFile = Environment.getExternalStorageDirectory().getPath() + "/limbo/log.txt";
 
     // override translation block size
     public static boolean overrideTbSize;

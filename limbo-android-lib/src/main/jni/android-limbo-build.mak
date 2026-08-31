@@ -160,6 +160,7 @@ GTK_PKG_CONFIG_DIR := $(GTK_INSTALL_DIR)/lib/pkgconfig
 # pixman (shared with QEMU, meson build)
 PIXMAN_BUILD_DIR := $(LIMBO_JNI_ROOT)/pixman/build-android-$(APP_ABI)
 PIXMAN_INSTALL_DIR := $(LIMBO_JNI_ROOT)/pixman/android-install/$(APP_ABI)
+PIXMAN_PKG_CONFIG_DIR := $(PIXMAN_INSTALL_DIR)/lib/pkgconfig
 PIXMAN_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-pixman-android-cross.ini
 PIXMAN_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-pixman-android-cross.ini.in
 
@@ -174,12 +175,29 @@ SLIRP_INSTALL_DIR := $(LIMBO_JNI_ROOT)/slirp/android-install/$(APP_ABI)
 SLIRP_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-slirp-android-cross.ini
 SLIRP_PKG_CONFIG_DIR := $(SLIRP_INSTALL_DIR)/lib/pkgconfig
 
+# spice stack for the qxl-vga device (QEMU CONFIG_QXL).  All built static:
+#   spice-protocol (headers only) -> spice-server (libspice-server.a)
+#   openssl / libjpeg-turbo are spice-server's TLS / MJPEG deps.
+SPICE_PROTO_INSTALL_DIR := $(LIMBO_JNI_ROOT)/spice-protocol/android-install/$(APP_ABI)
+SPICE_PROTO_BUILD_DIR := $(LIMBO_JNI_ROOT)/spice-protocol/build-android-$(APP_ABI)
+SPICE_PROTO_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-spice-protocol-android-cross.ini
+SPICE_PROTO_PKG_CONFIG_DIR := $(SPICE_PROTO_INSTALL_DIR)/share/pkgconfig
+SPICE_BUILD_DIR := $(LIMBO_JNI_ROOT)/spice/build-android-$(APP_ABI)
+SPICE_INSTALL_DIR := $(LIMBO_JNI_ROOT)/spice/android-install/$(APP_ABI)
+SPICE_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-spice-android-cross.ini
+SPICE_PKG_CONFIG_DIR := $(SPICE_INSTALL_DIR)/lib/pkgconfig
+OPENSSL_INSTALL_DIR := $(LIMBO_JNI_ROOT)/openssl/android-install/$(APP_ABI)
+OPENSSL_PKG_CONFIG_DIR := $(OPENSSL_INSTALL_DIR)/lib/pkgconfig
+JPEG_BUILD_DIR := $(LIMBO_JNI_ROOT)/libjpeg/build-android-$(APP_ABI)
+JPEG_INSTALL_DIR := $(LIMBO_JNI_ROOT)/libjpeg/android-install/$(APP_ABI)
+JPEG_PKG_CONFIG_DIR := $(JPEG_INSTALL_DIR)/lib/pkgconfig
+
 # NOTE: GTK_PKG_CONFIG_DIR must be defined before this line (:= evaluates immediately)
 # An empty trailing path component (a bare ':') makes pkg-config append the
 # host system dirs, leaking host-only packages (libpmem, vte, ...) into the
 # Android cross-build - so only append ':' + env PKG_CONFIG_PATH when non-empty.
 # slirp must be visible to QEMU's configure here so CONFIG_SLIRP gets enabled.
-PKG_CONFIG_PATH := $(SLIRP_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
+PKG_CONFIG_PATH := $(SPICE_PKG_CONFIG_DIR):$(SPICE_PROTO_PKG_CONFIG_DIR):$(OPENSSL_PKG_CONFIG_DIR):$(JPEG_PKG_CONFIG_DIR):$(SLIRP_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 
 CREATE_PKG_CONFIG_LINK = \
 	if [ ! -x "$(PKG_CONFIG_LINK)" ]; then \
@@ -258,6 +276,35 @@ CREATE_SLIRP_MESON_CROSS_FILE = \
 		-e 's|@NDK_PROJECT_PATH@|$(NDK_PROJECT_PATH)|g' \
 		-e 's|@APP_ABI@|$(APP_ABI)|g' \
 		"$(LIMBO_JNI_ROOT)/android-config/meson-slirp-android-cross.ini.in" > "$(SLIRP_CROSS_FILE)"
+
+CREATE_SPICE_PROTO_MESON_CROSS_FILE = \
+	sed \
+		-e 's|@CC@|$(CC)|g' \
+		-e 's|@AR@|$(AR)|g' \
+		-e 's|@STRIP@|$(STRIP)|g' \
+		-e 's|@PKG_CONFIG@|$(PKG_CONFIG)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		-e 's|@SPICE_PROTO_INSTALL_DIR@|$(SPICE_PROTO_INSTALL_DIR)|g' \
+		-e 's|@TARGET_TRIPLE@|$(TARGET_PREFIX)$(NDK_PLATFORM_API)|g' \
+		-e 's|@SYSROOT@|$(SYSROOT)|g' \
+		-e 's|@LIMBO_JNI_ROOT@|$(LIMBO_JNI_ROOT)|g' \
+		"$(LIMBO_JNI_ROOT)/android-config/meson-spice-protocol-android-cross.ini.in" > "$(SPICE_PROTO_CROSS_FILE)"
+
+CREATE_SPICE_MESON_CROSS_FILE = \
+	sed \
+		-e 's|@CC@|$(CC)|g' \
+		-e 's|@CXX@|$(CXX)|g' \
+		-e 's|@AR@|$(AR)|g' \
+		-e 's|@STRIP@|$(STRIP)|g' \
+		-e 's|@PKG_CONFIG@|$(PKG_CONFIG)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		-e 's|@SPICE_INSTALL_DIR@|$(SPICE_INSTALL_DIR)|g' \
+		-e 's|@TARGET_TRIPLE@|$(TARGET_PREFIX)$(NDK_PLATFORM_API)|g' \
+		-e 's|@SYSROOT@|$(SYSROOT)|g' \
+		-e 's|@LIMBO_JNI_ROOT@|$(LIMBO_JNI_ROOT)|g' \
+		"$(LIMBO_JNI_ROOT)/android-config/meson-spice-android-cross.ini.in" > "$(SPICE_CROSS_FILE)"
 
 CREATE_GTK_MESON_CROSS_FILE = \
 	sed \

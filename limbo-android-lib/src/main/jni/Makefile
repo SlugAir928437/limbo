@@ -132,7 +132,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-qemu fetch-gtk4android
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-qemu fetch-gtk4android
 
 default: limbo
 	
@@ -258,6 +258,64 @@ slirp: ndk
 clean-slirp:
 	-rm -rf "$(SLIRP_BUILD_DIR)" "$(SLIRP_INSTALL_DIR)" "$(SLIRP_CROSS_FILE)"
 
+# spice stack for the qxl-vga device (QEMU CONFIG_QXL).  All static:
+#   spice-protocol (headers) -> openssl/libjpeg (spice-server deps) -> spice-server
+# config-spice must run after glib/pixman so spice's pkg-config finds them.
+config-spice: ndk pkg-config-link ffi glib pixman
+	# openssl 3.0.16 (static libcrypto/libssl)
+	cd $(LIMBO_JNI_ROOT)/openssl && make clean >/dev/null 2>&1 || true
+	cd $(LIMBO_JNI_ROOT)/openssl && \
+	ANDROID_NDK_ROOT="$(NDK_ROOT)" ANDROID_NDK_HOME="$(NDK_ROOT)" \
+	./Configure android-arm64 -D__ANDROID_API__=$(NDK_PLATFORM_API) \
+		--prefix="$(OPENSSL_INSTALL_DIR)" --openssldir="$(OPENSSL_INSTALL_DIR)/ssl" \
+		no-shared no-tests no-legacy no-unit-test \
+		no-async no-dso no-engine no-ui-console
+	# libjpeg-turbo 3.0.4 (static libjpeg)
+	cd $(LIMBO_JNI_ROOT)/libjpeg && rm -rf "$(JPEG_BUILD_DIR)" "$(JPEG_INSTALL_DIR)" && \
+	cmake -S . -B "$(JPEG_BUILD_DIR)" \
+		-DCMAKE_TOOLCHAIN_FILE=$(NDK_ROOT)/build/cmake/android.toolchain.cmake \
+		-DANDROID_ABI=$(APP_ABI) -DANDROID_PLATFORM=android-$(NDK_PLATFORM_API) \
+		-DANDROID_ARM_NEON=ON \
+		-DCMAKE_INSTALL_PREFIX="$(JPEG_INSTALL_DIR)" \
+		-DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
+		-DWITH_SIMD=ON -DWITH_TURBOJPEG=OFF \
+		-DWITH_JAVA=OFF -DWITH_12BIT=OFF -DWITH_16BIT=OFF \
+		-DCMAKE_BUILD_TYPE=Release
+	# spice-protocol (headers only)
+	$(CREATE_SPICE_PROTO_MESON_CROSS_FILE)
+	cd $(LIMBO_JNI_ROOT)/spice-protocol && rm -rf "$(SPICE_PROTO_BUILD_DIR)" "$(SPICE_PROTO_INSTALL_DIR)" && \
+	meson setup "$(SPICE_PROTO_BUILD_DIR)" . \
+		--cross-file "$(SPICE_PROTO_CROSS_FILE)" \
+		--prefix "$(SPICE_PROTO_INSTALL_DIR)" --libdir lib --buildtype release
+	# spice-server 0.15.2 (static libspice-server.a, incl. spice-common subproject)
+	$(CREATE_SPICE_MESON_CROSS_FILE)
+	cd $(LIMBO_JNI_ROOT)/spice && rm -rf "$(SPICE_BUILD_DIR)" "$(SPICE_INSTALL_DIR)" && \
+	PKG_CONFIG_PATH="$(SPICE_PROTO_PKG_CONFIG_DIR):$(OPENSSL_PKG_CONFIG_DIR):$(JPEG_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(PIXMAN_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
+	PKG_CONFIG_LIBDIR="$(SPICE_PROTO_PKG_CONFIG_DIR):$(OPENSSL_PKG_CONFIG_DIR):$(JPEG_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(PIXMAN_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
+	meson setup "$(SPICE_BUILD_DIR)" . \
+		--cross-file "$(SPICE_CROSS_FILE)" \
+		--prefix "$(SPICE_INSTALL_DIR)" --libdir lib --buildtype release \
+		-Dgstreamer=no -Dlz4=false -Dsasl=false -Dopus=disabled \
+		-Dsmartcard=disabled -Dtests=false -Dmanual=false \
+		-Dstatistics=false -Dalignment-checks=false -Dextra-checks=false \
+		-Ddefault_library=static
+
+spice: ndk
+	ninja -C "$(JPEG_BUILD_DIR)" -j $(BUILD_THREADS)
+	cmake --install "$(JPEG_BUILD_DIR)"
+	cd $(LIMBO_JNI_ROOT)/openssl && make -j $(BUILD_THREADS) && make install_sw
+	ninja -C "$(SPICE_PROTO_BUILD_DIR)" -j $(BUILD_THREADS)
+	DESTDIR= ninja -C "$(SPICE_PROTO_BUILD_DIR)" install
+	ninja -C "$(SPICE_BUILD_DIR)" -j $(BUILD_THREADS)
+	DESTDIR= ninja -C "$(SPICE_BUILD_DIR)" install
+
+clean-spice:
+	-rm -rf "$(SPICE_BUILD_DIR)" "$(SPICE_INSTALL_DIR)" "$(SPICE_CROSS_FILE)"
+	-rm -rf "$(SPICE_PROTO_BUILD_DIR)" "$(SPICE_PROTO_INSTALL_DIR)" "$(SPICE_PROTO_CROSS_FILE)"
+	-rm -rf "$(JPEG_BUILD_DIR)" "$(JPEG_INSTALL_DIR)"
+	-rm -rf "$(OPENSSL_INSTALL_DIR)"
+	-cd $(LIMBO_JNI_ROOT)/openssl && make clean >/dev/null 2>&1 || true
+
 # GTK4 (gtk4android) display stack, only built when USE_GTK=true
 # gtk builds against the jni shared libs (glib/pixman/libffi), so they must
 # be built (and their .pc files generated) before we can configure GTK.
@@ -347,9 +405,9 @@ clean-qemu:
 	-rm -rf ../assets/roms/* 
 	-rm -rf $(LIMBO_APP_LIBS)/assets/roms/*
 
-config-deps: ndk config-ffi config-glib config-pixman config-slirp $(if $(USE_GTK),config-gtk)
+config-deps: ndk config-ffi config-glib config-pixman config-slirp config-spice $(if $(USE_GTK),config-gtk)
 
-deps: ndk glib pixman slirp $(if $(USE_GTK),gtk)
+deps: ndk glib pixman slirp spice $(if $(USE_GTK),gtk)
 
 _build-qemu: ndk 
 	make _qemu
@@ -539,7 +597,7 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-gtk clean-ncat clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-ncat clean-ndk
 
 clean: 
 	make clean-qemu 
@@ -547,6 +605,7 @@ clean:
 	make clean-glib 
 	make clean-pixman
 	make clean-slirp
+	make clean-spice
 	make clean-gtk
 	make clean-ndk
 	# only remove build artifacts (files), never directories -- the old -name

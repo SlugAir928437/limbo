@@ -74,6 +74,9 @@ public class ArchDefinitions {
             // ATI VGA is available when libqemu-system-*.*.so was built with CONFIG_ATI_VGA;
             // this is an experimental PCI vga option and may not be supported by every board
             vgaValues.add("ati");
+            // QXL (qxl-vga) is a PCI VGA device that requires the SPICE stack
+            // (CONFIG_QXL); only offered when libqemu-system-*.*.so was built with spice
+            vgaValues.add("qxl");
         }
 
         if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {

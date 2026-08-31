@@ -1,0 +1,22 @@
+[binaries]
+c = '@CC@'
+ar = '@AR@'
+strip = '@STRIP@'
+pkgconfig = '@PKG_CONFIG@'
+pkg-config = '@PKG_CONFIG@'
+
+[host_machine]
+system = 'android'
+cpu_family = '@MESON_CPU_FAMILY@'
+cpu = '@MESON_CPU@'
+endian = 'little'
+
+[properties]
+needs_exe_wrapper = true
+
+[built-in options]
+prefix = '@SPICE_PROTO_INSTALL_DIR@'
+libdir = 'lib'
+buildtype = 'release'
+c_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-D__ANDROID__', '-DANDROID', '-D__linux__']
+c_link_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@']

@@ -1,10 +1,13 @@
 /spice/
 /spice-protocol/
 /openssl/
+/libjpeg/
 /jpeg/
 /png/
 /sdl_latest/
 /android-spice-config.mak
+# downloaded source archives for the spice stack
+/downloads/
 
 #patches
 /qemu-patches/qemu-2.3.0.patch

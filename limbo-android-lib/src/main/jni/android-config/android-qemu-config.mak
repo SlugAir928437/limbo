@@ -64,7 +64,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--enable-vnc --disable-vnc-jpeg --disable-vnc-sasl \
 	--disable-smartcard \
 	--enable-kvm \
-	--disable-spice \
+	--enable-spice \
 	--disable-xen --disable-xen-pci-passthrough \
 	--disable-numa \
 	--disable-linux-aio \

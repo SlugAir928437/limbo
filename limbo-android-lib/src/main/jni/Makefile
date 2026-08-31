@@ -549,10 +549,13 @@ clean:
 	make clean-slirp
 	make clean-gtk
 	make clean-ndk
-	-find . -name "*.d" -exec rm -rf {} \;
-	-find . -name "*.a" -exec rm -rf {} \;
-	-find . -name "*.o" -exec rm -rf {} \;
-	-find . -name "*.so" -exec rm -rf {} \;
+	# only remove build artifacts (files), never directories -- the old -name
+	# "*.d" pattern also matched any dir whose basename ends in ".d" (e.g.
+	# subprojects/fontconfig/conf.d) and wiped it with rm -rf.
+	-find . -type f -name "*.d" -exec rm -f {} \;
+	-find . -type f -name "*.a" -exec rm -f {} \;
+	-find . -type f -name "*.o" -exec rm -f {} \;
+	-find . -type f -name "*.so" -exec rm -f {} \;
 	$(MAKE) createdirs
 	
 help:

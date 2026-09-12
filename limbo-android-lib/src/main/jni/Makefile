@@ -552,6 +552,8 @@ fetch-spice:
 		tar -xjf /tmp/spice-0.15.2.tar.bz2 -C /tmp && \
 		mv -f /tmp/spice-0.15.2 "$(LIMBO_JNI_ROOT)/spice"; \
 		cd $(LIMBO_JNI_ROOT)/spice && test -f .tarball-version || echo "0.15.2" > .tarball-version; \
+		echo ">> Applying spice-android.patch"; \
+		patch -p1 -d $(LIMBO_JNI_ROOT)/spice < $(LIMBO_JNI_ROOT)/patches/spice-android.patch; \
 	else \
 		echo ">> spice 已存在，跳过"; \
 	fi

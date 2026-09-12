@@ -272,7 +272,7 @@ config-spice: ndk pkg-config-link ffi glib pixman
 		no-async no-dso no-engine no-ui-console
 	# libjpeg-turbo 3.0.4 (static libjpeg)
 	cd $(LIMBO_JNI_ROOT)/libjpeg && rm -rf "$(JPEG_BUILD_DIR)" "$(JPEG_INSTALL_DIR)" && \
-	cmake -S . -B "$(JPEG_BUILD_DIR)" \
+	cmake -S . -B "$(JPEG_BUILD_DIR)" -G Ninja \
 		-DCMAKE_TOOLCHAIN_FILE=$(NDK_ROOT)/build/cmake/android.toolchain.cmake \
 		-DANDROID_ABI=$(APP_ABI) -DANDROID_PLATFORM=android-$(NDK_PLATFORM_API) \
 		-DANDROID_ARM_NEON=ON \
@@ -287,6 +287,11 @@ config-spice: ndk pkg-config-link ffi glib pixman
 	meson setup "$(SPICE_PROTO_BUILD_DIR)" . \
 		--cross-file "$(SPICE_PROTO_CROSS_FILE)" \
 		--prefix "$(SPICE_PROTO_INSTALL_DIR)" --libdir lib --buildtype release
+	# build+install the spice deps first so spice-server's meson setup can find their .pc
+	cd $(LIMBO_JNI_ROOT)/openssl && make -j $(BUILD_THREADS) && make install_sw
+	ninja -C "$(JPEG_BUILD_DIR)" -j $(BUILD_THREADS) && cmake --install "$(JPEG_BUILD_DIR)"
+	ninja -C "$(SPICE_PROTO_BUILD_DIR)" -j $(BUILD_THREADS)
+	DESTDIR= ninja -C "$(SPICE_PROTO_BUILD_DIR)" install
 	# spice-server 0.15.2 (static libspice-server.a, incl. spice-common subproject)
 	$(CREATE_SPICE_MESON_CROSS_FILE)
 	cd $(LIMBO_JNI_ROOT)/spice && rm -rf "$(SPICE_BUILD_DIR)" "$(SPICE_INSTALL_DIR)" && \
@@ -393,7 +398,7 @@ clean-gtk:
 	rmdir "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))" 2>/dev/null || true
 
 _qemu: ndk
-	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST) CFLAGS="$(ARCH_CFLAGS)"
+	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST)
 
 config-qemu: ndk pkg-config-link
 	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak

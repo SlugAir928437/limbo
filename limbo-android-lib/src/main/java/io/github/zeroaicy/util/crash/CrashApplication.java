@@ -1,0 +1,55 @@
+package io.github.zeroaicy.util.crash;
+
+import android.app.Application;
+import android.content.Context;
+
+import com.max2idea.android.limbo.main.LimboApplication;
+
+import io.github.zeroaicy.util.ContextUtil;
+import io.github.zeroaicy.util.DebugUtil;
+import io.github.zeroaicy.util.FileUtil;
+
+public class CrashApplication extends LimboApplication {
+
+	static Application mCrashApplication;
+	
+	static{
+    DebugUtil.debug();
+    }
+
+	protected static boolean isDebug = true;
+
+	@Override
+	public void onCreate(){
+		super.onCreate();
+		//闪退日志
+		mCrashApplication = CrashApplication.this;
+		//注册
+		CrashApphandler.getInstance().onCreated();
+	}
+
+	@Override
+	protected void attachBaseContext(Context base){
+		if ( isDebug ){
+			DebugUtil.debug(base);
+		}
+		CrashApphandler.getInstance().onCreated();
+		super.attachBaseContext(base);
+		
+	}
+
+    public static void CrashInit(){
+        CrashApphandler instance = CrashApphandler.getInstance();
+		Context context = ContextUtil.getContext();
+        instance.setCAHCE_CRASH_LOG(context.getExternalCacheDir().getAbsolutePath());
+		instance.setLIMIT_LOG_COUNT(5);
+		instance.init();
+    }
+    public static void CrashInit(Context base){
+        CrashApphandler instance = CrashApphandler.getInstance();
+		instance.setCAHCE_CRASH_LOG(FileUtil.CrashLogPath);
+		instance.setLIMIT_LOG_COUNT(5);
+		instance.init(base);
+    }
+}
+

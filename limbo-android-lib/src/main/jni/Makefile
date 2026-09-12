@@ -132,7 +132,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-qemu fetch-gtk4android
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android
 
 default: limbo
 	
@@ -481,6 +481,11 @@ SDL2_TGZ            := https://www.libsdl.org/release/SDL2-2.0.8.tar.gz
 SLIRP_URL            := https://gitlab.freedesktop.org/slirp/libslirp.git
 # revision pinned in qemu/subprojects/slirp.wrap (libslirp 4.7.0)
 SLIRP_COMMIT         := 26be815b86e8d49add8c9a8b320239b9594ff03d
+# spice stack tarballs (config-spice deps: spice-server vendors spice-common)
+OPENSSL_TGZ          := https://www.openssl.org/source/openssl-3.0.16.tar.gz
+LIBJPEG_TGZ          := https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.0.4/libjpeg-turbo-3.0.4.tar.gz
+SPICE_PROTO_TGZ      := https://www.spice-space.org/download/releases/spice-protocol-0.14.5.tar.xz
+SPICE_TGZ            := https://www.spice-space.org/download/releases/spice-0.15.2.tar.bz2
 
 # x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用 IA-64 fork
 ifneq ($(filter x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu,$(BUILD_GUEST)),)
@@ -489,7 +494,7 @@ else
 QEMU_USE_OFFICIAL := no
 endif
 
-fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-gtk4android fetch-qemu
+fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-gtk4android fetch-qemu
 
 fetch-slirp:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/slirp/.git" ] || [ ! -f "$(LIMBO_JNI_ROOT)/slirp/meson.build" ]; then \
@@ -500,6 +505,55 @@ fetch-slirp:
 		git -C "$(LIMBO_JNI_ROOT)/slirp" apply "$(LIMBO_JNI_ROOT)/patches/slirp-cross-build.patch"; \
 	else \
 		echo ">> libslirp 已存在，跳过"; \
+	fi
+
+fetch-openssl:
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/openssl/Configure" ]; then \
+		echo ">> GET openssl 3.0.16"; \
+		rm -f /tmp/openssl-3.0.16.tar.gz; \
+		wget --quiet --timeout=60 $(OPENSSL_TGZ) -O /tmp/openssl-3.0.16.tar.gz; \
+		rm -rf /tmp/openssl-3.0.16; \
+		tar -xzf /tmp/openssl-3.0.16.tar.gz -C /tmp && \
+		mv -f /tmp/openssl-3.0.16 "$(LIMBO_JNI_ROOT)/openssl"; \
+	else \
+		echo ">> openssl 已存在，跳过"; \
+	fi
+
+fetch-libjpeg:
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/libjpeg/CMakeLists.txt" ]; then \
+		echo ">> GET libjpeg-turbo 3.0.4"; \
+		rm -f /tmp/libjpeg-turbo-3.0.4.tar.gz; \
+		wget --quiet --timeout=60 $(LIBJPEG_TGZ) -O /tmp/libjpeg-turbo-3.0.4.tar.gz; \
+		rm -rf /tmp/libjpeg-turbo-3.0.4; \
+		tar -xzf /tmp/libjpeg-turbo-3.0.4.tar.gz -C /tmp && \
+		mv -f /tmp/libjpeg-turbo-3.0.4 "$(LIMBO_JNI_ROOT)/libjpeg"; \
+	else \
+		echo ">> libjpeg 已存在，跳过"; \
+	fi
+
+fetch-spice-protocol:
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/spice-protocol/meson.build" ]; then \
+		echo ">> GET spice-protocol 0.14.5"; \
+		rm -f /tmp/spice-protocol-0.14.5.tar.xz; \
+		wget --quiet --timeout=60 $(SPICE_PROTO_TGZ) -O /tmp/spice-protocol-0.14.5.tar.xz; \
+		rm -rf /tmp/spice-protocol-0.14.5; \
+		tar -xJf /tmp/spice-protocol-0.14.5.tar.xz -C /tmp && \
+		mv -f /tmp/spice-protocol-0.14.5 "$(LIMBO_JNI_ROOT)/spice-protocol"; \
+	else \
+		echo ">> spice-protocol 已存在，跳过"; \
+	fi
+
+fetch-spice:
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/spice/meson.build" ]; then \
+		echo ">> GET spice-server 0.15.2"; \
+		rm -f /tmp/spice-0.15.2.tar.bz2; \
+		wget --quiet --timeout=60 $(SPICE_TGZ) -O /tmp/spice-0.15.2.tar.bz2; \
+		rm -rf /tmp/spice-0.15.2; \
+		tar -xjf /tmp/spice-0.15.2.tar.bz2 -C /tmp && \
+		mv -f /tmp/spice-0.15.2 "$(LIMBO_JNI_ROOT)/spice"; \
+		cd $(LIMBO_JNI_ROOT)/spice && test -f .tarball-version || echo "0.15.2" > .tarball-version; \
+	else \
+		echo ">> spice 已存在，跳过"; \
 	fi
 
 fetch-glib:

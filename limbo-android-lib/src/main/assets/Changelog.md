@@ -9,9 +9,4 @@
 
 > [!NOTE]
 > ## 已知问题
-> 
 > `启用 MTTCG`、`启用 KVM`、`禁用 HPET`、`禁用 TSC`、`禁用 ACPI` 的 Switch 状态无法正常更新
-> 
-> 自带的BIOS（除`ia64-firmware`外）无法使用
-> 
-> 网卡不支持

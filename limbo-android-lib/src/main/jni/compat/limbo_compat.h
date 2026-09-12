@@ -40,6 +40,13 @@ int shm_unlink(const char *name);
 #if !defined(__ANDROID_API__) || __ANDROID_API__ < 28
 ssize_t getrandom(void *buf, size_t buflen, unsigned int flags);
 #endif
+/* bionic only declares copy_file_range() from API 30 (android arm64); QEMU's
+ * block/file-posix.c calls it when CONFIG_COPY_FILE_RANGE. Stub in
+ * limbo_compat_stubs.c implemented directly on __NR_copy_file_range. */
+#if !defined(__ANDROID_API__) || __ANDROID_API__ < 30
+ssize_t copy_file_range(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out,
+                        size_t len, unsigned int flags);
+#endif
 /* bionic only exposes C11 timespec_get() from API 29 (used by the uftrace
  * TCG plugin); still, declare it here so no TU relies on an implicit decl. */
 #if !defined(__ANDROID_API__) || __ANDROID_API__ < 29

@@ -56,7 +56,7 @@ public class LimboApplication extends Application {
 
     public static void setupEnv(Context context) {
         try {
-            PackageInfo packageInfo = context.getPackageManager().getPackageInfo(context.getClass().getPackage().getName(),
+            PackageInfo packageInfo = context.getPackageManager().getPackageInfo(context.getPackageName(),
                     PackageManager.GET_META_DATA);
             limboVersion = packageInfo.versionCode;
             limboVersionString = packageInfo.versionName;
@@ -72,6 +72,7 @@ public class LimboApplication extends Application {
             Log.d(TAG, "Qemu Version Number: " + qemuVersion);
         } catch (Exception e) {
             e.printStackTrace();
+            Log.e("", "Could not load version information: " + e);
             ToastUtils.toastShort(context, "Could not load version information: " + e);
         }
     }
@@ -79,7 +80,7 @@ public class LimboApplication extends Application {
     public static String getUserId(Context context) {
         String userid = "None";
         try {
-            ApplicationInfo appInfo = context.getPackageManager().getApplicationInfo(context.getClass().getPackage().getName(),
+            ApplicationInfo appInfo = context.getPackageManager().getApplicationInfo(context.getPackageName(),
                     PackageManager.GET_META_DATA);
             userid = appInfo.uid + "";
         } catch (PackageManager.NameNotFoundException e) {

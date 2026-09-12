@@ -165,7 +165,7 @@ public class Config {
 
     //enable tracing
     // make sure you have access to the dir/files below
-    public static boolean enableTracingLog = BuildConfig.DEBUG;
+    public static boolean enableTracingLog = false;
     public static final String traceDir = Environment.getExternalStorageDirectory().getPath() + "/limbo/tmp/trace";
     public static final String traceEventsFile = Environment.getExternalStorageDirectory().getPath() + "/limbo/tmp/events";
     public static final String traceLogFile = Environment.getExternalStorageDirectory().getPath() + "/limbo/log.txt";

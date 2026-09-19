@@ -62,7 +62,7 @@ REMOVE_GDBSERVER=rm -f ../jniLibs/$(APP_ABI_DIR)/gdbserver
 SYNC_LIBS=rsync -av --exclude libqemu-system-* ../libs/* ../jniLibs/
 
 LIMBO_PRJ_ROOT=../../../..
-LIMBO_APP_LIBS=$(LIMBO_PRJ_ROOT)/limbo-android-lib/src/main
+LIMBO_APP_LIBS=$(LIMBO_PRJ_ROOT)/limbo-app/src/main
 
 # ncat (Nmap's netcat) - cross-compiled per BUILD_HOST ABI into jniLibs so
 # Android bundles it as libncat.so (executed at runtime, not dlopen'ed).

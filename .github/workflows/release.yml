@@ -1,9 +1,7 @@
 name: release
 # 手动触发的发版工作流：
-#  - 按「模拟架构(guest) × 主机架构(host)」构建 6 个独立 APK：
-#      guest:  x86_64 / aarch64 / ia64
-#      host:   arm64-v8a / x86_64
-#  - 每个组合单独执行原生库构建 (make limbo) 与 gradle 打包，产物用签名密钥机签
+#  - 按「模拟架构(guest)」构建 3 个独立 APK：x86_64 / aarch64 / ia64
+#  - 每次联动原生库构建 (make limbo) 与 gradle 打包，产物用签名密钥机签
 #  - 全部成功后在 GitHub 上自动创建 Release 并上传 APK
 on:
   workflow_dispatch:
@@ -21,21 +19,15 @@ env:
 
 jobs:
   build:
-    name: "guest ${{ matrix.guest }} / host ${{ matrix.host }}"
+    name: "guest ${{ matrix.guest }}"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # x86_64 guest
-          - { guest: x86_64, module: limbo-android-x86, build_guest: x86_64-softmmu, host: arm64-v8a }
-          - { guest: x86_64, module: limbo-android-x86, build_guest: x86_64-softmmu, host: x86_64 }
-          # aarch64 guest
-          - { guest: aarch64, module: limbo-android-arm, build_guest: aarch64-softmmu, host: arm64-v8a }
-          - { guest: aarch64, module: limbo-android-arm, build_guest: aarch64-softmmu, host: x86_64 }
-          # ia64 guest
-          - { guest: ia64, module: limbo-android-ia64, build_guest: ia64-softmmu, host: arm64-v8a }
-          - { guest: ia64, module: limbo-android-ia64, build_guest: ia64-softmmu, host: x86_64 }
+          - { guest: x86_64, build_guest: x86_64-softmmu }
+          - { guest: aarch64, build_guest: aarch64-softmmu }
+          - { guest: ia64, build_guest: ia64-softmmu }
     permissions:
       contents: read
     steps:
@@ -61,75 +53,34 @@ jobs:
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
-      - name: 克隆代码
-        env:
-          GIT_TERMINAL_PROMPT: '0'
-          GIT_HTTP_LOW_SPEED_TIME: '30'
-          GIT_HTTP_LOW_SPEED_LIMIT: '1024'
-        run: |
-          cd ./limbo-android-lib/src/main/jni
-
-          ##### GET glib
-          git init glib
-          cd glib
-          git remote add origin https://gitlab.gnome.org/GNOME/glib.git
-          timeout 120 git fetch --depth 1 origin ed3abf0b5221d613a333ed5b118b2f2acc66acd3
-          git checkout FETCH_HEAD
-          git apply ../patches/glib-hack.patch
-          cd ..
-
-          ##### GET libffi
-          wget --quiet --timeout=60 https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/ || \
-          wget --quiet --timeout=60 https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz -P /tmp/
-          tar -xzf /tmp/libffi-3.5.2.tar.gz
-          mv libffi-3.5.2 libffi
-
-          ##### GET pixman
-          wget --quiet --timeout=60 https://www.cairographics.org/releases/pixman-0.43.4.tar.gz -P /tmp/ || \
-          wget --quiet --timeout=60 https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz -P /tmp/
-          tar -xzf /tmp/pixman-0.43.4.tar.gz
-          mv pixman-0.43.4 pixman
-
-          test -f glib/meson.build
-          test -f pixman/meson.build
-          test -f libffi/configure.ac
-
-          ##### GET SDL2
-          wget --quiet --timeout=60 https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/ || \
-          wget --quiet --timeout=60 https://www.libsdl.org/release/SDL2-2.0.8.tar.gz -P /tmp/
-          tar -xzf /tmp/SDL2-2.0.8.tar.gz
-          mv SDL2-2.0.8 SDL2
-          cd SDL2
-          patch -p1 < ../patches/sdl2-2.0.8.patch
-
       - name: 缓存 meson wrap 下载 (pcre2 等)
         uses: actions/cache@v4
         with:
           path: ~/.cache/meson
-          key: meson-wrap-${{ runner.os }}-${{ matrix.host }}
+          key: meson-wrap-${{ runner.os }}-${{ matrix.guest }}
 
       - name: Build QEMU
         run: |
-          cd limbo-android-lib/src/main/jni
+          cd limbo-app/src/main/jni
           export NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/28.2.13676358
           export PATH=$PATH:$NDK_ROOT
           export BUILD_THREADS=$(nproc)
           export BUILD_GUEST=${{ matrix.build_guest }}
-          export BUILD_HOST=${{ matrix.host }}
+          export BUILD_HOST=arm64-v8a
           export USE_GTK=true
           make limbo
 
       - name: Gradle 打包 Release
         run: |
           chmod +x ./gradlew
-          ./gradlew :${{ matrix.module }}:assembleRelease
+          ./gradlew :limbo-app:assembleRelease
 
       - name: 机签发布 APK
         shell: bash
         run: |
           set -euo pipefail
           SDK="$ANDROID_SDK_ROOT"
-          APK_DIR="${{ matrix.module }}/build/outputs/apk/release"
+          APK_DIR="limbo-app/build/outputs/apk/release"
           BT="$SDK/build-tools/$(ls -1 "$SDK/build-tools" | sort -V | tail -1)"
           KS="$RUNNER_TEMP/release.jks"
 
@@ -141,7 +92,7 @@ jobs:
           for apk in "$APK_DIR"/*-unsigned.apk; do
             [ -e "$apk" ] || { echo "no unsigned apk under $APK_DIR"; exit 1; }
             "$BT/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
-            out="Limbo-${{ matrix.guest }}-${{ matrix.host }}.apk"
+            out="Limbo-${{ matrix.guest }}.apk"
             "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$KS_ALIAS" \
               --ks-pass "pass:$KS_STORE_PASS" --key-pass "pass:$KS_KEY_PASS" \
               --out "$out" "$RUNNER_TEMP/aligned.apk"
@@ -153,7 +104,7 @@ jobs:
       - name: 上传 APK 构建产物
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: apk-${{ matrix.guest }}-${{ matrix.host }}
+          name: apk-${{ matrix.guest }}
           path: Limbo-*.apk
           if-no-files-found: error
 
@@ -192,9 +143,10 @@ jobs:
           body: |
             手动触发的 release 工作流自动构建。
 
-            包含 6 个 APK（模拟架构 × 主机架构）：
-            - guest x86_64 / aarch64 / ia64
-            - host  arm64-v8a / x86_64
+            包含 3 个 APK（按模拟架构 guest 区分）：
+            - guest x86_64
+            - guest aarch64
+            - guest ia64
 
             所有 APK 使用公钥在构建时签名（密码 123456）。
             `Limbo-<tag>.zip` 内附 SHA-256 校验和。

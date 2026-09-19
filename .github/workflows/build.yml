@@ -76,7 +76,7 @@ jobs:
 
       - name: Build QEMU
         run: |
-          cd limbo-android-lib/src/main/jni
+          cd limbo-app/src/main/jni
           export NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/28.2.13676358
           export PATH=$PATH:$NDK_ROOT
           export BUILD_THREADS=$(nproc)
@@ -96,6 +96,4 @@ jobs:
         with:
           name: build_apk_output.zip
           path: |
-            limbo-android-ia64/build/outputs/apk/**/*.apk
-            limbo-android-arm/build/outputs/apk/**/*.apk
-            limbo-android-x86/build/outputs/apk/**/*.apk
+            limbo-app/build/outputs/apk/**/*.apk

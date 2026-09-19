@@ -11,8 +11,8 @@ apply plugin: 'idea'
 idea {
     module {
         //Exclude C source code from indexing
-        excludeDirs.add(file('limbo-android-lib/src/main/jni'))
-        excludeDirs.add(file('limbo-android-lib/build'))
+        excludeDirs.add(file('limbo-app/src/main/jni'))
+        excludeDirs.add(file('limbo-app/build'))
         excludeDirs.add(file('gradle'))
     }
 }

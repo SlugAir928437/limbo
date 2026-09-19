@@ -150,13 +150,19 @@ index ab3e97e..56669f7 100644
  
  png = not_found
  if get_option('png').allowed() and have_system
-@@ -2654,7 +2677,8 @@ config_host_data.set('CONFIG_SYNC_FILE_RANGE', cc.has_function('sync_file_range'
+@@ -2654,7 +2677,14 @@ config_host_data.set('CONFIG_SYNC_FILE_RANGE', cc.has_function('sync_file_range'
  config_host_data.set('CONFIG_TIMERFD', cc.has_function('timerfd_create'))
  config_host_data.set('CONFIG_GETLOADAVG', cc.has_function('getloadavg'))
  config_host_data.set('CONFIG_ARPA_INET_64', cc.has_function('htonll'))
 -config_host_data.set('HAVE_COPY_FILE_RANGE', cc.has_function('copy_file_range'))
-+config_host_data.set('HAVE_COPY_FILE_RANGE',
-+                     android_host or cc.has_function('copy_file_range'))
++# bionic only declares copy_file_range() from API 30, and both the meson probe
++# (cc.has_function, bare TU without -include limbo_compat.h) and the android_host
++# probe above are unreliable on the NDK cross build, so HAVE_COPY_FILE_RANGE is
++# forced on. The prototype is always supplied by limbo_compat.h (-include) and
++# the implementation by limbo_compat_stubs.c (via __NR_copy_file_range); forcing
++# it keeps block/file-posix.c on the syscall path instead of defining a
++# conflicting `static ssize_t copy_file_range(...)`.
++config_host_data.set('HAVE_COPY_FILE_RANGE', true)
  config_host_data.set('HAVE_GETIFADDRS', cc.has_function('getifaddrs'))
  config_host_data.set('HAVE_GLIB_WITH_SLICE_ALLOCATOR', glib_has_gslice)
  config_host_data.set('HAVE_OPENPTY', cc.has_function('openpty', dependencies: util))

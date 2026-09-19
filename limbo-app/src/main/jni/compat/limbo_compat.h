@@ -42,7 +42,18 @@ ssize_t getrandom(void *buf, size_t buflen, unsigned int flags);
 #endif
 /* bionic only declares copy_file_range() from API 30 (android arm64); QEMU's
  * block/file-posix.c calls it when CONFIG_COPY_FILE_RANGE. Stub in
- * limbo_compat_stubs.c implemented directly on __NR_copy_file_range. */
+ * limbo_compat_stubs.c implemented directly on __NR_copy_file_range.
+ *
+ * HAVE_COPY_FILE_RANGE is force-enabled here (rather than trusting QEMU's meson
+ * `cc.has_function` probe, which returns false against bionic API < 30 and on
+ * forks that don't carry the forcing patch). limbo_compat_stubs.c always links
+ * a real implementation, so HAVE_COPY_FILE_RANGE is semantically true. Forcing
+ * it keeps block/file-posix.c on the syscall path instead of compiling its own
+ * `static ssize_t copy_file_range(...)` fallback, which would clash with this
+ * non-static prototype (declared below under the same API guard). */
+#ifndef HAVE_COPY_FILE_RANGE
+#define HAVE_COPY_FILE_RANGE 1
+#endif
 #if !defined(__ANDROID_API__) || __ANDROID_API__ < 30
 ssize_t copy_file_range(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out,
                         size_t len, unsigned int flags);

@@ -1,0 +1,85 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+}
+
+android {
+    namespace 'com.android.limbo'
+    compileSdk {
+        version = release(37)
+    }
+
+    defaultConfig {
+        applicationId "com.android.limbo"
+        minSdk 24
+        targetSdk 37
+        versionCode 10000
+        versionName "1.0.0"
+
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            jniDebuggable true
+        }
+    }
+}
+
+dependencies {
+    implementation libs.androidx.documentfile
+
+    // 核心兼容库（版本统一）
+    implementation libs.androidx.appcompat
+    implementation libs.material
+
+    // Compose (Jetpack Compose + Material Design 3)
+    implementation platform(libs.compose.bom)
+    implementation libs.compose.ui
+    implementation libs.compose.ui.graphics
+    implementation libs.compose.ui.tooling.preview
+    implementation libs.compose.material3
+    implementation libs.androidx.activity.compose
+    debugImplementation libs.compose.ui.tooling
+
+    // 注解
+    implementation libs.annotations
+
+    implementation libs.xxpermissions
+
+    implementation libs.markwon.core
+
+    implementation project(':limbo-app:filepicker')
+    implementation project(":limbo-app:nc")
+}
+tasks.configureEach { task ->
+    if (task.name.startsWith('compile') && task.name.endsWith('Ndk')) {
+        task.enabled = false
+    }
+}

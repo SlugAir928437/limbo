@@ -84,7 +84,24 @@ jobs:
           export BUILD_HOST=${{ github.event.inputs.build_host || 'arm64-v8a' }}
           export USE_GTK=true
           # 完整构建链: ffi -> glib -> pixman -> gtk(gtk4android) -> qemu -> limbo
-          make limbo
+          # 把完整输出写到日志文件，失败时保留最近 200 行以便诊断（步骤日志会被截断）
+          LOGDIR=/home/runner/work/limbo/limbo/ci-logs
+          mkdir -p "$LOGDIR"
+          set +e
+          make limbo > "$LOGDIR/qemu-build.log" 2>&1
+          rc=$?
+          set -e
+          echo "::group::QEMU 构建日志（末尾 200 行）"
+          tail -200 "$LOGDIR/qemu-build.log"
+          echo "::endgroup::"
+          exit $rc
+
+      - name: 上传 QEMU 构建日志（失败诊断用）
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: qemu_build_log
+          path: ci-logs/
 
       - name: Build with Gradle
         run: |

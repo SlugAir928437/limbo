@@ -1,0 +1,16 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -2734,5 +2734,11 @@ have_copy_file_range = cc.has_function('copy_file_range')
+ if cc.get_define('__ANDROID__') != ''
+-  have_copy_file_range = false
++  # limbo: bionic does not declare copy_file_range() below API 30, but we link
++  # a real implementation from limbo_compat_stubs.c (implemented directly on
++  # __NR_copy_file_range). Force this ON so block/file-posix.c takes the syscall
++  # path and does NOT compile its own `static ssize_t copy_file_range(...)`
++  # fallback, which would clash with the non-static prototype that
++  # limbo_compat.h declares under the same API guard.
++  have_copy_file_range = true
+ endif
+ config_host_data.set('HAVE_COPY_FILE_RANGE', have_copy_file_range)
+ config_host_data.set('HAVE_GETIFADDRS', cc.has_function('getifaddrs'))

@@ -470,6 +470,7 @@ QEMU_OFFICIAL_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0.patch
 QEMU_OFFICIAL_MARK  := $(LIMBO_JNI_ROOT)/qemu/.gtk4-official
 QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
 QEMU_FORK_BRANCH    := main
+QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-copy_file_range.patch
 GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
 GTK4_BRANCH         := master
 GLIB_URL            := https://gitlab.gnome.org/GNOME/glib.git
@@ -632,6 +633,15 @@ fetch-qemu:
 			git clone --depth 1 --branch $(QEMU_FORK_BRANCH) --single-branch $(QEMU_FORK_URL) "$(LIMBO_JNI_ROOT)/qemu"; \
 		else \
 			echo ">> qemu fork 已存在，跳过"; \
+		fi; \
+		if [ ! -f "$(QEMU_FORK_PATCH)" ]; then \
+			echo "ERROR: $(QEMU_FORK_PATCH) 缺失，需 git add 提交后再构建"; exit 1; \
+		fi; \
+		if git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(QEMU_FORK_PATCH)" 2>/dev/null; then \
+			echo ">> qemu fork: 应用 copy_file_range 补丁"; \
+			git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(QEMU_FORK_PATCH)"; \
+		else \
+			echo ">> qemu fork: copy_file_range 补丁已应用或无需应用"; \
 		fi; \
 	fi
 

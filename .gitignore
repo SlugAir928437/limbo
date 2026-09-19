@@ -61,14 +61,14 @@ QEMU_VERSION
 
 jnilibs
 limbotest
-/limbo-android-lib/src/main/jni/qemu-patches/qemu-2.10.0.patch
-/limbo-android-lib/src/main/jni/qemu-patches/qemu-2.9.0.patch
-/limbo-android-lib/src/main/jni/qemu-patches/qemu-2.11.0.patch
+/limbo-app/src/main/jni/qemu-patches/qemu-2.10.0.patch
+/limbo-app/src/main/jni/qemu-patches/qemu-2.9.0.patch
+/limbo-app/src/main/jni/qemu-patches/qemu-2.11.0.patch
 
 sync.sh
 gitsync.sh
-/limbo-android-lib/src/main/jni/qemu-2.9.1/
-/limbo-android-lib/src/main/jni/qemu-5.1.0/
+/limbo-app/src/main/jni/qemu-2.9.1/
+/limbo-app/src/main/jni/qemu-5.1.0/
 
 push.sh
 
@@ -77,7 +77,7 @@ push.sh
 .kotlin
 
 # Machine-generated meson cross files (NDK path / toolchain specific)
-/limbo-android-lib/src/main/jni/android-config/meson-android-arm64-v8a.ini
-/limbo-android-lib/src/main/jni/android-config/meson-gtk4-android-cross.ini
-/limbo-android-lib/src/main/jni/android-config/meson-pixman-android-cross.ini
-/limbo-android-lib/src/main/jni/android-config/meson-slirp-android-cross.ini
+/limbo-app/src/main/jni/android-config/meson-android-arm64-v8a.ini
+/limbo-app/src/main/jni/android-config/meson-gtk4-android-cross.ini
+/limbo-app/src/main/jni/android-config/meson-pixman-android-cross.ini
+/limbo-app/src/main/jni/android-config/meson-slirp-android-cross.ini

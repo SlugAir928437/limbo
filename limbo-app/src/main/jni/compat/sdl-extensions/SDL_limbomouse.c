@@ -40,7 +40,7 @@ extern SDL_Window *Android_Window;
 int x_min = 0, x_max = 0, y_min = 0, y_max = 0;
 bool checkBounds = false;
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeMouseEvent(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeMouseEvent(
         JNIEnv* env, jobject thiz,
 		int button, int action, int relative, int x, int y) {
 
@@ -107,7 +107,7 @@ JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeMouseEvent(
     }
 }
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeMouseBounds(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeMouseBounds(
         JNIEnv* env, jobject thiz, int xmin, int xmax, int ymin, int ymax) {
     checkBounds = true;
     x_min = xmin+1;

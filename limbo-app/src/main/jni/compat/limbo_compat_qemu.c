@@ -155,7 +155,7 @@ void Android_JNI_SetVMResolution(int width, int height)
  * 包名+类名严格对应：com.max2idea.android.limbo.main.LimboSDLActivity
  */
 JNIEXPORT void JNICALL
-Java_com_android_limbo_main_LimboSDLActivity_initSdlResJniCache
+Java_com_limbo_emu_main_LimboSDLActivity_initSdlResJniCache
 (JNIEnv *env, jobject thiz)
 {
 init_sdl_res_jni_cache(env, thiz);
@@ -165,7 +165,7 @@ init_sdl_res_jni_cache(env, thiz);
  * Java: public native void releaseSdlResJniCache();
  */
 JNIEXPORT void JNICALL
-Java_com_android_limbo_main_LimboSDLActivity_releaseSdlResJniCache
+Java_com_limbo_emu_main_LimboSDLActivity_releaseSdlResJniCache
 (JNIEnv *env, jobject thiz)
 {
 release_sdl_res_jni_cache(env);

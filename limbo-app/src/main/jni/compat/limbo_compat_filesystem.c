@@ -34,7 +34,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
 // 从 Java 传入对象
 JNIEXPORT void JNICALL
-Java_com_android_limbo_jni_VMExecutor_nativeSetBinderObject(JNIEnv *env, jclass clazz, jobject obj) {
+Java_com_limbo_emu_jni_VMExecutor_nativeSetBinderObject(JNIEnv *env, jclass clazz, jobject obj) {
     if (g_obj != NULL) {
         (*env)->DeleteGlobalRef(env, g_obj);
     }

@@ -293,6 +293,14 @@
     <string name="label_nvram_new">New</string>
     <string name="label_enable_mttcg">Enable MTTCG</string>
     <string name="label_enable_kvm">Enable KVM</string>
+    <string name="label_accel">Accelerator</string>
+    <string name="accel_tcg">TCG</string>
+    <string name="accel_kvm">KVM</string>
+    <string name="accel_gunyah">Gunyah</string>
+    <string name="accel_gzvm">Gzvm</string>
+    <string name="root_vm_no_su">su not available. Gunyah/Gzvm acceleration requires a rooted device: the VM must run in a root process.</string>
+    <string name="root_vm_start_failed">Failed to start the VM in a root process</string>
+    <string name="root_vm_already_running">The VM is already running in a root process</string>
     <string name="label_disable_hpet">Disable HPET</string>
     <string name="label_disable_tsc">Disable TSC</string>
     <string name="label_disable_acpi">Disable ACPI</string>
@@ -326,4 +334,23 @@
     <string name="button_restart">Restart</string>
 
     <string name="this_version">Current Version Changelog</string>
+
+    <!-- Netcat (ncat) console -->
+    <string name="nc_input_hint">Ex: ncat --help</string>
+    <string name="ed_type_your_message">Message</string>
+    <string name="btn_send_text">Send</string>
+    <string name="error_missing_nc">Start your command with nc or ncat. See examples.</string>
+    <string name="main_credits">ncat for Android\nCreated by Werebug (https://werebug.com)</string>
+    <string name="main_disclaimer">This application is a wrapper around the ncat binary cross-compiled for Android from the Nmap source (https://nmap.org). This is not an official Nmap application. </string>
+    <string name="main_examples">EXAMPLES:\nncat 192.168.1.100 9999\nncat -lp 9999\nncat -u 192.168.1.100 9999\nncat -ulp 9999\nncat -lp 9999 -e /system/bin/sh\n\nType \'ncat --help\' for the full list.\nPlease report an issue if you find any bug while trying different flags.</string>
+    <string name="main_source">Source code: https://github.com/ruvolof/nc-for-android. Use Github to submit bugs or feature requests.</string>
+
+    <string name="file_picker_selected_count">Selected·%1$d</string>
+    <string name="file_picker_tv_select_all">Select all</string>
+    <string name="file_picker_tv_deselect_all">Cancel</string>
+    <string name="file_picker_tv_select_done">Done</string>
+    <string name="file_picker_tv_sd_card">SD Card</string>
+    <string name="max_select_count_tips">You can only choose %d items.</string>
+    <string name="empty_list_tips_file_picker">Nothing Here~</string>
+    <string name="file_picker_tv_select_folder">Select this folder</string>
 </resources>

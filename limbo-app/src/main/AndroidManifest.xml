@@ -30,7 +30,8 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/AppTheme.NoActionBar"
-            android:enabled="true" >
+            android:enabled="true"
+            android:icon="@drawable/limbo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -110,5 +111,18 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider-->
+
+        <!-- Netcat (ncat) console -->
+        <activity
+            android:name="com.werebug.androidnetcat.AndroidNetcatHome"
+            android:exported="false"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.AppCompat"/>
+
+        <activity
+            android:name="me.rosuh.filepicker.FilePickerActivity"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+            android:exported="false"
+            android:configChanges="orientation|screenSize" />
     </application>
 </manifest>

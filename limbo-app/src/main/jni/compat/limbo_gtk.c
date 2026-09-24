@@ -132,7 +132,7 @@ static void setup_tmp_dir(JNIEnv *env, jobject activity)
 }
 
 JNIEXPORT void JNICALL
-Java_com_android_limbo_jni_LimboGtk_nativeInit(JNIEnv *env,
+Java_com_limbo_emu_jni_LimboGtk_nativeInit(JNIEnv *env,
                                                jclass klass,
                                                jobject class_loader,
                                                jobject activity)

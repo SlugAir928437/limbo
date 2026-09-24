@@ -3,7 +3,7 @@ package io.github.zeroaicy.util.crash;
 import android.app.Application;
 import android.content.Context;
 
-import com.android.limbo.main.LimboApplication;
+import com.limbo.emu.main.LimboApplication;
 
 import io.github.zeroaicy.util.ContextUtil;
 import io.github.zeroaicy.util.DebugUtil;

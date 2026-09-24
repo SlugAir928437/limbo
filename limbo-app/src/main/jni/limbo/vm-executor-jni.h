@@ -36,37 +36,37 @@ int get_qemu_var(JNIEnv* env, jobject thiz, const char * var);
 
 void set_qemu_var(JNIEnv* env, jobject thiz, const char * var, jint jvalue);
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeRefreshScreen(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeRefreshScreen(
                 JNIEnv* env, jobject thiz, jint jvalue);
                 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_setvncrefreshrate(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setvncrefreshrate(
 		JNIEnv* env, jobject thiz, jint jvalue);
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_setSDLRefreshRateDefault(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateDefault(
 		JNIEnv* env, jobject thiz, jint jvalue);
         
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_setSDLRefreshRateIdle(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateIdle(
 		JNIEnv* env, jobject thiz, jint jvalue);
         
-JNIEXPORT jint JNICALL Java_com_android_limbo_jni_VMExecutor_getSDLRefreshRateDefault(
+JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateDefault(
 		JNIEnv* env, jobject thiz);
         
-JNIEXPORT jint JNICALL Java_com_android_limbo_jni_VMExecutor_getSDLRefreshRateIdle(
-		JNIEnv* env, jobject thiz);
-
-JNIEXPORT jint JNICALL Java_com_android_limbo_jni_VMExecutor_getvncrefreshrate(
+JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateIdle(
 		JNIEnv* env, jobject thiz);
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeIgnoreBreakpointInvalidate(
+JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
+		JNIEnv* env, jobject thiz);
+
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeIgnoreBreakpointInvalidate(
 		JNIEnv* env, jobject thiz, jint jvalue);
         
-JNIEXPORT jstring JNICALL Java_com_android_limbo_jni_VMExecutor_start(
+JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_start(
         JNIEnv* env, jobject thiz,
 		jstring storage_dir, jstring base_dir,
 		jstring lib_filename, jstring lib_path,
 		jint sdl_scale_hint, jobjectArray params);
         
-JNIEXPORT jstring JNICALL Java_com_android_limbo_jni_VMExecutor_stop(
+JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_stop(
 		JNIEnv* env, jobject thiz, jint jint_restart);
 
 #endif

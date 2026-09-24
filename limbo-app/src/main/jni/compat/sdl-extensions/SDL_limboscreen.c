@@ -23,7 +23,7 @@ Copyright (C) Max Kastanas 2012
 
 extern SDL_Window *Android_Window;
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeFullscreen(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeFullscreen(
         JNIEnv* env, jobject thiz) {
     SDL_SetWindowFullscreen(Android_Window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 }

@@ -99,7 +99,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *pvt) {
 	return JNI_VERSION_1_2;
 }
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeRefreshScreen(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeRefreshScreen(
                 JNIEnv* env, jobject thiz, jint jvalue) {
     if(handle == NULL) {
     	return;
@@ -107,33 +107,33 @@ JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeRefreshScreen
     set_qemu_var(env, thiz, "limbo_vga_full_update", jvalue);
 }
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_setvncrefreshrate(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setvncrefreshrate(
 		JNIEnv* env, jobject thiz, jint jvalue) {
     set_qemu_var(env, thiz, "vnc_refresh_interval_inc", jvalue);
     set_qemu_var(env, thiz, "vnc_refresh_interval_base", jvalue);
 }
 
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_setSDLRefreshRateDefault(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateDefault(
 		JNIEnv* env, jobject thiz, jint jvalue) {
     set_qemu_var(env, thiz, "gui_refresh_interval_default", jvalue);
 }
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_setSDLRefreshRateIdle(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateIdle(
 		JNIEnv* env, jobject thiz, jint jvalue) {
             printf("setting sdl refresh rate idle: %d\n", jvalue);
     set_qemu_var(env, thiz, "gui_refresh_interval_idle", jvalue);
 }
 
 
-JNIEXPORT jint JNICALL Java_com_android_limbo_jni_VMExecutor_getSDLRefreshRateDefault(
+JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateDefault(
 		JNIEnv* env, jobject thiz) {
     
     int res = get_qemu_var(env, thiz, "gui_refresh_interval_default");
     return res;
 }
 
-JNIEXPORT jint JNICALL Java_com_android_limbo_jni_VMExecutor_getSDLRefreshRateIdle(
+JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateIdle(
 		JNIEnv* env, jobject thiz) {
 
     int res = get_qemu_var(env, thiz, "gui_refresh_interval_idle");
@@ -143,14 +143,14 @@ JNIEXPORT jint JNICALL Java_com_android_limbo_jni_VMExecutor_getSDLRefreshRateId
 
 
 
-JNIEXPORT jint JNICALL Java_com_android_limbo_jni_VMExecutor_getvncrefreshrate(
+JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
 		JNIEnv* env, jobject thiz) {
 
     int res = get_qemu_var(env, thiz, "vnc_refresh_interval_inc");
     return res;
 }
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeIgnoreBreakpointInvalidate(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeIgnoreBreakpointInvalidate(
 		JNIEnv* env, jobject thiz, jint jvalue) {
     if(handle == NULL) {
     	return;
@@ -158,11 +158,13 @@ JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeIgnoreBreakpo
     set_qemu_var(env, thiz, "limbo_ignore_breakpoint_invalidate", jvalue);
 }
 
-JNIEXPORT jstring JNICALL Java_com_android_limbo_jni_VMExecutor_start(
-        JNIEnv* env, jobject thiz,
-		jstring storage_dir, jstring base_dir,
-		jstring lib_filename, jstring lib_path,
-		jint sdl_scale_hint, jobjectArray params) {
+/* Shared VM bootstrap used by both the in-process VMExecutor.start() and
+ * the root child process (RootVmLauncher.startVm).  In the root child
+ * thiz is NULL, so the per-instance JNI wiring (set_jni) is skipped. */
+static jstring start_qemu(JNIEnv* env, jobject thiz,
+        jstring storage_dir, jstring base_dir,
+        jstring lib_filename, jstring lib_path,
+        jint sdl_scale_hint, jobjectArray params) {
 	int res;
 	char res_msg[MSG_BUFSIZE + 1] = { 0 };
 
@@ -252,8 +254,10 @@ JNIEXPORT jstring JNICALL Java_com_android_limbo_jni_VMExecutor_start(
 		return (*env)->NewStringUTF(env, res_msg);
 	}
 
-	setup_jni(env, thiz, storage_dir, base_dir);
-    set_qemu_var(env, thiz, "limbo_sdl_scale_hint", sdl_scale_hint);
+	if (thiz != NULL) {
+		setup_jni(env, thiz, storage_dir, base_dir);
+	}
+	set_qemu_var(env, thiz, "limbo_sdl_scale_hint", sdl_scale_hint);
     /* Same mode value drives both the SDL and the GTK display backends:
      * 0 = stretch, 1 = keep aspect ratio, 2 = 1:1 pixels.  Symbols that are
      * not exported by the loaded qemu library (e.g. VNC-only builds) are
@@ -345,8 +349,28 @@ JNIEXPORT jstring JNICALL Java_com_android_limbo_jni_VMExecutor_start(
     return (*env)->NewStringUTF(env, res_msg);
 }
 
+JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_start(
+        JNIEnv* env, jobject thiz,
+		jstring storage_dir, jstring base_dir,
+		jstring lib_filename, jstring lib_path,
+		jint sdl_scale_hint, jobjectArray params) {
+	return start_qemu(env, thiz, storage_dir, base_dir,
+			lib_filename, lib_path, sdl_scale_hint, params);
+}
 
-JNIEXPORT jstring JNICALL Java_com_android_limbo_jni_VMExecutor_stop(
+/* Entry point for the root child process (RootVmLauncher.main): runs the
+ * very same in-process VM bootstrap but without any Android UI object. */
+JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_RootVmLauncher_startVm(
+        JNIEnv* env, jclass clazz,
+		jstring storage_dir, jstring base_dir,
+		jstring lib_filename, jstring lib_path,
+		jobjectArray params) {
+	return start_qemu(env, NULL, storage_dir, base_dir,
+			lib_filename, lib_path, 0, params);
+}
+
+
+JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_stop(
 		JNIEnv* env, jobject thiz, jint jint_restart) {
 	char res_msg[MSG_BUFSIZE + 1] = { 0 };
 

@@ -19,6 +19,9 @@ else
     DEBUG = --disable-debug-tcg --disable-debug-info  --disable-sparse
 endif
 
+# gzvm / gunyah 加速器开启（由顶层 Makefile config-qemu 传入，默认启用两者）
+ACCEL_MESON_FLAGS ?= -Dgunyah=enabled -Dgzvm=enabled
+
 ifeq ($(APP_ABI), armeabi)
     QEMU_HOST_CPU = arm
 else ifeq ($(APP_ABI), armeabi-v7a)
@@ -102,5 +105,6 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	$(ARCH_CFLAGS) \
 	" \
 	--with-coroutine=sigaltstack \
+	$(ACCEL_MESON_FLAGS) \
 	$(DEBUG)
 # $(CONFIG_PROFILER)

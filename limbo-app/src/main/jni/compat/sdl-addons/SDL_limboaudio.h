@@ -36,7 +36,7 @@ void writeAaudioQueue() ;
 
 void* getAaudioBuffer();
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeEnableAaudio(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeEnableAaudio(
         JNIEnv* env, jobject thiz, int value);
         
 #endif

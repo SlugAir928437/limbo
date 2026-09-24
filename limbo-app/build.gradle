@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace 'com.android.limbo'
+    namespace 'com.limbo.emu'
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId "com.android.limbo"
+        applicationId "com.limbo.emu"
         minSdk 24
         targetSdk 37
         versionCode 10000
@@ -40,6 +40,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        viewBinding = true
     }
     buildTypes {
         release {
@@ -54,6 +55,8 @@ android {
 
 dependencies {
     implementation libs.androidx.documentfile
+    implementation libs.androidx.recyclerview
+    implementation libs.androidx.swiperefreshlayout
 
     // 核心兼容库（版本统一）
     implementation libs.androidx.appcompat
@@ -74,9 +77,6 @@ dependencies {
     implementation libs.xxpermissions
 
     implementation libs.markwon.core
-
-    implementation project(':limbo-app:filepicker')
-    implementation project(":limbo-app:nc")
 }
 tasks.configureEach { task ->
     if (task.name.startsWith('compile') && task.name.endsWith('Ndk')) {

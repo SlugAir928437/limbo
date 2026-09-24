@@ -22,11 +22,11 @@ Copyright (C) Max Kastanas 2012
 #include <jni.h>
 #include "video/android/SDL_androidvideo.h"
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeMouseEvent(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeMouseEvent(
         JNIEnv* env, jobject thiz, int button, int action, int relative, 
         int x, int y);
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeMouseBounds(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeMouseBounds(
         JNIEnv* env, jobject thiz,  int xmin, int xmax, int ymin, int ymax);
 
 #endif

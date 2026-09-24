@@ -22,7 +22,7 @@ Copyright (C) Max Kastanas 2012
 #include <jni.h>
 #include "video/android/SDL_androidvideo.h"
 
-JNIEXPORT void JNICALL Java_com_android_limbo_jni_VMExecutor_nativeFullscreen(
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeFullscreen(
         JNIEnv* env, jobject thiz);
 
 #endif

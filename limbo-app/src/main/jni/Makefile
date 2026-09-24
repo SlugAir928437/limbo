@@ -400,8 +400,8 @@ clean-gtk:
 _qemu: ndk
 	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST)
 
-config-qemu: ndk pkg-config-link
-	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak
+config-qemu: ndk pkg-config-link fetch-qemu
+	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)"
 
 clean-qemu:
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) distclean
@@ -469,6 +469,26 @@ QEMU_OFFICIAL_URL   := https://gitlab.com/qemu-project/qemu.git
 QEMU_OFFICIAL_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0.patch
 QEMU_OFFICIAL_MARK  := $(LIMBO_JNI_ROOT)/qemu/.gtk4-official
 QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
+
+# gzvm / gunyah 加速器补丁（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）
+ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.patch
+
+# 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
+#  export BUILD_ACCEL=gunyah / gzvm / both / none 覆盖）
+# 映射成 config-qemu 里传给 ./configure 的 -Dgunyah/-Dgzvm meson 特性
+ifeq ($(BUILD_ACCEL), none)
+ACCEL_MESON_FLAGS    :=
+ACCEL_APPLY          :=
+else ifeq ($(BUILD_ACCEL), gunyah)
+ACCEL_MESON_FLAGS    := -Dgunyah=enabled -Dgzvm=disabled
+ACCEL_APPLY          := yes
+else ifeq ($(BUILD_ACCEL), gzvm)
+ACCEL_MESON_FLAGS    := -Dgunyah=disabled -Dgzvm=enabled
+ACCEL_APPLY          := yes
+else
+ACCEL_MESON_FLAGS    := -Dgunyah=enabled -Dgzvm=enabled
+ACCEL_APPLY          := yes
+endif
 QEMU_FORK_BRANCH    := main
 QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-copy_file_range.patch
 GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
@@ -495,6 +515,14 @@ else
 QEMU_USE_OFFICIAL := no
 endif
 
+# gzvm / gunyah 加速器仅适用于官方 QEMU 11.0.0 树：
+# IA-64 fork 无对应 meson 选项，传入 -Dgunyah/-Dgzvm 会导致
+# "Unknown option" 配置失败，补丁也不应打到 fork 树上。
+ifneq ($(QEMU_USE_OFFICIAL), yes)
+ACCEL_MESON_FLAGS    :=
+ACCEL_APPLY          :=
+endif
+
 fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-gtk4android fetch-qemu
 
 fetch-slirp:
@@ -503,7 +531,7 @@ fetch-slirp:
 		rm -rf "$(LIMBO_JNI_ROOT)/slirp"; \
 		git clone $(SLIRP_URL) "$(LIMBO_JNI_ROOT)/slirp" && \
 		git -C "$(LIMBO_JNI_ROOT)/slirp" checkout "$(SLIRP_COMMIT)" && \
-		git -C "$(LIMBO_JNI_ROOT)/slirp" apply "$(LIMBO_JNI_ROOT)/patches/slirp-cross-build.patch"; \
+		git -C "$(LIMBO_JNI_ROOT)/slirp" apply "$(LIMBO_JNI_ROOT)/patches/libslirp-cross-build.patch"; \
 	else \
 		echo ">> libslirp 已存在，跳过"; \
 	fi
@@ -567,7 +595,7 @@ fetch-glib:
 		git -C "$(LIMBO_JNI_ROOT)/glib" remote add origin $(GLIB_URL) && \
 		git -C "$(LIMBO_JNI_ROOT)/glib" fetch --depth 1 origin $(GLIB_COMMIT) && \
 		git -C "$(LIMBO_JNI_ROOT)/glib" checkout FETCH_HEAD && \
-		git -C "$(LIMBO_JNI_ROOT)/glib" apply "$(LIMBO_JNI_ROOT)/patches/glib-2.89.3.patch"; \
+		git -C "$(LIMBO_JNI_ROOT)/glib" apply "$(LIMBO_JNI_ROOT)/patches/glib-2.89.3-android.patch"; \
 	else \
 		echo ">> glib 已存在，跳过"; \
 	fi
@@ -607,7 +635,7 @@ fetch-sdl2:
 		rm -rf /tmp/SDL2-2.0.8; \
 		tar -xzf /tmp/SDL2-2.0.8.tar.gz -C /tmp && \
 		mv -f /tmp/SDL2-2.0.8 "$(LIMBO_JNI_ROOT)/SDL2" && \
-		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8.patch" ); \
+		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8-android.patch" ); \
 	else \
 		echo ">> SDL2 已存在，跳过"; \
 	fi
@@ -644,6 +672,7 @@ fetch-qemu:
 			echo ">> qemu fork: copy_file_range 补丁已应用或无需应用"; \
 		fi; \
 	fi
+	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
 
 fetch-gtk4android:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \

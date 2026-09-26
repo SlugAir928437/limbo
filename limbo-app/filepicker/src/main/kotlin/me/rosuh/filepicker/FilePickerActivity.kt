@@ -28,7 +28,6 @@ import me.rosuh.filepicker.utils.FileUtils
 import me.rosuh.filepicker.utils.dp
 import me.rosuh.filepicker.widget.PosLinearLayoutManager
 import me.rosuh.filepicker.widget.RecyclerViewFilePicker
-import com.limbo.emu.R
 import java.io.File
 import java.util.concurrent.*
 

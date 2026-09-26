@@ -126,9 +126,10 @@ public class ArchDefinitions {
                 values.add("bios-256k.bin");
                 values.add("bios.bin");
                 values.add("bios-microvm.bin");
-                values.add("OVMF.fd");
                 break;
             case arm:
+                values.add("ast27x0_bootrom.bin");
+                break;
             case arm64:
                 // Aspeed 27x0 boot ROM (ast2500/ast2600-evb and the Aspeed BMC
                 // machines, which are the ARM boards selectable in the app)

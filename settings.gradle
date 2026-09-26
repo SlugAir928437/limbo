@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Limbo Emulator"
 include ':limbo-app'
+include ':limbo-app:filepicker'

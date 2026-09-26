@@ -126,11 +126,5 @@
             android:exported="false"
             android:resizeableActivity="true"
             android:theme="@style/Theme.AppCompat"/>
-
-        <activity
-            android:name="me.rosuh.filepicker.FilePickerActivity"
-            android:theme="@style/FilePickerTheme"
-            android:exported="false"
-            android:configChanges="orientation|screenSize" />
     </application>
 </manifest>

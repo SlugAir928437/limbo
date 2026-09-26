@@ -1,6 +1,8 @@
+diff --git a/meson.build b/meson.build
+index ab05fa5..f2382f1 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -105,7 +105,12 @@
+@@ -105,7 +105,12 @@ foreach dep : ['libjpeg', 'zlib']
    spice_server_deps += dependency(dep)
  endforeach
  
@@ -14,7 +16,7 @@
    foreach dep : ['rt', 'm']
      spice_server_deps += compiler.find_library(dep)
    endforeach
-@@ -211,7 +216,9 @@
+@@ -211,7 +216,9 @@ add_project_arguments(cxx_compiler.get_supported_arguments(spice_server_global_c
  # Subdirectories
  #
  subdir('server')
@@ -23,7 +25,10 @@
 +  subdir('tools')
 +endif
  subdir('docs')
-
+ 
+ #
+diff --git a/server/memslot.c b/server/memslot.c
+index 4d9d02b..734cf87 100644
 --- a/server/memslot.c
 +++ b/server/memslot.c
 @@ -21,6 +21,25 @@
@@ -52,7 +57,7 @@
  static uintptr_t __get_clean_virt(RedMemSlotInfo *info, QXLPHYSICAL addr)
  {
      return addr & info->memslot_clean_virt_mask;
-@@ -52,6 +71,13 @@
+@@ -52,6 +71,13 @@ int memslot_validate_virt(RedMemSlotInfo *info, uintptr_t virt, int slot_id,
  {
      MemSlot *slot;
  
@@ -66,7 +71,7 @@
      slot = &info->mem_slots[group_id][slot_id];
      if ((virt + add_size) < virt) {
          spice_critical("virtual address overlap");
-@@ -77,6 +103,12 @@
+@@ -77,6 +103,12 @@ uintptr_t memslot_max_size_virt(RedMemSlotInfo *info,
  {
      MemSlot *slot;
  
@@ -79,7 +84,7 @@
      slot = &info->mem_slots[group_id][slot_id];
  
      if (virt < slot->virt_start_addr || virt > slot->virt_end_addr) {
-@@ -102,23 +134,30 @@
+@@ -102,23 +134,30 @@ void *memslot_get_virt(RedMemSlotInfo *info, QXLPHYSICAL addr, uint32_t add_size
          return NULL;
      }
  

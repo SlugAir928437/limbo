@@ -8,7 +8,7 @@ import android.widget.*
 import androidx.collection.ArraySet
 import androidx.recyclerview.widget.RecyclerView
 import me.rosuh.filepicker.FilePickerActivity
-import com.limbo.emu.R
+import me.rosuh.filepicker.R
 import me.rosuh.filepicker.bean.FileBean
 import me.rosuh.filepicker.bean.FileItemBeanImpl
 import me.rosuh.filepicker.config.FilePickerManager.config

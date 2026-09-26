@@ -3,7 +3,7 @@ package me.rosuh.filepicker.engine
 import android.content.Context
 import android.util.Log
 import android.widget.ImageView
-import com.limbo.emu.R
+import me.rosuh.filepicker.R
 import me.rosuh.filepicker.config.FilePickerManager
 
 /**

@@ -6,7 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import me.rosuh.filepicker.FilePickerActivity
-import com.limbo.emu.R
+import me.rosuh.filepicker.R
 import me.rosuh.filepicker.bean.FileNavBeanImpl
 
 /**

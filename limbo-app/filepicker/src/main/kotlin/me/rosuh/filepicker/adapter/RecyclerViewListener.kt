@@ -8,7 +8,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.CheckBox
 import android.widget.RadioButton
-import com.limbo.emu.R
+import me.rosuh.filepicker.R
 
 /**
  *

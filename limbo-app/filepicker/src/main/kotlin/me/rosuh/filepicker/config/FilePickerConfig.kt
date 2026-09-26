@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.annotation.NonNull
 import androidx.annotation.StringRes
 import me.rosuh.filepicker.FilePickerActivity
-import com.limbo.emu.R
+import me.rosuh.filepicker.R
 import me.rosuh.filepicker.engine.ImageEngine
 import me.rosuh.filepicker.filetype.FileType
 import me.rosuh.filepicker.utils.DefaultLogger

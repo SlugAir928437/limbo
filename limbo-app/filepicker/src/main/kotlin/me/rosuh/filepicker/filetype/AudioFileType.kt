@@ -1,6 +1,6 @@
 package me.rosuh.filepicker.filetype
 
-import com.limbo.emu.R
+import me.rosuh.filepicker.R
 
 /**
  *

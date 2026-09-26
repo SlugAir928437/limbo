@@ -56,8 +56,6 @@ android {
 
 dependencies {
     implementation libs.androidx.documentfile
-    implementation libs.androidx.recyclerview
-    implementation libs.androidx.swiperefreshlayout
 
     // 核心兼容库（版本统一）
     implementation libs.androidx.appcompat
@@ -84,6 +82,8 @@ dependencies {
     implementation libs.crashreport
     androidTestImplementation libs.leakcanary.android.instrumentation
     debugImplementation libs.leakcanary.android
+
+    implementation project(':limbo-app:filepicker')
 }
 tasks.configureEach { task ->
     if (task.name.startsWith('compile') && task.name.endsWith('Ndk')) {

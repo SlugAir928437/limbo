@@ -22,26 +22,6 @@
         <item name="android:padding">8dp</item>
     </style>
 
-    <!-- Section Card style -->
-    <!-- Standard Button -->
-    <!-- Control Button style - Large Pill Shape -->
-    <!-- Section Header Icon Background -->
-    <!-- File picker themed as a full activity (not a Dialog), so the layout fills the
-         screen instead of rendering as a dialog (narrow, inset, misaligned). -->
-    <style name="FilePickerTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/rail_color_primary</item>
-        <item name="colorPrimaryVariant">@color/rail_color_primary_dark</item>
-        <item name="colorSecondary">@color/rail_color_accent</item>
-        <item name="colorAccent">@color/rail_color_accent</item>
-        <item name="android:fontFamily">sans</item>
-    </style>
-
-    <!-- Theme variants expected by the vendored FilePicker library (defaults to Rail). -->
-    <style name="FilePickerThemeCrane" parent="FilePickerTheme" />
-    <style name="FilePickerThemeRail" parent="FilePickerTheme" />
-    <style name="FilePickerThemeReply" parent="FilePickerTheme" />
-    <style name="FilePickerThemeShrine" parent="FilePickerTheme" />
-
     <!-- Netcat session as a Material 3 dialog (matched with the app's M3 theme).
      Using a MaterialComponents (M2) dialog theme inside a Material3 activity
      left the dialog content blank; keep the dialog on Material3. -->

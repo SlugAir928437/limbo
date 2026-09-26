@@ -107,11 +107,8 @@ public class RootVmLauncher {
 
     private static void writeStatus(File statusFile, String status) {
         try {
-            FileOutputStream out = new FileOutputStream(statusFile, false);
-            try {
+            try (FileOutputStream out = new FileOutputStream(statusFile, false)) {
                 out.write(status.getBytes(StandardCharsets.UTF_8));
-            } finally {
-                out.close();
             }
         } catch (Throwable t) {
             Log.e(TAG, "Could not write status file " + statusFile, t);

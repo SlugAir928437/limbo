@@ -7,14 +7,14 @@
     android:layout_height="match_parent"
     app:layout_constraintHeight_default="percent"
     app:layout_constraintWidth_default="percent"
-    tools:context="me.rosuh.filepicker.FilePickerActivity">
+    tools:context=".FilePickerActivity">
 
     <RelativeLayout
         android:id="@+id/ll_tool_bar_file_picker"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:animateLayoutChanges="true"
-        android:background="@color/rail_color_primary"
+        android:background="?attr/colorPrimary"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -31,12 +31,11 @@
             android:layout_toLeftOf="@+id/btn_confirm_file_picker"
             android:text="@string/file_picker_tv_select_all"
             android:textAllCaps="false"
-            android:textColor="@color/rail_text_color"
+            android:textColor="?android:attr/textColor"
             android:textSize="16sp" />
 
         <Button
             android:id="@+id/btn_confirm_file_picker"
-            style="@style/Widget.AppCompat.Button.Borderless"
             android:layout_width="78dp"
             android:layout_height="32dp"
             android:layout_alignParentEnd="true"
@@ -44,10 +43,9 @@
             android:layout_centerVertical="true"
             android:layout_marginEnd="16dp"
             android:layout_marginRight="16dp"
-            android:background="@drawable/btn_selector_file_picker_rail"
             android:text="@string/file_picker_tv_select_done"
             android:textAllCaps="false"
-            android:textColor="@color/rail_text_color" />
+            android:textColor="?android:attr/textColorPrimary" />
 
         <ImageView
             android:id="@+id/btn_go_back_file_picker"
@@ -72,7 +70,7 @@
             android:layout_toEndOf="@id/btn_go_back_file_picker"
             android:layout_toRightOf="@id/btn_go_back_file_picker"
             android:maxLines="1"
-            android:textColor="@color/rail_text_color"
+            android:textColor="?android:attr/textColor"
             android:textSize="16sp"
             tools:text="1*" />
     </RelativeLayout>

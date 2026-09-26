@@ -1,42 +1,30 @@
-/spice/
-/spice-protocol/
-/openssl/
-/libjpeg/
-/jpeg/
-/png/
-/sdl_latest/
-/android-spice-config.mak
-# downloaded source archives for the spice stack
-/downloads/
+# 三方组件目录
+downloads
+glib
+gtk4android
+libffi
+libjpeg
+openssl
+pixman
+qemu
+SDL2
+slirp
+spice
+spice-protocol
+virglrenderer
 
-#patches
-/qemu-patches/qemu-2.3.0.patch
-/qemu-patches/qemu-2.7.0.patch
-/qemu-patches/qemu-2.9.0-rc0.patch
-#/qemu-patches/qemu-2.9.0.patch
-#/qemu-patches/qemu-2.10.0.patch
-/patches/qemu-3.1.0.patch
+# 临时构建物
+build_arm64-v8a
+qemu_gtk4_rollback.patch
 
-/buildlog.txt
-/buildlogerr.txt
-
-#Don't check in just provide patches
-qemu-orig
-# vendor sources fetched by `make fetch` (no longer git submodules)
-/qemu
-/gtk4android
-/glib
-/libffi
-/pixman
-/slirp
-/SDL2
-/virglrenderer
-
-build_arm32
-build_arm64
-build_x86
-build_x86_64
-build_x86_iter.sh
-run_iter.sh
-sochk.sh
-sochk2.sh
+# 自生成配置
+android-config/meson-android-arm64-v8a.ini
+android-config/meson-android-armeabi-v7a.ini
+android-config/meson-android-x86.ini
+android-config/meson-android-x86_64.ini
+android-config/meson-gtk4-android-cross.ini
+android-config/meson-pixman-android-cross.ini
+android-config/meson-slirp-android-cross.ini
+android-config/meson-spice-android-cross.ini
+android-config/meson-spice-protocol-android-cross.ini
+android-config/meson-virgl-android-cross.ini

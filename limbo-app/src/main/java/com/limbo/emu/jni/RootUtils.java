@@ -58,4 +58,16 @@ public class RootUtils {
         }
         return false;
     }
+
+    /**
+     * 通过 KernelSU 把“当前调用线程”提权为 root。
+     *
+     * <p>gunyah/gzvm 需要 root，而 AGL 显示又要求 QEMU 运行在持有 Surface 的
+     * 本进程内，所以不能像以往那样走 su + app_process 子进程。KernelSU 提供了
+     * 进程内提权（ALS 参考实现即采用此方式）；Magisk/su 无法对已有进程提权，
+     * 此时返回失败，由调用方回退到独立 root 子进程（无画面）。
+     *
+     * @return 0 表示提权成功，其他值为 errno 风格的错误码
+     */
+    public static native int grantRoot();
 }

@@ -90,8 +90,14 @@ public class ArchDefinitions {
             vgaValues.add("vmware");
         }
 
-        if (LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
+            // VirtIO GPU: paravirtualized display, handed to QEMU as -device
+            // (not -vga). virtio-gpu-gl-pci additionally needs a
+            // libqemu-system-*.so built with CONFIG_VIRGL (virglrenderer +
+            // OpenGL); when that is missing QEMU rejects the device at start.
             vgaValues.add("virtio-gpu-pci");
+            vgaValues.add("virtio-gpu-gl-pci");
         }
 
         //XXX: some archs don't support vga on QEMU like SPARC64
@@ -100,6 +106,42 @@ public class ArchDefinitions {
         //TODO: Add XEN???
         // "xenfb"
         return vgaValues;
+    }
+
+    /**
+     * Returns the system BIOS firmware files shipped under assets/roms that are
+     * applicable to the current build architecture. Only genuine system
+     * firmware is listed: VGA BIOS (vgabios-*.bin), PXE/EFI NIC option ROMs,
+     * direct-kernel boot shims (linuxboot/multiboot/pvh/qboot) and firmware of
+     * other architectures (OpenSBI, SLOF, PNOR, vof, openbios, ...) are
+     * excluded, since they cannot be used as a machine's -bios.
+     */
+    public static ArrayList<String> getBiosFirmwareValues(Context context) {
+        ArrayList<String> values = new ArrayList<>();
+        switch (LimboApplication.arch) {
+            case x86:
+            case x86_64:
+                // SeaBIOS 256K (QEMU 10.x default), legacy 128K SeaBIOS, and the
+                // microvm machine firmware
+                values.add("bios-256k.bin");
+                values.add("bios.bin");
+                values.add("bios-microvm.bin");
+                values.add("OVMF.fd");
+                break;
+            case arm:
+            case arm64:
+                // Aspeed 27x0 boot ROM (ast2500/ast2600-evb and the Aspeed BMC
+                // machines, which are the ARM boards selectable in the app)
+                values.add("ast27x0_bootrom.bin");
+                values.add("edk2-aarch64-gunyah.fd");
+                values.add("edk2-aarch64-gzvm.fd");
+                break;
+            case ia64:
+            case ia64w:
+                values.add("ia64-firmware.bin");
+                break;
+        }
+        return values;
     }
 
     public static ArrayList<String> getKeyboardValues(Context context) {
@@ -122,6 +164,11 @@ public class ArchDefinitions {
         }
         arrList.add("usb-mouse");
         arrList.add("usb-tablet" + " " + context.getString(R.string.fixesMouseParen));
+        // VirtIO input: absolute coordinate tablet. The launcher pairs it with a
+        // virtio-keyboard-pci so the guest also gets a keyboard (see
+        // VMExecutor#addUIOptions). Both devices need a libqemu-system-*.so
+        // built with CONFIG_VIRTIO_INPUT / CONFIG_VIRTIO_PCI.
+        arrList.add("virtio-tablet-pci");
         return arrList;
     }
 
@@ -136,6 +183,13 @@ public class ArchDefinitions {
         // VM would crash with UnsatisfiedLinkError, so hide the option there.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             arrList.add("GTK");
+        // AGL (Android Graphics Layer): the guest is rendered into a Surface
+        // owned by the app (QEMU "-display agl"), which is the only display the
+        // gunyah/gzvm accelerated VMs can use since those run in-process as
+        // root.  It requires a libqemu-system-*.so built with the AGL backend.
+        if (Config.enableAgl && (LimboApplication.arch == Config.Arch.arm
+                || LimboApplication.arch == Config.Arch.arm64))
+            arrList.add("AGL");
         return arrList;
     }
 

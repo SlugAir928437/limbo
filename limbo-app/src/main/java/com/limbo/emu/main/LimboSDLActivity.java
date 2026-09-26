@@ -36,12 +36,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -747,8 +749,27 @@ public class LimboSDLActivity extends SDLActivity
         }
     }
 
+    // A zero-size view pinned to the top-right corner of the screen; the runtime
+    // menu is anchored to it so the dropdown appears at the top-right instead of
+    // at the SDL surface (which is centered, causing a misaligned popup).
+    private View menuAnchor;
+
+    private View getMenuAnchor() {
+        if (menuAnchor == null) {
+            View topLayout = findViewById(R.id.top_layout);
+            menuAnchor = new View(this);
+            RelativeLayout.LayoutParams lp = new RelativeLayout.LayoutParams(0, 0);
+            lp.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+            lp.addRule(RelativeLayout.ALIGN_PARENT_END);
+            menuAnchor.setLayoutParams(lp);
+            ((ViewGroup) topLayout).addView(menuAnchor);
+        }
+        return menuAnchor;
+    }
+
     private void showRuntimeMenu() {
-        PopupMenu popup = new PopupMenu(this, mSurface);
+        PopupMenu popup = new PopupMenu(this, getMenuAnchor());
+        popup.setGravity(Gravity.END);
         Menu menu = popup.getMenu();
         getMenuInflater().inflate(R.menu.sdlactivitymenu, menu);
         // Mirror onPrepareOptionsMenu() so the popup carries the same items.

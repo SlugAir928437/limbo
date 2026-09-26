@@ -26,6 +26,7 @@ android {
     sourceSets {
         main {
             jniLibs.srcDirs = ['src/main/jniLibs']
+            assets.srcDirs = ['src/main/assets', 'src/main/assets2']
         }
     }
     packaging {
@@ -77,6 +78,12 @@ dependencies {
     implementation libs.xxpermissions
 
     implementation libs.markwon.core
+
+    implementation libs.appupdater
+
+    implementation libs.crashreport
+    androidTestImplementation libs.leakcanary.android.instrumentation
+    debugImplementation libs.leakcanary.android
 }
 tasks.configureEach { task ->
     if (task.name.startsWith('compile') && task.name.endsWith('Ndk')) {

@@ -3,7 +3,9 @@ package io.github.zeroaicy.util.crash;
 import android.app.Application;
 import android.content.Context;
 
+import com.limbo.emu.BuildConfig;
 import com.limbo.emu.main.LimboApplication;
+import com.tencent.bugly.crashreport.CrashReport;
 
 import io.github.zeroaicy.util.ContextUtil;
 import io.github.zeroaicy.util.DebugUtil;
@@ -14,7 +16,7 @@ public class CrashApplication extends LimboApplication {
 	static Application mCrashApplication;
 	
 	static{
-    DebugUtil.debug();
+        DebugUtil.debug();
     }
 
 	protected static boolean isDebug = true;
@@ -22,11 +24,12 @@ public class CrashApplication extends LimboApplication {
 	@Override
 	public void onCreate(){
 		super.onCreate();
+        CrashReport.initCrashReport(getApplicationContext(), "649f2ab950", BuildConfig.DEBUG);
 		//闪退日志
 		mCrashApplication = CrashApplication.this;
 		//注册
 		CrashApphandler.getInstance().onCreated();
-	}
+    }
 
 	@Override
 	protected void attachBaseContext(Context base){

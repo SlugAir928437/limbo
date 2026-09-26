@@ -4,6 +4,28 @@ QEMU_CONFIG_DIR=$(LIMBO_JNI_ROOT)/android-config
 
 include $(QEMU_CONFIG_DIR)/android-qemu-config-10.2.1.mak
 
+# ---------------------------------------------------------------------------
+# VirtIO devices
+# ---------------------------------------------------------------------------
+# virtio-blk-pci, virtio-net-pci, virtio-tablet-pci, virtio-keyboard-pci and
+# virtio-sound-pci are Kconfig "default y" devices for every softmmu target
+# (hw/block|net|input|audio/Kconfig), so they are part of libqemu-system-*.so
+# without any configure switch - the app just asks for them at runtime with
+# -device / -net nic,model=... .
+#
+# virtio-gpu-gl-pci is the exception: hw/display/meson.build compiles
+# virtio-gpu-pci-gl.c only when meson found BOTH virglrenderer and epoxy/EGL.
+# Those come from the jni virglrenderer + gtk4android prefixes (USE_VIRGL in
+# android-limbo-config.mak) and are switched on with VIRGL_MESON_FLAGS, i.e.
+# -Dopengl=enabled -Dvirglrenderer=enabled.  When USE_VIRGL=false the feature
+# stays "auto" and QEMU silently builds without the VirGL GPU.
+#
+# NOTE: io_uring for the virtio-blk AIO backend ("aio=io_uring") would need
+# liburing for the Android target, which this tree does not ship, so
+# --enable-linux-io-uring is intentionally not passed (QEMU would fail the
+# configure step on the missing liburing dependency).  The legacy Linux AIO
+# path stays disabled as before (--disable-linux-aio below).
+
 ##### QEMU generic configuration
 #Enable Internal profiler
 #CONFIG_PROFILER = --enable-gprof
@@ -89,6 +111,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	-lglib-2.0 \
 	-lpixman-1 \
 	-lc -lm -llog \
+	-landroid \
 	$(INCLUDE_SYMS) \
 	-shared \
 	" \
@@ -106,5 +129,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	" \
 	--with-coroutine=sigaltstack \
 	$(ACCEL_MESON_FLAGS) \
+	$(AGL_MESON_FLAGS) \
+	$(VIRGL_MESON_FLAGS) \
 	$(DEBUG)
 # $(CONFIG_PROFILER)

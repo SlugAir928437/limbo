@@ -263,10 +263,14 @@ public class LimboActivityCommon {
         activity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                // tap0 需要 root 预先配置好（创建网卡 + 转发 + NAT），这里只提示
+                // 用户去执行，App 不会自己执行。
                 DialogUtils.UIAlert(activity,
                         activity.getString(R.string.TapDeviceFound),
-                        activity.getString(R.string.tunDeviceWarning) + ": " + userid + "\n",
-                        16, false, activity.getString(android.R.string.ok), okListener,
+                        activity.getString(R.string.tunDeviceWarning) + ": " + userid + "\n\n"
+                                + activity.getString(R.string.tapSetupHint) + "\n\n"
+                                + activity.getString(R.string.tapSetupCommand),
+                        14, false, activity.getString(android.R.string.ok), okListener,
                         null, null, null, null);
             }
         });

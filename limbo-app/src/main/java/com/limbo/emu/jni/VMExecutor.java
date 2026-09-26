@@ -107,7 +107,7 @@ class VMExecutor extends MachineExecutor {
     //JNI Methods
     private native String start(String storage_dir, String base_dir,
                                 String lib_filename, String lib_path,
-                                int sdl_scale_hint, Object[] params);
+                                Object[] params);
 
     private native String stop(int restart);
 
@@ -118,8 +118,6 @@ class VMExecutor extends MachineExecutor {
     public native int getSDLRefreshRateDefault();
 
     public native int getSDLRefreshRateIdle();
-
-    public native void nativeIgnoreBreakpointInvalidate(int value);
 
     public native void nativeMouseEvent(int button, int action, int relative, int x, int y);
 
@@ -214,6 +212,7 @@ class VMExecutor extends MachineExecutor {
     private void addUIOptions(Context context, ArrayList<String> paramsList) {
         String ui = getMachine().getUI();
         boolean gtk = "GTK".equals(ui);
+        boolean agl = "AGL".equals(ui);
         if (MachineController.getInstance().isVNCEnabled() && !gtk) {
             paramsList.add("-vnc");
             String vncParam = "";
@@ -253,9 +252,16 @@ class VMExecutor extends MachineExecutor {
             paramsList.add("-display");
             if (gtk) {
                 // GTK4 android backend (initialized by LimboGtk on the activity side)
-                paramsList.add("gtk");
+                paramsList.add("gtk" + getDisplayGLOption());
+            } else if (agl) {
+                // AGL (Android Graphics Layer): LimboAglActivity hands its
+                // Surface to the backend through nativeAglSetSurface(), and the
+                // touch/keyboard events go through nativeAglPointer/Scroll/Key.
+                // The backend enables OpenGL itself (agl_display_early_init()),
+                // so it must not get the ,gl=on option here.
+                paramsList.add("agl");
             } else {
-                paramsList.add("sdl");
+                paramsList.add("sdl" + getDisplayGLOption());
             }
         }
 
@@ -265,17 +271,45 @@ class VMExecutor extends MachineExecutor {
         }
 
         if (getMachine().getMouse() != null && !getMachine().getMouse().equals("ps2")) {
-            paramsList.add("-usb");
-            paramsList.add("-device");
-            paramsList.add(getMachine().getMouse());
-            // 对于 ia64 架构的虚拟机，需要添加 usb-kbd 设备以支持键鼠
-            // 在i8042=off的情况下无需添加此设备（在 QEMU 中自动添加）
-            // FIXME: 在没有控制台的情况下支持 usb-kbd
+            String mouseDevice = getMachine().getMouse();
+            if (mouseDevice.startsWith("virtio-")) {
+                // VirtIO input devices live on the virtio bus, so -usb must not be
+                // added. A lone virtio-tablet-pci leaves the guest without a
+                // keyboard, so it is paired with virtio-keyboard-pci.
+                paramsList.add("-device");
+                paramsList.add(mouseDevice);
+                if (mouseDevice.startsWith("virtio-tablet-pci")) {
+                    paramsList.add("-device");
+                    paramsList.add("virtio-keyboard-pci");
+                }
+            } else {
+                paramsList.add("-usb");
+                paramsList.add("-device");
+                paramsList.add(mouseDevice);
+                // 对于 ia64 架构的虚拟机，需要添加 usb-kbd 设备以支持键鼠
+                // 在i8042=off的情况下无需添加此设备（在 QEMU 中自动添加）
+                // FIXME: 在没有控制台的情况下支持 usb-kbd
 //            if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
 //                paramsList.add("-device");
 //                paramsList.add("usb-kbd");
 //            }
+            }
         }
+    }
+
+    /**
+     * virtio-gpu-gl-pci only works when the display backend has OpenGL enabled:
+     * QEMU aborts at device realize time with "The display backend does not have
+     * OpenGL support enabled" (hw/display/virtio-gpu-gl.c).  The option therefore
+     * ships together with the display backend instead of being left to the extra
+     * params of the machine.  The AGL backend switches OpenGL on by itself.
+     *
+     * @return ",gl=on" when the machine uses a VirGL (GL) virtio-gpu device,
+     * an empty string otherwise
+     */
+    private String getDisplayGLOption() {
+        String vga = getMachine().getVga();
+        return (vga != null && vga.startsWith("virtio-gpu-gl")) ? ",gl=on" : "";
     }
 
     private void addAdvancedOptions(ArrayList<String> paramsList) {
@@ -286,9 +320,19 @@ class VMExecutor extends MachineExecutor {
     }
 
     private void addAudioOptions(ArrayList<String> paramsList) {
-        if (getSoundCard() != null) {
+        String soundCard = getSoundCard();
+        if (soundCard != null) {
+            // virtio-sound exposes one capture and one playback stream by
+            // default, and QEMU splits them into an "out" and an "in" half
+            // (hw/audio/virtio-snd.c).  The input voice makes SDL open an
+            // Android recording device, which always fails because the app does
+            // not request RECORD_AUDIO ("Could not create a backend for voice
+            // 'virtio-sound.in'").  One stream keeps playback only.
+            if (soundCard.startsWith("virtio-sound")) {
+                soundCard += ",streams=1";
+            }
             paramsList.add("-device");
-            paramsList.add(getSoundCard());
+            paramsList.add(soundCard);
         }
     }
 
@@ -430,6 +474,22 @@ class VMExecutor extends MachineExecutor {
 
         paramsList.add("-m");
         paramsList.add(getMachine().getMemory() + "");
+
+        // Gunyah (aarch64) guests must NOT get the ALS reference options
+        // "-M virt,confidential-guest-support=prot0" and
+        // "-object arm-confidential-guest,id=prot0,swiotlb-size=256M".
+        // The QEMU built for this app (v11.0.0 plus
+        // patches/qemu-v11.0.0-gunyah-gzvm-accel.patch) does not implement that
+        // object: its swiotlb buffer is an internal field of the accelerator
+        // state (GUNYAHState.swiotlb_size, filled with the default in
+        // gunyah_init()) and the gunyah code paths are selected by the
+        // accelerator itself (gunyah_enabled()).  QEMU rejects an unknown
+        // "-object" with error_fatal -> exit(1) while qemu_init() runs, and
+        // because an accelerated VM runs inside the app process (that is what
+        // the AGL display needs), that exit() tears the whole app down: the UI
+        // threads then trip over libhwui/libc++ statics already destroyed by
+        // __cxa_finalize and abort with
+        // "FORTIFY: pthread_mutex_lock called on a destroyed mutex".
     }
 
 
@@ -555,7 +615,15 @@ class VMExecutor extends MachineExecutor {
         if (getMachine().getVga() != null) {
             if (getMachine().getVga().equals("Default")) {
                 //do nothing
-            } else if (getMachine().getVga().equals("virtio-gpu-pci")) {
+            } else if (getMachine().getVga().startsWith("virtio-gpu")) {
+                // virtio-gpu-pci / virtio-gpu-gl-pci are PCI devices, not -vga
+                // bios types, so they are attached with -device.  The board adds
+                // its own default (std) VGA on top of that unless -vga none is
+                // given, which leaves the guest with two adapters and QEMU with
+                // two consoles - the Android display backend can only show one
+                // of them, so the virtio-gpu output would never be visible.
+                paramsList.add("-vga");
+                paramsList.add("none");
                 paramsList.add("-device");
                 paramsList.add(getMachine().getVga());
             } else if (getMachine().getVga().equals("nographic")) {
@@ -610,10 +678,12 @@ class VMExecutor extends MachineExecutor {
      * Adds the "-bios" option. If the user picked a firmware from the BIOS
      * dropdown (assets/roms file name stored in the machine), that file is
      * used; otherwise the SeaBIOS shipped in the app assets is used.
-     * Applied to every architecture: x86/x86_64 PC machines use it as their
-     * default firmware, the IA-64 ia64-vpc (itanium2-vpc) machine requires a
-     * "-bios" firmware ROM to boot, and ARM boards fall back to it when they
-     * need a firmware blob.
+     * The SeaBIOS fallback is x86 firmware and is therefore restricted to the
+     * x86/x86_64 (and IA-64) machines: on ARM boards "-bios" is either ignored
+     * (the Cortex-M boards microbit, lm3s*, netduino* load their firmware from
+     * "-kernel" only) or consumed as the *first* instruction source loaded at
+     * address 0 (raspi/vexpress/aspeed/cubieboard/orangepi), where an x86 blob
+     * would be executed as firmware.
      */
     private void addBIOSOption(ArrayList<String> paramsList) {
         String bios = getMachine() != null ? getMachine().getBios() : null;
@@ -629,6 +699,14 @@ class VMExecutor extends MachineExecutor {
                 return;
             }
             Log.w(TAG, "BIOS file not found: " + biosFile.getPath());
+            return;
+        }
+        // SeaBIOS is x86 firmware: never fall back to it on ARM. Boards that do
+        // read "-bios" there load it as their reset/boot firmware, and the
+        // Cortex-M boards ignore it altogether - in both cases handing them
+        // bios-256k.bin only hides the fact that no usable firmware was given.
+        if (LimboApplication.arch == Config.Arch.arm
+                || LimboApplication.arch == Config.Arch.arm64) {
             return;
         }
         // QEMU 10.x defaults to bios-256k.bin on PC machines; bios.bin is the
@@ -921,7 +999,22 @@ class VMExecutor extends MachineExecutor {
             boolean needsRootAccel = Machine.ACCEL_GUNYAH.equals(accelMode)
                     || Machine.ACCEL_GZVM.equals(accelMode);
             if (needsRootAccel && !RootUtils.isRoot()) {
-                return startRootProcess(params);
+                // The AGL display paints into a Surface owned by this process,
+                // so the VM cannot live in the su/app_process child (that
+                // process has no window to render into).  Follow the ALS
+                // approach and elevate *this* process through KernelSU, then
+                // run QEMU in-process; when that is not available fall back to
+                // the (headless) root child process.
+                if (isAglDisplay() && grantRootInProcess()) {
+                    Log.d(TAG, "Root granted in-process (KernelSU), "
+                            + "running the VM in-process for the AGL display");
+                } else {
+                    if (isAglDisplay()) {
+                        ToastUtils.toastLong(LimboApplication.getInstance(),
+                                LimboApplication.getInstance().getString(R.string.agl_root_fallback));
+                    }
+                    return startRootProcess(params);
+                }
             }
 
             // XXX: for VNC we need to resume manually after a reasonable amount of time
@@ -933,18 +1026,41 @@ class VMExecutor extends MachineExecutor {
                 changeVncPass(LimboApplication.getInstance(), 2000);
             }
 
-            ignoreBreakpointInvalidation(LimboSettingsManager.getIgnoreBreakpointInvalidation(LimboApplication.getInstance())?1:0, 2000);
             QmpClient.setExternal(LimboSettingsManager.getEnableExternalQMP(LimboApplication.getInstance()));
             // Read at VM start so the setting takes effect for the current run.
             String libFilename = getQemuLibrary();
             res = start(Config.storagedir, LimboApplication.getBasefileDir(),
                     libFilename, FileUtils.getNativeLibDir(LimboApplication.getInstance()) + "/" + libFilename,
-                    Config.SDLHintScale, params);
+                    params);
         } catch (Exception ex) {
             ToastUtils.toastLong(LimboApplication.getInstance(), ex.getMessage());
             return res;
         }
         return res;
+    }
+
+    /** True when this VM paints through the AGL display (in-process Surface). */
+    private boolean isAglDisplay() {
+        return getMachine() != null && "AGL".equals(getMachine().getUI());
+    }
+
+    /**
+     * 通过 KernelSU 给“当前线程”提权（ALS 参考实现的做法）。AGL 需要 App 的
+     * Surface，因此虚拟机必须跑在本进程里，不能像以往那样放到 su/app_process
+     * 子进程中。设备没有 KernelSU（或本应用未被授权）时返回 false。
+     */
+    private boolean grantRootInProcess() {
+        int res;
+        try {
+            res = RootUtils.grantRoot();
+        } catch (Throwable t) {
+            Log.w(TAG, "KernelSU root request failed", t);
+            return false;
+        }
+        boolean root = res == 0 && RootUtils.isRoot();
+        if (!root)
+            Log.w(TAG, "KernelSU root request failed: " + res);
+        return root;
     }
 
     /**
@@ -1352,12 +1468,15 @@ class VMExecutor extends MachineExecutor {
             return;
         }
         String mouse = getMachine().getMouse();
-        // If we use absolute pointer devices in the guest os (usb-tablet) we need to prevent
+        // If we use absolute pointer devices in the guest os (usb-tablet, virtio-tablet-pci)
+        // we need to prevent
         // the mouse from going out of bounds. This case happens when we use trackpad and when the
         // guest display doesn't fit inside the Android Surface which is pretty much all the time.
         // we could use SurfaceHolder.setFixedSize() to bound the surfaceview but it creates
         // problems with refreshing the surfaceview plus we would still need this fix for trackpad
-        if (mouse != null && mouse.equals("usb-tablet") && vm_width > 0 && vm_height > 0) {
+        // NOTE: the persisted value may carry the "(Fixes Mouse)" spinner suffix, hence startsWith()
+        if (mouse != null && (mouse.startsWith("usb-tablet") || mouse.startsWith("virtio-tablet-pci"))
+                && vm_width > 0 && vm_height > 0) {
             // Compute the letterboxed (aspect-ratio-preserving) display region the
             // same way the QEMU SDL backend does (scale = MIN(w/vm_w, h/vm_h),
             // centered), so the mouse bounds always match the on-screen guest image.
@@ -1393,25 +1512,6 @@ class VMExecutor extends MachineExecutor {
         nativeEnableAaudio(value, Config.aaudioLibName,
                 FileUtils.getNativeLibDir(LimboApplication.getInstance())
                         + "/" + Config.aaudioLibName);
-    }
-
-    @Override
-    public void ignoreBreakpointInvalidation(int value){
-        ignoreBreakpointInvalidation(value, 0);
-    }
-
-    private void ignoreBreakpointInvalidation(final int value, final long delay) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Thread.sleep(delay);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                nativeIgnoreBreakpointInvalidate(value);
-            }
-        }).start();
     }
 
     //TODO: re-enable getting status from the vm

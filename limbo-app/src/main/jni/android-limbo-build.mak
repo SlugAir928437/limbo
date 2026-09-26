@@ -157,6 +157,17 @@ GTK_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-gtk4-android-cross.ini
 GTK_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-gtk4-android-cross.ini.in
 GTK_PKG_CONFIG_DIR := $(GTK_INSTALL_DIR)/lib/pkgconfig
 
+# virglrenderer: host-side renderer for QEMU's virtio-gpu-gl-pci device
+# (CONFIG_VIRGL, see android-limbo-config.mak/USE_VIRGL).  Built from
+# jni/virglrenderer for the EGL platform, installed as a shared lib and fed to
+# QEMU through pkg-config (virglrenderer.pc) so meson sets CONFIG_VIRGL and
+# links -lvirglrenderer.  libepoxy comes from the GTK4 prefix.
+VIRGL_BUILD_DIR := $(LIMBO_JNI_ROOT)/virglrenderer/build-android-$(APP_ABI)
+VIRGL_INSTALL_DIR := $(LIMBO_JNI_ROOT)/virglrenderer/android-install/$(APP_ABI)
+VIRGL_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-virgl-android-cross.ini
+VIRGL_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-virgl-android-cross.ini.in
+VIRGL_PKG_CONFIG_DIR := $(VIRGL_INSTALL_DIR)/lib/pkgconfig
+
 # pixman (shared with QEMU, meson build)
 PIXMAN_BUILD_DIR := $(LIMBO_JNI_ROOT)/pixman/build-android-$(APP_ABI)
 PIXMAN_INSTALL_DIR := $(LIMBO_JNI_ROOT)/pixman/android-install/$(APP_ABI)
@@ -197,7 +208,10 @@ JPEG_PKG_CONFIG_DIR := $(JPEG_INSTALL_DIR)/lib/pkgconfig
 # host system dirs, leaking host-only packages (libpmem, vte, ...) into the
 # Android cross-build - so only append ':' + env PKG_CONFIG_PATH when non-empty.
 # slirp must be visible to QEMU's configure here so CONFIG_SLIRP gets enabled.
-PKG_CONFIG_PATH := $(SPICE_PKG_CONFIG_DIR):$(SPICE_PROTO_PKG_CONFIG_DIR):$(OPENSSL_PKG_CONFIG_DIR):$(JPEG_PKG_CONFIG_DIR):$(SLIRP_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
+# VIRGL_PKG_CONFIG_DIR carries virglrenderer.pc (+ the EGL/GLESv2 shims that
+# virglrenderer's EGL platform needs), and GTK_PKG_CONFIG_DIR carries epoxy.pc
+# that both QEMU's CONFIG_OPENGL and virglrenderer depend on.
+PKG_CONFIG_PATH := $(SPICE_PKG_CONFIG_DIR):$(SPICE_PROTO_PKG_CONFIG_DIR):$(OPENSSL_PKG_CONFIG_DIR):$(JPEG_PKG_CONFIG_DIR):$(SLIRP_PKG_CONFIG_DIR):$(VIRGL_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)$(if $(PKG_CONFIG_PATH),:$(PKG_CONFIG_PATH))
 
 CREATE_PKG_CONFIG_LINK = \
 	if [ ! -x "$(PKG_CONFIG_LINK)" ]; then \
@@ -317,6 +331,40 @@ CREATE_GTK_MESON_CROSS_FILE = \
 		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
 		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
 		"$(GTK_CROSS_FILE_TEMPLATE)" > "$(GTK_CROSS_FILE)"
+
+CREATE_VIRGL_MESON_CROSS_FILE = \
+	sed \
+		-e 's|@TOOLCHAIN_CLANG_PREFIX@|$(TOOLCHAIN_CLANG_PREFIX)|g' \
+		-e 's|@HOST_PREFIX@|$(HOST_PREFIX)|g' \
+		-e 's|@NDK_PLATFORM_API@|$(NDK_PLATFORM_API)|g' \
+		-e 's|@VIRGL_INSTALL_DIR@|$(VIRGL_INSTALL_DIR)|g' \
+		-e 's|@VIRGL_BUILDTYPE@|$(VIRGL_BUILDTYPE)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		"$(VIRGL_CROSS_FILE_TEMPLATE)" > "$(VIRGL_CROSS_FILE)"
+
+# Android ships libEGL/libGLESv2 (and their headers) with the NDK sysroot but
+# no pkg-config files for them, while virglrenderer's EGL platform looks them
+# up through pkg-config ("dependency('egl')").  These two shims bridge that gap;
+# they are written into the virgl prefix so the QEMU/GTK builds never see them.
+CREATE_EGL_PC = \
+	mkdir -p "$(VIRGL_PKG_CONFIG_DIR)" && \
+	printf '%s\n' \
+		'Name: EGL' \
+		'Description: Android EGL (NDK sysroot stub)' \
+		'Version: 1.5' \
+		'Cflags: -I$(SYSROOT)/usr/include' \
+		'Libs: -lEGL' \
+		'' \
+		> "$(VIRGL_PKG_CONFIG_DIR)/egl.pc" && \
+	printf '%s\n' \
+		'Name: GLESv2' \
+		'Description: Android OpenGL ES 2.0 (NDK sysroot stub)' \
+		'Version: 3.2' \
+		'Cflags: -I$(SYSROOT)/usr/include' \
+		'Libs: -lGLESv2' \
+		'' \
+		> "$(VIRGL_PKG_CONFIG_DIR)/glesv2.pc"
 
 AR_FLAGS = crs
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)

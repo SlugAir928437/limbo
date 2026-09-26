@@ -418,10 +418,6 @@ public class MachineController {
         machineExecutor.enableAaudio(value);
     }
 
-    public void ignoreBreakpointInvalidation(boolean value) {
-        machineExecutor.ignoreBreakpointInvalidation(value?1:0);
-    }
-
     public enum MachineStatus {
         Ready, Stopped, Saving, Paused, SaveCompleted, SaveFailed, Unknown, Running
     }

@@ -57,14 +57,11 @@ JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateIdle(
 JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
 		JNIEnv* env, jobject thiz);
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeIgnoreBreakpointInvalidate(
-		JNIEnv* env, jobject thiz, jint jvalue);
-        
 JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_start(
         JNIEnv* env, jobject thiz,
 		jstring storage_dir, jstring base_dir,
 		jstring lib_filename, jstring lib_path,
-		jint sdl_scale_hint, jobjectArray params);
+		jobjectArray params);
         
 JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_stop(
 		JNIEnv* env, jobject thiz, jint jint_restart);

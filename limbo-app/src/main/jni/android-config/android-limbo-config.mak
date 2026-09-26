@@ -112,3 +112,29 @@ USE_GTK ?= true
 # introduced in API 31), so the library fails to dlopen on older devices.
 # The gdk android backend reads input events via JNI and does not need them.
 GTK_ANDROID_API ?= 24
+
+# ---------------------------------------------------------------------------
+# VirtIO device compilation
+# ---------------------------------------------------------------------------
+# Most of the VirtIO device families the app offers need NO switch at all:
+# hw/block/Kconfig (VIRTIO_BLK), hw/net/Kconfig (VIRTIO_NET), hw/input/Kconfig
+# (VIRTIO_INPUT) and hw/audio/Kconfig (VIRTIO_SND) are all "default y" for
+# every softmmu target, so virtio-blk-pci, virtio-net-pci, virtio-tablet-pci,
+# virtio-keyboard-pci and virtio-sound-pci are always compiled into
+# libqemu-system-*.so.  The QEMU side is selected at runtime by the app
+# through -device / -net nic,model=... (see VMExecutor).
+#
+# The only VirtIO device that is NOT compiled by default is the VirGL
+# accelerated GPU, virtio-gpu-gl-pci: hw/display/meson.build builds
+# virtio-gpu-pci-gl.c only `if virgl.found() and opengl.found()`.  Enabling it
+# requires the whole chain below:
+#   * virglrenderer cross built for Android (EGL platform, see
+#     android-config/meson-virgl-android-cross.ini.in)
+#   * QEMU configured with -Dopengl=enabled -Dvirglrenderer=enabled
+#     (VIRGL_MESON_FLAGS in the top level Makefile), which also turns on the
+#     GTK GL area (CONFIG_OPENGL) used by the GTK4 Android backend
+# epoxy (needed for the OpenGL feature) comes from the gtk4android prefix, so
+# USE_GTK must be true for the VirGL display path to be complete.
+# Set to false to skip the VirGL stack: the build is smaller and
+# virtio-gpu-gl-pci is simply not offered by the emulator.
+USE_VIRGL ?= true

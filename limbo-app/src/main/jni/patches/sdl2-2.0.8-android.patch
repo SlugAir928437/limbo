@@ -172,3 +172,19 @@ diff -ru --no-dereference /tmp/SDL2/src/events/SDL_mouse.c SDL2/src/events/SDL_m
      SDL_Mouse *mouse = SDL_GetMouse();
  
      if (mouse->WarpMouseGlobal) {
+diff -ru --no-dereference /tmp/SDL2/src/video/SDL_egl.c SDL2/src/video/SDL_egl.c
+--- /tmp/SDL2/src/video/SDL_egl.c	2018-03-02 00:34:42.000000000 +0800
++++ SDL2/src/video/SDL_egl.c	2026-09-25 19:40:00.000000000 +0800
+@@ -394,7 +394,11 @@
+     LOAD_FUNC(eglQueryString);
+     LOAD_FUNC(eglGetError);
+ 
+-    if (_this->egl_data->eglQueryString) {
++    /* The client version is only needed for eglGetPlatformDisplay() below.
++     * Android's libEGL logs "validate_display: error 3008 (EGL_BAD_DISPLAY)"
++     * for eglQueryString(EGL_NO_DISPLAY, EGL_VERSION): per the EGL spec only
++     * EGL_EXTENSIONS may be queried without a display. */
++    if (platform && _this->egl_data->eglQueryString) {
+         /* EGL 1.5 allows querying for client version */
+         const char *egl_version = _this->egl_data->eglQueryString(EGL_NO_DISPLAY, EGL_VERSION);
+         if (egl_version != NULL) {

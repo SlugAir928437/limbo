@@ -7,3 +7,4 @@ es1370
 hda
 pcspk
 all
+virtio-sound-pci

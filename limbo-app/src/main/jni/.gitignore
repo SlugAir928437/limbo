@@ -30,6 +30,7 @@ qemu-orig
 /pixman
 /slirp
 /SDL2
+/virglrenderer
 
 build_arm32
 build_arm64

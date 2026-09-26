@@ -123,16 +123,18 @@ ifeq ($(NDK_DEBUG), 1)
 	LIBGLIB_BUILDTYPE = debug
 	LIBPIXMAN_DEBUG =
 	GTK_BUILDTYPE = debug
+	VIRGL_BUILDTYPE = debug
 else
 	LIBFFI_DEBUG = --disable-debug
     LIBGLIB_BUILDTYPE = release
     LIBPIXMAN_DEBUG =
     GTK_BUILDTYPE = release
+    VIRGL_BUILDTYPE = release
 endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android
+.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl
 
 default: limbo
 	
@@ -397,11 +399,69 @@ clean-gtk:
 	rm -f "$(SYSROOT_JNI_LINK)" "$(SYSROOT_OBJ_LINK)" || true; \
 	rmdir "$(dir $(SYSROOT_JNI_LINK))" "$(dir $(SYSROOT_OBJ_LINK))" 2>/dev/null || true
 
+# virglrenderer: host side renderer behind QEMU's virtio-gpu-gl-pci device
+# (CONFIG_VIRGL / USE_VIRGL in android-limbo-config.mak).  Built like the other
+# meson deps against the cross glib/libffi/pixman, plus the libepoxy that
+# gtk4android installs - epoxy is what QEMU's CONFIG_OPENGL and virglrenderer's
+# EGL platform both link against.  EGL platform only: Android has no GLX/gbm.
+#
+# 依赖是 gtk（构建+安装）而不是 config-gtk：virglrenderer 通过 pkg-config 找
+# epoxy.pc、运行时链接 libepoxy.so，两者都只在 GTK4 完成 install 后才出现在
+# $(GTK_INSTALL_DIR) 里；而 config-gtk 还会 rm -rf $(GTK_INSTALL_DIR)，所以在
+# config-virgl 里重复它会把刚装好的 GTK4 又清掉。因此 config-virgl 只能排在
+# GTK4 构建之后（make limbo 里排在 make deps 之后）。
+config-virgl: ndk pkg-config-link ffi glib pixman $(if $(filter true,$(USE_GTK)),gtk)
+	$(CREATE_VIRGL_MESON_CROSS_FILE)
+	$(CREATE_EGL_PC)
+	cd $(LIMBO_JNI_ROOT)/virglrenderer && rm -rf "$(VIRGL_BUILD_DIR)" "$(VIRGL_INSTALL_DIR)"
+	# meson option names/types differ between virglrenderer releases (venus vs
+	# venus-experimental, drm as boolean or feature, ...), so the flags are
+	# derived from what the checked out tree declares - an unknown -D option is
+	# only a warning in meson, but a wrong *value* is a hard error.
+	# Everything found is switched OFF: Android has no libdrm/gbm and the
+	# Android/iOS venus (Vulkan) path is not used by virtio-gpu-gl-pci.
+	cd $(LIMBO_JNI_ROOT)/virglrenderer && \
+	virgl_opts="-Dplatforms=egl"; \
+	for opt in venus venus-experimental venus-validate drm drm-msm drm-msm-experimental minigbm_allocation tests; do \
+		if grep -q "option('$$opt'" meson_options.txt 2>/dev/null; then \
+			opt_type=$$(sed -n "/option('$$opt'/,/)/p" meson_options.txt | \
+				sed -n "s/.*type *: *'\([a-z]*\)'.*/\1/p" | head -n1); \
+			case "$$opt_type" in \
+				feature) virgl_opts="$$virgl_opts -D$$opt=disabled" ;; \
+				boolean) virgl_opts="$$virgl_opts -D$$opt=false" ;; \
+			esac; \
+		fi; \
+	done; \
+	echo ">> virglrenderer meson options:$$virgl_opts"; \
+	PKG_CONFIG_PATH="$(VIRGL_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(PIXMAN_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
+	PKG_CONFIG_LIBDIR="$(VIRGL_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(PIXMAN_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
+	meson setup "$(VIRGL_BUILD_DIR)" . \
+		--cross-file "$(VIRGL_CROSS_FILE)" \
+		$$virgl_opts
+
+virgl: ndk config-virgl
+	ninja -C "$(VIRGL_BUILD_DIR)" -j $(BUILD_THREADS)
+	DESTDIR= ninja -C "$(VIRGL_BUILD_DIR)" install
+	# deploy the renderer next to the GTK libs so the app can load it
+	$(CREATE_LIBSDIR)
+	cp -Lf $(VIRGL_INSTALL_DIR)/lib/libvirglrenderer.so* $(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/
+
+clean-virgl:
+	-rm -rf "$(VIRGL_BUILD_DIR)" "$(VIRGL_INSTALL_DIR)" "$(VIRGL_CROSS_FILE)"
+
 _qemu: ndk
 	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST)
 
 config-qemu: ndk pkg-config-link fetch-qemu
-	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)"
+	@if [ "$(USE_VIRGL)" = "true" ] && [ "$(USE_GTK)" != "true" ]; then \
+		echo ">> WARNING: USE_VIRGL=true needs the libepoxy provided by the gtk4android"; \
+		echo ">>          prefix (USE_GTK=true) - QEMU's -Dopengl=enabled fails without it"; \
+	fi
+	@if [ "$(USE_VIRGL)" = "true" ] && [ -z "$(VIRGL_MESON_FLAGS)" ]; then \
+		echo ">> NOTE: this QEMU tree declares no virglrenderer/opengl meson option:"; \
+		echo ">>       virtio-gpu-gl-pci will NOT be part of the build (set USE_VIRGL=false to silence)"; \
+	fi
+	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" AGL_MESON_FLAGS="$(AGL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)"
 
 clean-qemu:
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) distclean
@@ -410,8 +470,11 @@ clean-qemu:
 	-rm -rf ../assets/roms/* 
 	-rm -rf $(LIMBO_APP_LIBS)/assets/roms/*
 
+# virglrenderer 不在这里配置/构建：它依赖 GTK4 安装出来的 epoxy（见 config-virgl
+# 注释），必须排在 deps（构建+安装 GTK4）之后，因此由 limbo 目标显式执行。
 config-deps: ndk config-ffi config-glib config-pixman config-slirp config-spice $(if $(USE_GTK),config-gtk)
 
+# virglrenderer 同上：由 limbo 在 GTK4 安装完成后显式构建
 deps: ndk glib pixman slirp spice $(if $(USE_GTK),gtk)
 
 _build-qemu: ndk 
@@ -452,6 +515,14 @@ limbo:
 	make ndk
 	make config-deps
 	make deps
+# virglrenderer 显式排在 config-qemu 之前：QEMU 只有拿到 virglrenderer.pc 才能
+# 用 -Dopengl=enabled -Dvirglrenderer=enabled 配出 virtio-gpu-gl-pci（AGL 显示
+# 的 3D 客户机要用它）。config-virgl/virgl 本身也会被 config-deps/deps 条件带上，
+# 这里显式列出是为了让依赖顺序一目了然、且 USE_VIRGL 被覆盖时也不会漏。
+ifeq ($(USE_VIRGL),true)
+	make config-virgl
+	make virgl
+endif
 	make config-qemu
 	make qemu
 	make ncat
@@ -473,6 +544,14 @@ QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
 # gzvm / gunyah 加速器补丁（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）
 ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.patch
 
+# AGL（Android Graphics Layer）显示后端补丁：gunyah/gzvm 加速的 aarch64 虚拟机
+# 必须把画面画到 App 自己的 Surface 上（-display agl），而独立 root 子进程拿不到
+# Surface，因此还需要配合进程内提权（见 RootUtils.grantRoot）。该后端依赖
+# epoxy/EGL，即 USE_GTK/USE_VIRGL 提供的 OpenGL 栈。同样只适用于官方 QEMU 树。
+AGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-agl-display.patch
+AGL_MESON_FLAGS     := -Dagl=enabled
+AGL_APPLY           := yes
+
 # 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
 #  export BUILD_ACCEL=gunyah / gzvm / both / none 覆盖）
 # 映射成 config-qemu 里传给 ./configure 的 -Dgunyah/-Dgzvm meson 特性
@@ -491,6 +570,10 @@ ACCEL_APPLY          := yes
 endif
 QEMU_FORK_BRANCH    := main
 QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-copy_file_range.patch
+# virglrenderer (host side of QEMU's virtio-gpu-gl-pci / CONFIG_VIRGL).
+# Override the tag with e.g. export VIRGL_TAG=1.1.1 to follow upstream.
+VIRGL_TAG           ?= 1.1.0
+VIRGL_URL           := https://gitlab.freedesktop.org/virgl/virglrenderer.git
 GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
 GTK4_BRANCH         := master
 GLIB_URL            := https://gitlab.gnome.org/GNOME/glib.git
@@ -521,9 +604,35 @@ endif
 ifneq ($(QEMU_USE_OFFICIAL), yes)
 ACCEL_MESON_FLAGS    :=
 ACCEL_APPLY          :=
+AGL_MESON_FLAGS      :=
+AGL_APPLY            :=
 endif
 
-fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-gtk4android fetch-qemu
+# VirtIO GPU GL (virtio-gpu-gl-pci): hw/display/meson.build only builds
+# virtio-gpu-pci-gl.c when meson found both virglrenderer and epoxy/EGL, so
+# QEMU must be configured with -Dopengl=enabled -Dvirglrenderer=enabled.
+#  - the flags are only passed when the checked out QEMU tree really declares
+#    those meson options (official 11.0.0 tree and the IA-64 fork both do),
+#    otherwise ./configure would abort with "Unknown option";
+#  - recursive '=' on purpose: the tree check runs when the config-qemu recipe
+#    is expanded, i.e. after fetch-qemu has downloaded the source tree.
+#  - the option names are matched without the "option('...')" punctuation: a
+#    bare '(' inside a $(shell ...) argument unbalances make's paren matching
+#    and aborts with "unterminated call to function 'if'".
+VIRGL_MESON_FLAGS = $(if $(filter true,$(USE_VIRGL)),$(shell if grep -q virglrenderer "$(LIMBO_JNI_ROOT)/qemu/meson_options.txt" 2>/dev/null && grep -q opengl "$(LIMBO_JNI_ROOT)/qemu/meson_options.txt" 2>/dev/null; then echo -Dopengl=enabled -Dvirglrenderer=enabled; fi))
+
+fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-gtk4android fetch-virgl fetch-qemu
+
+fetch-virgl:
+	@if [ "$(USE_VIRGL)" != "true" ]; then \
+		echo ">> USE_VIRGL=$(USE_VIRGL)，跳过 virglrenderer"; \
+	elif [ ! -f "$(LIMBO_JNI_ROOT)/virglrenderer/meson.build" ]; then \
+		echo ">> GET virglrenderer $(VIRGL_TAG)"; \
+		rm -rf "$(LIMBO_JNI_ROOT)/virglrenderer"; \
+		git clone --depth 1 --branch $(VIRGL_TAG) --single-branch $(VIRGL_URL) "$(LIMBO_JNI_ROOT)/virglrenderer"; \
+	else \
+		echo ">> virglrenderer 已存在，跳过"; \
+	fi
 
 fetch-slirp:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/slirp/.git" ] || [ ! -f "$(LIMBO_JNI_ROOT)/slirp/meson.build" ]; then \
@@ -673,6 +782,7 @@ fetch-qemu:
 		fi; \
 	fi
 	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
+	$(if $(AGL_APPLY),@if [ -f "$(AGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(AGL_PATCH)" 2>/dev/null; then echo ">> 应用 AGL 显示后端补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(AGL_PATCH)"; fi;)
 
 fetch-gtk4android:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \
@@ -697,7 +807,7 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-ncat clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-ncat clean-ndk
 
 clean: 
 	make clean-qemu 
@@ -707,6 +817,7 @@ clean:
 	make clean-slirp
 	make clean-spice
 	make clean-gtk
+	make clean-virgl
 	make clean-ndk
 	# only remove build artifacts (files), never directories -- the old -name
 	# "*.d" pattern also matched any dir whose basename ends in ".d" (e.g.

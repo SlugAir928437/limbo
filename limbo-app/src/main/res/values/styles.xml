@@ -26,11 +26,13 @@
     <!-- Standard Button -->
     <!-- Control Button style - Large Pill Shape -->
     <!-- Section Header Icon Background -->
-    <style name="FilePickerTheme" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
-        <item name="colorPrimary">#6750A4</item>
-        <item name="colorPrimaryVariant">#4F378B</item>
-        <item name="colorSecondary">#6750A4</item>
-        <item name="colorAccent">#6750A4</item>
+    <!-- File picker themed as a full activity (not a Dialog), so the layout fills the
+         screen instead of rendering as a dialog (narrow, inset, misaligned). -->
+    <style name="FilePickerTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/rail_color_primary</item>
+        <item name="colorPrimaryVariant">@color/rail_color_primary_dark</item>
+        <item name="colorSecondary">@color/rail_color_accent</item>
+        <item name="colorAccent">@color/rail_color_accent</item>
         <item name="android:fontFamily">sans</item>
     </style>
 

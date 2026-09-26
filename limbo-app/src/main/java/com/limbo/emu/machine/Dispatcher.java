@@ -387,9 +387,6 @@ public class Dispatcher implements ViewListener {
             case FULLSCREEN:
                 MachineController.getInstance().setFullscreen();
                 break;
-            case IGNORE_BREAKPOINT_INVALIDATION:
-                MachineController.getInstance().ignoreBreakpointInvalidation(convertBoolean(action, value));
-                break;
         }
     }
 
@@ -474,14 +471,6 @@ public class Dispatcher implements ViewListener {
             return (boolean) value;
         } else {
             throw new RuntimeException("Unknown property value: " + value + " for: " + property);
-        }
-    }
-
-    private boolean convertBoolean(MachineAction action, Object value) {
-        if (value instanceof Boolean) {
-            return (boolean) value;
-        } else {
-            throw new RuntimeException("Unknown action value: " + value + " for: " + action);
         }
     }
 

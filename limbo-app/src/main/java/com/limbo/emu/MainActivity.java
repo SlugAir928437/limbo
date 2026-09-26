@@ -6,6 +6,7 @@ import com.limbo.emu.log.Logger;
 import com.limbo.emu.main.Config;
 import com.limbo.emu.main.LimboActivity;
 import com.limbo.emu.main.LimboApplication;
+import com.tencent.bugly.crashreport.CrashReport;
 
 public class MainActivity extends LimboActivity {
     @Override

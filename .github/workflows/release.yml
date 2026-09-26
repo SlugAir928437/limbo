@@ -58,8 +58,19 @@ jobs:
           packages: 'ndk;28.2.13676358'
 
       - name: 安装依赖
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get install make autoconf automake git binutils python3 \
+          # runner 预置的 apt 索引落后于镜像源时，镜像上旧版本 deb 已被清理，
+          # 直接 install 会 404 Not Found（libglib2.0-dev / libglib2.0-dev-bin /
+          # libgirepository-2.0-0）。先刷新索引（失败重试），再用 --fix-missing 兜底。
+          for i in 1 2 3; do
+            sudo -E apt-get update -y && break
+            echo ">> apt-get update 第 ${i} 次失败，5s 后重试"
+            sleep 5
+          done
+          sudo -E apt-get install -y --fix-missing \
+            make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync \
             gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev zip
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'

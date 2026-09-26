@@ -569,7 +569,14 @@ ACCEL_MESON_FLAGS    := -Dgunyah=enabled -Dgzvm=enabled
 ACCEL_APPLY          := yes
 endif
 QEMU_FORK_BRANCH    := main
-QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-copy_file_range.patch
+# IA-64 fork 仍缺的 Android 适配（官方树的 qemu-v11.0.0.patch 已有、fork 未合入）：
+#   - 强制 HAVE_COPY_FILE_RANGE，让 block/file-posix.c 走 limbo_compat_stubs.c
+#     的实现而不是自己编一份 static copy_file_range()（会与 limbo_compat.h 的
+#     原型冲突）
+#   - spice-server >=0.15 是 C++ 静态库，必须显式链接 NDK libc++ 运行时，否则
+#     libspice-server.a 的 __cxxabiv1::* / __cxa_pure_virtual 无人解析
+#   - Android 交叉构建跳过整个 tests/：宿主测试二进制既不能在设备上运行，也编不过
+QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-android.patch
 # virglrenderer (host side of QEMU's virtio-gpu-gl-pci / CONFIG_VIRGL).
 # Override the tag with e.g. export VIRGL_TAG=1.1.1 to follow upstream.
 VIRGL_TAG           ?= 1.1.0

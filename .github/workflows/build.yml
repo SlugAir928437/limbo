@@ -32,6 +32,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # 构建参数集中在这里：每一步都会继承同样的环境，等价于原来单步
+    # `make limbo` 里 export 的那些变量。NDK_ROOT / BUILD_THREADS 依赖运行时的
+    # runner 环境，无法在 job env 里求值，由下方「准备构建环境」步骤写入
+    # $GITHUB_ENV 后再供各步骤使用。
+    env:
+      BUILD_GUEST: ${{ github.event.inputs.build_guest || 'ia64-softmmu' }}
+      BUILD_HOST: ${{ github.event.inputs.build_host || 'arm64-v8a' }}
+      USE_GTK: 'true'
+      USE_VIRGL: 'true'
+      LOGDIR: ${{ github.workspace }}/ci-logs
     steps:
       - name: 检出代码
         uses: actions/checkout@v6
@@ -39,11 +49,17 @@ jobs:
           submodules: false
 
       # 源码获取 / 补丁应用统一收进 jni/Makefile 的 fetch 目标（qemu/gtk4android
-      # 已取消 git submodule，全部由 make fetch 克隆）：
+      # 已取消 git submodule，全部由 `make fetch` 克隆）：
       #   x86/arm 模拟架构  -> 下载官方 QEMU v11.0.0 + 应用 qemu-v11.0.0.patch
       #   ia64              -> 下载 IA-64 fork（FreshingAir/qemu-system-ia64）
       #   gtk4android       -> 下载 SlugAir928437/gtk4android
-      # 下方仅保留环境准备与构建，构建前的依赖下载全部由 `make limbo -> make fetch` 完成。
+      # 构建链被拆成下面 20 个独立步骤：fetch -> ndk -> 每个依赖各自的
+      # config-X + X（libffi / glib / pixman / slirp / spice / gtk / virglrenderer，
+      # 保持 jni/Makefile 里 config-deps -> deps 的相对次序）-> config-qemu ->
+      # qemu -> ncat -> install。
+      # 拆分的目的是让失败点直接定位到具体阶段（Actions 里一眼可见是哪一步、
+      # 甚至哪个依赖挂了），每步输出同时 tee 一份完整日志到 ci-logs/，
+      # 失败时整体上传为 artifact。
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -67,36 +83,160 @@ jobs:
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
       # 依赖源码（glib/libffi/pixman/SDL2）与 QEMU/gtk4android 源码均已由
-      # jni/Makefile 的 fetch 目标在 `make limbo` 时下载并应用补丁，此处不再克隆。
+      # 第 1 步 `make fetch` 下载并应用补丁，此处不再克隆。
       - name: 缓存 meson wrap 下载 (pcre2 等)
         uses: actions/cache@v4
         with:
           path: ~/.cache/meson
           key: meson-wrap-${{ runner.os }}
 
-      - name: Build QEMU
+      - name: 准备构建环境
         run: |
-          cd limbo-app/src/main/jni
-          export NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/28.2.13676358
-          export PATH=$PATH:$NDK_ROOT
-          export BUILD_THREADS=$(nproc)
-          export BUILD_GUEST=${{ github.event.inputs.build_guest || 'ia64-softmmu' }}
-          export BUILD_HOST=${{ github.event.inputs.build_host || 'arm64-v8a' }}
-          export USE_GTK=true
-          # 完整构建链: ffi -> glib -> pixman -> gtk(gtk4android) -> qemu -> limbo
-          # 把完整输出写到日志文件，失败时保留最近 200 行以便诊断（步骤日志会被截断）
-          LOGDIR=/home/runner/work/limbo/limbo/ci-logs
+          NDK_VERSION=28.2.13676358
+          echo "NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "BUILD_THREADS=$(nproc)" >> "$GITHUB_ENV"
+          echo "PATH=$PATH:${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           mkdir -p "$LOGDIR"
-          set +e
-          make limbo > "$LOGDIR/qemu-build.log" 2>&1
-          rc=$?
-          set -e
-          echo "::group::QEMU 构建日志（末尾 200 行）"
-          tail -200 "$LOGDIR/qemu-build.log"
-          echo "::endgroup::"
-          exit $rc
+          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL}"
+          echo ">> NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
-      - name: 上传 QEMU 构建日志（失败诊断用）
+      - name: 1/20 拉取源码并打补丁（make fetch）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make fetch 2>&1 | tee "$LOGDIR/01-fetch.log"
+
+      - name: 2/20 生成 NDK 中间目录（make ndk）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make ndk 2>&1 | tee "$LOGDIR/02-ndk.log"
+
+      - name: 3/20 配置 libffi（make config-ffi）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-ffi 2>&1 | tee "$LOGDIR/03-config-ffi.log"
+
+      - name: 4/20 构建 libffi（make ffi）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make ffi 2>&1 | tee "$LOGDIR/04-ffi.log"
+
+      - name: 5/20 配置 glib（make config-glib）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-glib 2>&1 | tee "$LOGDIR/05-config-glib.log"
+
+      - name: 6/20 构建 glib（make glib）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make glib 2>&1 | tee "$LOGDIR/06-glib.log"
+
+      - name: 7/20 配置 pixman（make config-pixman）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-pixman 2>&1 | tee "$LOGDIR/07-config-pixman.log"
+
+      - name: 8/20 构建 pixman（make pixman）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make pixman 2>&1 | tee "$LOGDIR/08-pixman.log"
+
+      - name: 9/20 配置 libslirp（make config-slirp）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-slirp 2>&1 | tee "$LOGDIR/09-config-slirp.log"
+
+      - name: 10/20 构建 libslirp（make slirp）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make slirp 2>&1 | tee "$LOGDIR/10-slirp.log"
+
+      - name: 11/20 配置 spice 栈（make config-spice）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-spice 2>&1 | tee "$LOGDIR/11-config-spice.log"
+
+      - name: 12/20 构建 spice 栈（make spice）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make spice 2>&1 | tee "$LOGDIR/12-spice.log"
+
+      - name: 13/20 配置 GTK4（make config-gtk）
+        if: env.USE_GTK == 'true'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-gtk 2>&1 | tee "$LOGDIR/13-config-gtk.log"
+
+      - name: 14/20 构建 GTK4（make gtk）
+        if: env.USE_GTK == 'true'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make gtk 2>&1 | tee "$LOGDIR/14-gtk.log"
+
+      # virglrenderer 依赖 gtk4android 安装出来的 libepoxy，必须排在 gtk 之后，
+      # 因此它在 Makefile 的 limbo 目标里也是独立于 config-deps/deps 的一环。
+      - name: 15/20 配置 virglrenderer（make config-virgl）
+        if: env.USE_VIRGL == 'true'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-virgl 2>&1 | tee "$LOGDIR/15-config-virgl.log"
+
+      - name: 16/20 构建 virglrenderer（make virgl）
+        if: env.USE_VIRGL == 'true'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make virgl 2>&1 | tee "$LOGDIR/16-virgl.log"
+
+      - name: 17/20 配置 QEMU（make config-qemu）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-qemu 2>&1 | tee "$LOGDIR/17-config-qemu.log"
+
+      - name: 18/20 构建 QEMU 并部署库（make qemu）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make qemu 2>&1 | tee "$LOGDIR/18-qemu.log"
+
+      - name: 19/20 构建 ncat（make ncat）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make ncat 2>&1 | tee "$LOGDIR/19-ncat.log"
+
+      - name: 20/20 同步 jniLibs（make install）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make install 2>&1 | tee "$LOGDIR/20-install.log"
+
+      - name: 显示失败阶段的日志尾部
+        if: failure()
+        run: |
+          for log in "$LOGDIR"/*.log; do
+            [ -e "$log" ] || continue
+            echo "::group::$log（末尾 200 行）"
+            tail -200 "$log"
+            echo "::endgroup::"
+          done
+
+      - name: 上传构建日志（失败诊断用）
         if: failure()
         uses: actions/upload-artifact@v7.0.1
         with:

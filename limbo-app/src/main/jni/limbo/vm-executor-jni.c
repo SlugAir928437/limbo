@@ -28,6 +28,9 @@
 #include <dlfcn.h>
 #include <unwind.h>
 #include <dlfcn.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <android/native_window_jni.h>
 #include "vm-executor-jni.h"
 #include "limbo_compat.h"
 
@@ -95,6 +98,165 @@ void set_qemu_var(JNIEnv* env, jobject thiz, const char * var, jint jvalue){
     *var_ptr = value_int;
 }
 
+/* ---------------------------------------------------------------------------
+ * AGL display bridge and KernelSU root request.
+ *
+ * The AGL backend lives inside libqemu-system-*.so, which is loaded here with
+ * dlopen() and therefore not linked into liblimbo.so: every entry point is
+ * resolved with dlsym().  LimboAglActivity hands over its Surface so the guest
+ * is rendered straight into the app window; that is the only display the
+ * gunyah/gzvm accelerated VMs can use, because those have to run in this
+ * process as root (see nativeGrantRoot()).
+ * ------------------------------------------------------------------------- */
+
+typedef void (*agl_set_window_fn)(ANativeWindow *window, uint32_t refresh_rate);
+typedef void (*agl_cleanup_fn)(void);
+typedef void (*agl_pointer_fn)(float x, float y, int buttons);
+typedef void (*agl_scroll_fn)(float x, float y);
+typedef void (*agl_key_fn)(int scan_code, bool down);
+
+static void *get_qemu_symbol(const char *name) {
+    void *obj;
+
+    if (handle == NULL) {
+        return NULL;
+    }
+    dlerror();
+    obj = dlsym(handle, name);
+    if (dlerror() != NULL) {
+        return NULL;
+    }
+    return obj;
+}
+
+/* The activity owns a SurfaceView and therefore gets its Surface before the VM
+ * is started, i.e. while libqemu-system-*.so is still unloaded.  Keep the last
+ * window here until the library (and with it the AGL backend) is available. */
+static ANativeWindow *agl_buffered_window = NULL;
+static uint32_t agl_buffered_rate = 0;
+
+static void buffer_agl_window(ANativeWindow *window, uint32_t rate) {
+    ANativeWindow *old = agl_buffered_window;
+
+    if (window != NULL) {
+        ANativeWindow_acquire(window);
+    }
+    agl_buffered_window = window;
+    agl_buffered_rate = rate;
+    if (old != NULL) {
+        ANativeWindow_release(old);
+    }
+}
+
+/* Hands the buffered window to the backend; called once QEMU is initialized. */
+static void flush_buffered_agl_window(void) {
+    agl_set_window_fn set_window =
+            (agl_set_window_fn) get_qemu_symbol("agl_set_window");
+    ANativeWindow *window = agl_buffered_window;
+
+    if (set_window == NULL || window == NULL) {
+        return;
+    }
+    agl_buffered_window = NULL;
+    set_window(window, agl_buffered_rate);
+    ANativeWindow_release(window);
+}
+
+/* Stops and joins the AGL render thread.  Must run after qemu_cleanup() so the
+ * renderer is gone before the library is closed; the backend state is reset so
+ * a later VM start in this process can use AGL again. */
+static void cleanup_agl_display(void) {
+    agl_cleanup_fn cleanup = (agl_cleanup_fn) get_qemu_symbol("agl_cleanup");
+
+    if (cleanup != NULL) {
+        cleanup();
+    }
+}
+
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_setSurface(
+        JNIEnv* env, jclass clazz, jobject surface, jfloat refresh_rate) {
+    agl_set_window_fn set_window =
+            (agl_set_window_fn) get_qemu_symbol("agl_set_window");
+    ANativeWindow *window = NULL;
+    uint32_t rate = 0;
+
+    if (surface != NULL) {
+        window = ANativeWindow_fromSurface(env, surface);
+        if (window == NULL) {
+            LOGE("Could not get an ANativeWindow for the AGL surface\n");
+            return;
+        }
+    }
+    /* The backend expects milli-Hz; 0 lets it keep its own default. */
+    if (refresh_rate > 0) {
+        rate = (uint32_t) (refresh_rate * 1000.0 + 0.5);
+    }
+    if (set_window == NULL) {
+        /* QEMU is not loaded yet (the Surface arrives first): buffer it. */
+        buffer_agl_window(window, rate);
+    } else {
+        set_window(window, rate);
+    }
+    if (window != NULL) {
+        ANativeWindow_release(window);
+    }
+}
+
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_pointer(
+        JNIEnv* env, jclass clazz, jfloat x, jfloat y, jint buttons) {
+    agl_pointer_fn pointer =
+            (agl_pointer_fn) get_qemu_symbol("limbo_agl_pointer");
+
+    if (pointer != NULL) {
+        pointer(x, y, buttons);
+    }
+}
+
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_scroll(
+        JNIEnv* env, jclass clazz, jfloat x, jfloat y) {
+    agl_scroll_fn scroll =
+            (agl_scroll_fn) get_qemu_symbol("limbo_agl_scroll");
+
+    if (scroll != NULL) {
+        scroll(x, y);
+    }
+}
+
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_key(
+        JNIEnv* env, jclass clazz, jint scan_code, jboolean down) {
+    agl_key_fn key = (agl_key_fn) get_qemu_symbol("limbo_agl_key");
+
+    if (key != NULL) {
+        key(scan_code, down == JNI_TRUE);
+    }
+}
+
+/*
+ * KernelSU root request, following the ALS reference implementation: the
+ * reboot syscall with the KernelSU magic hands back the driver fd and
+ * ioctl(_IO('K', 1)) then grants root to the calling thread.  Magisk/su cannot
+ * elevate an existing process, which is why the fallback for devices without
+ * KernelSU is the separate root child process (headless).
+ */
+JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_RootUtils_grantRoot(
+        JNIEnv* env, jclass clazz) {
+    int fd = -1;
+    int status;
+
+    errno = 0;
+    syscall(SYS_reboot, 0xDEADBEEF, 0xCAFEBABE, 0, &fd);
+    if (fd < 0) {
+        return ENODEV;
+    }
+    if (ioctl(fd, _IO('K', 1), NULL) < 0) {
+        status = errno;
+        close(fd);
+        return status;
+    }
+    close(fd);
+    return geteuid() == 0 ? 0 : EPERM;
+}
+
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *pvt) {
 	return JNI_VERSION_1_2;
 }
@@ -150,21 +312,13 @@ JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
     return res;
 }
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeIgnoreBreakpointInvalidate(
-		JNIEnv* env, jobject thiz, jint jvalue) {
-    if(handle == NULL) {
-    	return;
-    }
-    set_qemu_var(env, thiz, "limbo_ignore_breakpoint_invalidate", jvalue);
-}
-
 /* Shared VM bootstrap used by both the in-process VMExecutor.start() and
  * the root child process (RootVmLauncher.startVm).  In the root child
  * thiz is NULL, so the per-instance JNI wiring (set_jni) is skipped. */
 static jstring start_qemu(JNIEnv* env, jobject thiz,
         jstring storage_dir, jstring base_dir,
         jstring lib_filename, jstring lib_path,
-        jint sdl_scale_hint, jobjectArray params) {
+        jobjectArray params) {
 	int res;
 	char res_msg[MSG_BUFSIZE + 1] = { 0 };
 
@@ -257,7 +411,6 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
 	if (thiz != NULL) {
 		setup_jni(env, thiz, storage_dir, base_dir);
 	}
-	set_qemu_var(env, thiz, "limbo_sdl_scale_hint", sdl_scale_hint);
     /* Same mode value drives both the SDL and the GTK display backends:
      * 0 = stretch, 1 = keep aspect ratio, 2 = 1:1 pixels.  Symbols that are
      * not exported by the loaded qemu library (e.g. VNC-only builds) are
@@ -325,12 +478,18 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
         }
 
         qemu_init(argc, argv);
+        /* The display backends exist now: deliver a Surface that arrived
+         * before the library was loaded (AGL display). */
+        flush_buffered_agl_window();
         qemu_main_loop();
         qemu_cleanup();
 	}
 
 	sprintf(res_msg, "Closing lib: %s", lib_path_str);
 	LOGV("%s", res_msg);
+	/* Tear the AGL renderer down before unloading the library (no-op unless
+	 * the VM was started with "-display agl"). */
+	cleanup_agl_display();
 	dlclose(handle);
 	handle = NULL;
 	started = 0;
@@ -353,9 +512,9 @@ JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_start(
         JNIEnv* env, jobject thiz,
 		jstring storage_dir, jstring base_dir,
 		jstring lib_filename, jstring lib_path,
-		jint sdl_scale_hint, jobjectArray params) {
+		jobjectArray params) {
 	return start_qemu(env, thiz, storage_dir, base_dir,
-			lib_filename, lib_path, sdl_scale_hint, params);
+			lib_filename, lib_path, params);
 }
 
 /* Entry point for the root child process (RootVmLauncher.main): runs the
@@ -366,7 +525,7 @@ JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_RootVmLauncher_startVm(
 		jstring lib_filename, jstring lib_path,
 		jobjectArray params) {
 	return start_qemu(env, NULL, storage_dir, base_dir,
-			lib_filename, lib_path, 0, params);
+			lib_filename, lib_path, params);
 }
 
 

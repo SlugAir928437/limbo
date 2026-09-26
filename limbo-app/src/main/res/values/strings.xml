@@ -120,6 +120,8 @@
     <string name="TapDeviceFound">TAP Device found</string>
     <string name="tunDeviceWarning">Warning! Make sure device /dev/net/tun has appropriate permissions\nUser ID</string>
     <string name="TAPHelp">TAP Help</string>
+    <string name="tapSetupHint">Run the following in a root shell (adb shell, then su) before starting the VM:</string>
+    <string name="tapSetupCommand">ip link show tap0 >/dev/null 2&gt;&amp;1 || ip tuntap add dev tap0 mode tap\nip addr flush dev tap0\nip addr add 100.99.99.1/24 dev tap0\nip link set tap0 up\nsysctl -w net.ipv4.ip_forward=1\nwhile ip rule del to 100.99.99.0/24 lookup main 2&gt;&amp;1; do :; done\nip rule add pref 101 to 100.99.99.0/24 lookup main\nwhile iptables -w 5 -D INPUT -i tap0 -j ACCEPT 2&gt;&amp;1; do :; done\nwhile iptables -w 5 -D FORWARD -i tap0 -j ACCEPT 2&gt;&amp;1; do :; done\nwhile iptables -w 5 -D FORWARD -o tap0 -m state --state ESTABLISHED,RELATED -j ACCEPT 2&gt;&amp;1; do :; done\niptables -w 5 -I INPUT 1 -i tap0 -j ACCEPT\niptables -w 5 -I FORWARD 1 -i tap0 -j ACCEPT\niptables -w 5 -I FORWARD 1 -o tap0 -m state --state ESTABLISHED,RELATED -j ACCEPT\nwhile iptables -w 5 -t nat -D POSTROUTING -s 100.99.99.0/24 ! -o tap0 -j MASQUERADE 2&gt;&amp;1; do :; done\niptables -w 5 -t nat -I POSTROUTING 1 -s 100.99.99.0/24 ! -o tap0 -j MASQUERADE</string>
     <string name="LogWarning">Something happened during last run, do you want to see the log?</string>
     <string name="EnableQMPForSavingVMState">Turn on QMP Server from the settings to pause the vm!</string>
     <string name="CannotDeletePreviousStateFile">Could not delete previous state file</string>
@@ -235,8 +237,6 @@
     <string name="Interface">Interface</string>
     <string name="diskCache">Disk Cache</string>
     <string name="diskCacheSummary">Disk Cache might not work with Legacy Manager! If you encounter issues set to Default</string>
-    <string name="IgnoreBreakpointInvalidation">Ignore Breakpoint Invalidation</string>
-    <string name="IgnoreBreakpointInvalidationSummary">Ignore Breakpoint Invalidation</string>
     <string name="ImportBIOSFile">Import BIOS</string>
     <string name="importBIOSInstructions">Select a BIOS file (bin, rom, etc..) to import.</string>
 
@@ -301,6 +301,7 @@
     <string name="root_vm_no_su">su not available. Gunyah/Gzvm acceleration requires a rooted device: the VM must run in a root process.</string>
     <string name="root_vm_start_failed">Failed to start the VM in a root process</string>
     <string name="root_vm_already_running">The VM is already running in a root process</string>
+    <string name="agl_root_fallback">KernelSU did not grant root, so the AGL display cannot run the VM in this process. The VM was started in a separate root process without a display: switch the display to VNC, or grant root to this app in KernelSU.</string>
     <string name="label_disable_hpet">Disable HPET</string>
     <string name="label_disable_tsc">Disable TSC</string>
     <string name="label_disable_acpi">Disable ACPI</string>
@@ -323,7 +324,6 @@
     <string name="pref_title_qmp">QMP</string>
     <string name="pref_title_vnc">VNC</string>
     <string name="pref_title_disk">Disk</string>
-    <string name="pref_title_fixes">Fixes</string>
     <string name="pref_title_updates">Updates</string>
     <string name="pref_title_audio">Audio</string>
     <string name="pref_title_screen_immersion">Screen Immersion</string>

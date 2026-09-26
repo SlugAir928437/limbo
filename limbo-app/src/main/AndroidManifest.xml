@@ -23,15 +23,16 @@
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
-        android:requestLegacyExternalStorage="true" >
+        android:requestLegacyExternalStorage="true"
+        android:icon="@drawable/limbo"
+        android:label="@string/app_name" >
         <activity
             android:name=".MainActivity"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/AppTheme.NoActionBar"
-            android:enabled="true"
-            android:icon="@drawable/limbo">
+            android:enabled="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -55,6 +56,13 @@
             android:launchMode="singleTask"
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name=".main.LimboAglActivity"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"
+            android:enableOnBackInvokedCallback="false"
+            android:launchMode="singleTask"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
         <!-- GTK4 android backend creates its own toplevel window (org.gtk.android.ToplevelActivity) -->
         <activity
             android:name="org.gtk.android.ToplevelActivity"
@@ -63,7 +71,7 @@
             android:launchMode="singleTask"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
         <activity
-            android:name="com.android.limbo.main.LimboSettingsManager"
+            android:name=".main.LimboSettingsManager"
             android:label="Settings"
             android:exported="false"
             android:theme="@style/Theme.AppCompat"/>
@@ -121,7 +129,7 @@
 
         <activity
             android:name="me.rosuh.filepicker.FilePickerActivity"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+            android:theme="@style/FilePickerTheme"
             android:exported="false"
             android:configChanges="orientation|screenSize" />
     </application>

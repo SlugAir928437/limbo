@@ -116,12 +116,4 @@
             android:summary="@string/diskCacheSummary"
             android:title="@string/diskCache" />
     </PreferenceCategory>
-
-    <PreferenceCategory android:title="@string/pref_title_fixes">
-        <CheckBoxPreference
-            android:defaultValue="false"
-            android:key="ignoreBreakpointInvalidation"
-            android:summary="@string/IgnoreBreakpointInvalidationSummary"
-            android:title="@string/IgnoreBreakpointInvalidation" />
-    </PreferenceCategory>
 </PreferenceScreen>

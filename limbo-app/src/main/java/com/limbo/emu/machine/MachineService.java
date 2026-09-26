@@ -34,6 +34,7 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
+import android.os.Process;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -157,8 +158,15 @@ public class MachineService extends Service {
         stopService();
 
         Log.d(TAG, "Exiting Limbo");
-        //XXX: We exit here to force unload the native libs
-        System.exit(0);
+        // We exit here to force unload the native libs.  Kill the process
+        // instead of System.exit(0): System.exit() ends up in exit(3), which
+        // runs __cxa_finalize over every loaded library while the Android UI
+        // threads are still alive.  Those threads then lock the C++ statics of
+        // libhwui/libc++ that were just destroyed and abort with
+        // "FORTIFY: pthread_mutex_lock called on a destroyed mutex" (SIGABRT),
+        // so every VM shutdown looked like a native crash.  SIGKILL tears the
+        // process down without running any destructors.
+        Process.killProcess(Process.myPid());
     }
 
 

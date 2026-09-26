@@ -74,6 +74,11 @@ public class Config {
     // App Config
     public static final String downloadLink = "https://github.com/SlugAir928437/limbo/releases";
     public static final String newVersionLink = "https://raw.githubusercontent.com/SlugAir928437/limbo/qemu-10.2.1/VERSION";
+    // GitHub Releases API used to resolve the latest version tag and APK download URL for updates
+    public static final String latestReleaseApi =
+            "https://api.github.com/repos/SlugAir928437/limbo/releases/latest";
+    // Optional substring filter when matching the APK asset inside a release; "" matches the first .apk
+    public static final String apkAssetKeyword = "";
 
     public static final boolean enableKeyboardLayoutOption = true;
     public static final boolean enableMouseOption = true;
@@ -111,6 +116,11 @@ public class Config {
     // Enable if you build with the gunyah / gzvm accelerators (arm64 hypervisors)
     public static boolean enableGunyah = true;
     public static boolean enableGZVM = true;
+    // Enable if the QEMU library was built with the AGL (Android Graphics
+    // Layer) display backend (meson option -Dagl=enabled, needs epoxy/EGL).
+    // AGL renders the guest into an Android Surface owned by the app, which is
+    // how the gunyah/gzvm accelerated aarch64 VMs are displayed.
+    public static boolean enableAgl = true;
     public static String storagedir = null;
     public static boolean loadNativeLibsEarly = false;
     //XXX: QEMU 3.1.0 needs the libraries to be loaded from the main thread
@@ -118,8 +128,6 @@ public class Config {
     public static String wakeLockTag = "limbo:wakelock";
     public static String wifiLockTag = "limbo:wifilock";
 
-    //XXX set scaling to linear it's a tad slower but it's worth it
-    public static int SDLHintScale = 1;
     public static boolean viewLogInternally = true;
     //XXX some archs don't support floppy or sd card
     public static boolean enableEmulatedFloppy = true;

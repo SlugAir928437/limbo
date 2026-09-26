@@ -23,3 +23,103 @@
 +  subdir('tools')
 +endif
  subdir('docs')
+
+--- a/server/memslot.c
++++ b/server/memslot.c
+@@ -21,6 +21,25 @@
+ 
+ #include "memslot.h"
+ 
++/*
++ * Addresses of the host group are absolute host pointers handed over by the
++ * device model for the commands it generates itself (primary surface and VGA
++ * mode updates of the local rendering path); they are not guest addresses and
++ * are not encoded with a memslot id/generation.  The device model registers
++ * this group with a single slot spanning the whole address space with a zero
++ * delta, so slot 0 always applies.  Decoding an id from such an address is
++ * wrong and breaks on hosts whose pointers have non-zero high bits: 64-bit
++ * Android returns tagged pointers (top byte ignored by the hardware), which
++ * used to be read as e.g. "slot_id 180" and rejected, making the whole host
++ * group unusable.
++ */
++#define MEMSLOT_GROUP_HOST 0
++
++static inline bool memslot_is_host_group(uint32_t group_id)
++{
++    return group_id == MEMSLOT_GROUP_HOST;
++}
++
+ static uintptr_t __get_clean_virt(RedMemSlotInfo *info, QXLPHYSICAL addr)
+ {
+     return addr & info->memslot_clean_virt_mask;
+@@ -52,6 +71,13 @@
+ {
+     MemSlot *slot;
+ 
++    if (memslot_is_host_group(group_id)) {
++        slot_id = 0;
++    } else if (slot_id >= info->num_memslots) {
++        spice_warning("slot_id %d too big", slot_id);
++        return 0;
++    }
++
+     slot = &info->mem_slots[group_id][slot_id];
+     if ((virt + add_size) < virt) {
+         spice_critical("virtual address overlap");
+@@ -77,6 +103,12 @@
+ {
+     MemSlot *slot;
+ 
++    if (memslot_is_host_group(group_id)) {
++        slot_id = 0;
++    } else if (slot_id >= info->num_memslots) {
++        return 0;
++    }
++
+     slot = &info->mem_slots[group_id][slot_id];
+ 
+     if (virt < slot->virt_start_addr || virt > slot->virt_end_addr) {
+@@ -102,23 +134,30 @@
+         return NULL;
+     }
+ 
+-    slot_id = memslot_get_id(info, addr);
+-    if (slot_id >= info->num_memslots) {
+-        print_memslots(info);
+-        spice_critical("slot_id %d too big, addr=%" G_GINT64_MODIFIER "x", slot_id, addr);
+-        return NULL;
++    if (memslot_is_host_group(group_id)) {
++        /* absolute host address, nothing to decode */
++        slot_id = 0;
++    } else {
++        slot_id = memslot_get_id(info, addr);
++        if (slot_id >= info->num_memslots) {
++            print_memslots(info);
++            spice_critical("slot_id %d too big, addr=%" G_GINT64_MODIFIER "x", slot_id, addr);
++            return NULL;
++        }
+     }
+ 
+     slot = &info->mem_slots[group_id][slot_id];
+ 
+-    generation = memslot_get_generation(info, addr);
+-    if (generation != slot->generation) {
+-        print_memslots(info);
+-        spice_critical("address generation is not valid, group_id %d, slot_id %d, "
+-                       "gen %d, slot_gen %d",
+-                       group_id, slot_id,
+-                       generation, slot->generation);
+-        return NULL;
++    if (!memslot_is_host_group(group_id)) {
++        generation = memslot_get_generation(info, addr);
++        if (generation != slot->generation) {
++            print_memslots(info);
++            spice_critical("address generation is not valid, group_id %d, slot_id %d, "
++                           "gen %d, slot_gen %d",
++                           group_id, slot_id,
++                           generation, slot->generation);
++            return NULL;
++        }
+     }
+ 
+     h_virt = __get_clean_virt(info, addr);

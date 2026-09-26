@@ -1,0 +1,40 @@
+# virglrenderer cross-compilation template for Android/Limbo
+# Generated from this template by the Makefile (android-limbo-build.mak)
+#
+# virglrenderer provides the host side renderer behind QEMU's
+# virtio-gpu-gl-pci device (CONFIG_VIRGL).  It is built for the EGL platform
+# only: Android has neither GLX nor gbm/libdrm, so the Makefile passes
+# -Dplatforms=egl -Dvenus-experimental=false and the EGL/GLESv2 pkg-config
+# shims (CREATE_EGL_PC) resolve the NDK sysroot's libEGL/libGLESv2.
+#
+# libepoxy (also required by virglrenderer, and by QEMU's CONFIG_OPENGL) is
+# taken from the gtk4android prefix, which is why the Makefile adds
+# $(GTK_PKG_CONFIG_DIR) to the pkg-config search path of this build.
+
+[binaries]
+c = '@TOOLCHAIN_CLANG_PREFIX@/@HOST_PREFIX@@NDK_PLATFORM_API@-clang'
+cpp = '@TOOLCHAIN_CLANG_PREFIX@/@HOST_PREFIX@@NDK_PLATFORM_API@-clang++'
+ar = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ar'
+as = '@TOOLCHAIN_CLANG_PREFIX@/llvm-as'
+ranlib = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ranlib'
+ld = '@TOOLCHAIN_CLANG_PREFIX@/ld'
+strip = '@TOOLCHAIN_CLANG_PREFIX@/llvm-strip'
+
+[built-in options]
+prefix = '@VIRGL_INSTALL_DIR@'
+libdir = 'lib'
+bindir = 'bin'
+buildtype = '@VIRGL_BUILDTYPE@'
+default_library = 'shared'
+# 16 KB page size: the shared object is loaded by the app on Android 15+ devices
+c_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+cpp_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+
+# NOTE: no sys_root here on purpose (same reasoning as the GTK4 cross file):
+# setting it would make pkg-config prefix every -I/-L with the sysroot and
+# break the absolute paths of the jni shared libs.
+[host_machine]
+system = 'android'
+cpu_family = '@MESON_CPU_FAMILY@'
+cpu = '@MESON_CPU@'
+endian = 'little'

@@ -66,6 +66,4 @@ public abstract class MachineExecutor {
     public abstract void updateDisplay(int width, int height, int orientation);
 
     public abstract void setFullscreen();
-
-    public abstract void ignoreBreakpointInvalidation(int value);
 }

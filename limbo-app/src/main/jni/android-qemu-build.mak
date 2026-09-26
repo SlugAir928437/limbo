@@ -62,6 +62,15 @@ ifeq ($(USE_SLIRP_LIB),true)
 	RELINK_LIBSLIRP_2=$(OBJ_COPY) $(RELINK_PARAMS_2) $(slirplib)
 endif
 
+## VirtIO GPU GL (virtio-gpu-gl-pci / CONFIG_VIRGL): the renderer built by
+## "make virgl" (USE_VIRGL=true, see android-limbo-config.mak) plus the libepoxy
+## that gtk4android installs.  Only this legacy ndk-build link path needs them
+## explicitly; the official QEMU tree is linked by meson via pkg-config.
+ifeq ($(USE_VIRGL),true)
+	virgllib=-L../../virglrenderer/android-install/$(APP_ABI)/lib -lvirglrenderer
+	epoxylib=-L../../gtk4android/android-install/$(APP_ABI)/lib -lepoxy
+endif
+
 qemu-static: $(all-obj-y) $(COMMON_LDADDS)
 	$(AR)  rcs  \
 	$(LIBQEMU_PROG) \
@@ -98,6 +107,8 @@ $(QEMU_PROG): $(all-obj-y) $(COMMON_LDADDS) qemu-static
 	$(compatlib) \
 	$(fdtlib) \
 	$(slirplib) \
+	$(virgllib) \
+	$(epoxylib) \
 	$(glibs) \
 	$(musllib) \
 	$(pixmanlib) \

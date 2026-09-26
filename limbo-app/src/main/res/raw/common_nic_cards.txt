@@ -6,3 +6,4 @@ i82551
 i82557b
 i82559er
 virtio
+virtio-net-pci

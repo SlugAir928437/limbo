@@ -380,9 +380,4 @@ public class LimboSettingsManager extends PreferenceActivity {
         return prefs.getBoolean("preventMouseOutOfBounds", false);
     }
 
-    public static boolean getIgnoreBreakpointInvalidation(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        return prefs.getBoolean("ignoreBreakpointInvalidation", false);
-    }
-
 }

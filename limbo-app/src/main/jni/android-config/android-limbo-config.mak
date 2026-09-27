@@ -138,3 +138,26 @@ GTK_ANDROID_API ?= 24
 # Set to false to skip the VirGL stack: the build is smaller and
 # virtio-gpu-gl-pci is simply not offered by the emulator.
 USE_VIRGL ?= true
+
+# Build virglrenderer with Venus (Vulkan over VirGL), so the guest can be given
+# a Vulkan-capable GPU.  virtio-gpu-gl-pci is started as
+# "virtio-gpu-gl-pci,venus=on" (see VMExecutor#addGraphicsOptions), which makes
+# QEMU pass VIRGL_RENDERER_VENUS | VIRGL_RENDERER_RENDER_SERVER to
+# virgl_renderer_init() and advertise VIRTIO_GPU_CAPSET_VENUS; a renderer built
+# without venus rejects that and the device fails to realize.
+#
+# Enabling it needs three Android adaptations, all handled by the build:
+#   * the Vulkan loader is looked up with dependency('vulkan'), satisfied by the
+#     vulkan.pc shim over the NDK's libvulkan.so (CREATE_EGL_PC);
+#   * venus makes meson require libdrm, which Android does not ship (and whose
+#     xf86drm.h is missing from the NDK), so that requirement is relaxed for
+#     android in patches/virglrenderer-android-egl.patch.  Nothing on this
+#     configuration calls libdrm - its only real users are the DRM
+#     native-context renderers, which stay disabled;
+#   * the render server worker is forced to 'thread', because venus turns the
+#     render server on and its default 'process' mode fork+execs
+#     virgl_render_server, which does not exist inside the app sandbox.
+#
+# Set to false to go back to a venus-less renderer (and drop ,venus=on from the
+# virtio-gpu-gl-pci device).
+USE_VIRGL_VENUS ?= true

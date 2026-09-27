@@ -41,7 +41,7 @@
         <activity
             android:name=".main.LimboFileManager"
             android:exported="false"
-            android:theme="@style/FilePickerTheme" />
+            android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
         <activity
             android:name=".main.LimboSDLActivity"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"

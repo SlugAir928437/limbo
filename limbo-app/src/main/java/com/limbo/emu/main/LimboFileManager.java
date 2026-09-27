@@ -177,7 +177,7 @@ public class LimboFileManager extends Activity {
 
 class CustomFileType implements FileType {
     private final Machine.FileType fileType;
-    private final int fileIconResId = R.drawable.ic_unknown_file_picker;
+    private final int fileIconResId = R.drawable.ic_unknown_file_picker1;
 
     CustomFileType(Machine.FileType type) {
         fileType = type;

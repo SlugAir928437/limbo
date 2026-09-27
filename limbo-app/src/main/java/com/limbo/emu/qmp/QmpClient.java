@@ -54,7 +54,7 @@ public class QmpClient {
 		BufferedReader in = null;
 
 		try {
-		    if(external) {
+            if(external) {
                 pingSocket = new Socket(Config.QMPServer, Config.QMPPort);
                 pingSocket.setSoTimeout(5000);
                 out = new PrintWriter(pingSocket.getOutputStream(), true);

@@ -412,26 +412,47 @@ clean-gtk:
 # GTK4 构建之后（make limbo 里排在 make deps 之后）。
 config-virgl: ndk pkg-config-link ffi glib pixman $(if $(filter true,$(USE_GTK)),gtk)
 	$(CREATE_VIRGL_MESON_CROSS_FILE)
-	$(CREATE_EGL_PC)
 	cd $(LIMBO_JNI_ROOT)/virglrenderer && rm -rf "$(VIRGL_BUILD_DIR)" "$(VIRGL_INSTALL_DIR)"
+	# The pkg-config shims must be written *after* the wipe above: they live in
+	# $(VIRGL_PKG_CONFIG_DIR), i.e. inside the very install dir rm -rf removes.
+	# Written first they would be gone by the time meson runs, and
+	# dependency('vulkan') would then resolve against the *host* vulkan.pc and
+	# link a desktop libvulkan into the Android library.
+	$(CREATE_EGL_PC)
 	# meson option names/types differ between virglrenderer releases (venus vs
 	# venus-experimental, drm as boolean or feature, ...), so the flags are
 	# derived from what the checked out tree declares - an unknown -D option is
 	# only a warning in meson, but a wrong *value* is a hard error.
-	# Everything found is switched OFF: Android has no libdrm/gbm and the
-	# Android/iOS venus (Vulkan) path is not used by virtio-gpu-gl-pci.
+	# Venus is the one option that follows USE_VIRGL_VENUS instead of being
+	# forced off: QEMU asks virglrenderer for VIRGL_RENDERER_VENUS when the GL
+	# device is started with ,venus=on (see VMExecutor#addGraphicsOptions).
+	# Everything else found stays OFF - Android has no libdrm/gbm, and the venus
+	# validation layer / DRM native contexts are desktop-only.  With venus the
+	# render server (which venus switches on by itself) is told to service its
+	# contexts from a thread: the default 'process' worker fork+execs
+	# virgl_render_server, which does not exist inside the app sandbox.
 	cd $(LIMBO_JNI_ROOT)/virglrenderer && \
 	virgl_opts="-Dplatforms=egl"; \
+	if [ "$(USE_VIRGL_VENUS)" = "true" ]; then venus_on=1; else venus_on=0; fi; \
 	for opt in venus venus-experimental venus-validate drm drm-msm drm-msm-experimental minigbm_allocation tests; do \
-		if grep -q "option('$$opt'" meson_options.txt 2>/dev/null; then \
-			opt_type=$$(sed -n "/option('$$opt'/,/)/p" meson_options.txt | \
+		opt_found=$$(grep -cE "option\('$$opt'|^[[:space:]]*'$$opt'[[:space:]]*," meson_options.txt 2>/dev/null || true); \
+		if [ "$$opt_found" != "0" ]; then \
+			opt_type=$$(grep -A4 -E "option\('$$opt'|^[[:space:]]*'$$opt'[[:space:]]*," meson_options.txt 2>/dev/null | \
 				sed -n "s/.*type *: *'\([a-z]*\)'.*/\1/p" | head -n1); \
+			opt_on=0; \
+			if [ "$$venus_on" = "1" ]; then \
+				case "$$opt" in venus|venus-experimental) opt_on=1 ;; esac; \
+			fi; \
 			case "$$opt_type" in \
-				feature) virgl_opts="$$virgl_opts -D$$opt=disabled" ;; \
-				boolean) virgl_opts="$$virgl_opts -D$$opt=false" ;; \
+				feature) if [ "$$opt_on" = "1" ]; then virgl_opts="$$virgl_opts -D$$opt=enabled"; else virgl_opts="$$virgl_opts -D$$opt=disabled"; fi ;; \
+				boolean) if [ "$$opt_on" = "1" ]; then virgl_opts="$$virgl_opts -D$$opt=true"; else virgl_opts="$$virgl_opts -D$$opt=false"; fi ;; \
 			esac; \
 		fi; \
 	done; \
+	rs_worker=$$(grep -cE "option\('render-server-worker'|^[[:space:]]*'render-server-worker'[[:space:]]*," meson_options.txt 2>/dev/null || true); \
+	if [ "$$venus_on" = "1" ] && [ "$$rs_worker" != "0" ]; then \
+		virgl_opts="$$virgl_opts -Drender-server-worker=thread"; \
+	fi; \
 	echo ">> virglrenderer meson options:$$virgl_opts"; \
 	PKG_CONFIG_PATH="$(VIRGL_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(PIXMAN_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
 	PKG_CONFIG_LIBDIR="$(VIRGL_PKG_CONFIG_DIR):$(GTK_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(PIXMAN_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \

@@ -622,10 +622,21 @@ class VMExecutor extends MachineExecutor {
                 // given, which leaves the guest with two adapters and QEMU with
                 // two consoles - the Android display backend can only show one
                 // of them, so the virtio-gpu output would never be visible.
+                String vgaDevice = getMachine().getVga();
+                // Venus (Vulkan over VirGL) is offered by the GL device only:
+                // the "venus" property is declared in
+                // hw/display/virtio-gpu-gl.c, so plain virtio-gpu-pci would
+                // reject it as an unknown property.  venus=on makes QEMU
+                // advertise VIRTIO_GPU_CAPSET_VENUS and ask virglrenderer for
+                // VIRGL_RENDERER_VENUS | VIRGL_RENDERER_RENDER_SERVER, so the
+                // renderer has to be built with venus support too (-Dvenus).
+                if (vgaDevice.startsWith("virtio-gpu-gl") && !vgaDevice.contains(",venus=")) {
+                    vgaDevice += ",venus=on";
+                }
                 paramsList.add("-vga");
                 paramsList.add("none");
                 paramsList.add("-device");
-                paramsList.add(getMachine().getVga());
+                paramsList.add(vgaDevice);
             } else if (getMachine().getVga().equals("nographic")) {
                 paramsList.add("-nographic");
             } else {

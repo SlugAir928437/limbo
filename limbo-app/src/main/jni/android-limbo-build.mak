@@ -343,10 +343,12 @@ CREATE_VIRGL_MESON_CROSS_FILE = \
 		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
 		"$(VIRGL_CROSS_FILE_TEMPLATE)" > "$(VIRGL_CROSS_FILE)"
 
-# Android ships libEGL/libGLESv2 (and their headers) with the NDK sysroot but
-# no pkg-config files for them, while virglrenderer's EGL platform looks them
-# up through pkg-config ("dependency('egl')").  These two shims bridge that gap;
-# they are written into the virgl prefix so the QEMU/GTK builds never see them.
+# Android ships libEGL/libGLESv2/libvulkan (and their headers) with the NDK
+# sysroot but no pkg-config files for them, while virglrenderer looks them up
+# through pkg-config ("dependency('egl')", "dependency('vulkan')").  These
+# shims bridge that gap; they are written into the virgl prefix so the QEMU/GTK
+# builds never see them.  vulkan.pc is only needed by the venus build
+# (USE_VIRGL_VENUS), which the libvulkan.so stub in the NDK sysroot serves.
 CREATE_EGL_PC = \
 	mkdir -p "$(VIRGL_PKG_CONFIG_DIR)" && \
 	printf '%s\n' \
@@ -364,7 +366,15 @@ CREATE_EGL_PC = \
 		'Cflags: -I$(SYSROOT)/usr/include' \
 		'Libs: -lGLESv2' \
 		'' \
-		> "$(VIRGL_PKG_CONFIG_DIR)/glesv2.pc"
+		> "$(VIRGL_PKG_CONFIG_DIR)/glesv2.pc" && \
+	printf '%s\n' \
+		'Name: Vulkan' \
+		'Description: Android Vulkan loader (NDK sysroot stub)' \
+		'Version: 1.3.0' \
+		'Cflags: -I$(SYSROOT)/usr/include' \
+		'Libs: -lvulkan' \
+		'' \
+		> "$(VIRGL_PKG_CONFIG_DIR)/vulkan.pc"
 
 AR_FLAGS = crs
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)

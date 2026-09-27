@@ -1,0 +1,19 @@
+diff --git a/meson.build b/meson.build
+index 10be099..6baf26c 100644
+--- a/meson.build
++++ b/meson.build
+@@ -273,7 +273,13 @@ endif
+ 
+ if with_egl
+    if cc.has_header('epoxy/egl.h', dependencies: epoxy_dep) and epoxy_dep.get_variable(pkgconfig: 'epoxy_has_egl') == '1'
+-      if with_host_windows or with_host_darwin
++      # Android has no gbm/libdrm, so the generic path below (have_egl =
++      # gbm_dep.found() and ...) would silently disable EGL and drop
++      # vrend_winsys_egl.c from the build.  QEMU hands us its own EGLDisplay
++      # through the get_egl_display callback (virgl_egl_init_external), which
++      # needs neither gbm nor a render node - so Android belongs in this
++      # branch, exactly like Windows and macOS.
++      if with_host_windows or with_host_darwin or host_machine.system() == 'android'
+          have_egl = true
+       else
+          if libdrm_dep.found()

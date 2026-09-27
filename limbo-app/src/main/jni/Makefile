@@ -581,6 +581,13 @@ QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-android.patch
 # Override the tag with e.g. export VIRGL_TAG=1.1.1 to follow upstream.
 VIRGL_TAG           ?= 1.1.0
 VIRGL_URL           := https://gitlab.freedesktop.org/virgl/virglrenderer.git
+# Android 上 virglrenderer 必须带 EGL winsys：它没有 gbm/libdrm，上游 meson 的
+# 通用分支（have_egl = gbm_dep.found() and ...）会静默把 EGL 关掉、
+# vrend_winsys_egl.c 不进编译，于是 vrend_winsys_init_external() 直接报
+# "EGL is not supported on this platform"，virtio-gpu-gl-pci 无法渲染。
+# 该补丁把 Android 并入 Windows/macOS 那条 have_egl = true 分支（QEMU 通过
+# get_egl_display 回调把自己的 EGLDisplay 交给它，不需要 gbm/render node）。
+VIRGL_PATCH         := $(LIMBO_JNI_ROOT)/patches/virglrenderer-android-egl.patch
 GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
 GTK4_BRANCH         := master
 GLIB_URL            := https://gitlab.gnome.org/GNOME/glib.git
@@ -639,6 +646,11 @@ fetch-virgl:
 		git clone --depth 1 --branch $(VIRGL_TAG) --single-branch $(VIRGL_URL) "$(LIMBO_JNI_ROOT)/virglrenderer"; \
 	else \
 		echo ">> virglrenderer 已存在，跳过"; \
+	fi
+	@if [ "$(USE_VIRGL)" = "true" ] && [ -f "$(LIMBO_JNI_ROOT)/virglrenderer/meson.build" ] && \
+	    git -C "$(LIMBO_JNI_ROOT)/virglrenderer" apply --check "$(VIRGL_PATCH)" 2>/dev/null; then \
+		echo ">> 应用 virglrenderer Android EGL 补丁"; \
+		git -C "$(LIMBO_JNI_ROOT)/virglrenderer" apply "$(VIRGL_PATCH)"; \
 	fi
 
 fetch-slirp:

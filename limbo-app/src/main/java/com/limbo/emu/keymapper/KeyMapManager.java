@@ -396,7 +396,7 @@ public class KeyMapManager {
             public void onClick(DialogInterface dialogInterface, int i) {
                 for (int k = 0; k < itemsEnabled.length; k++) {
                     if (itemsEnabled[k]) {
-                        if (keySurfaceView != null && keySurfaceView.pointers.size() > 0) {
+                        if (keySurfaceView != null && !keySurfaceView.pointers.isEmpty()) {
                             // XXX: we should only have only button pressed under edit mode
                             for (KeyMapper.KeyMapping keyMapping : keySurfaceView.pointers.values()) {
                                 if (k < 7)

@@ -36,3 +36,34 @@ index 10be099..a7dba4d 100644
           have_egl = true
        else
           if libdrm_dep.found()
+diff --git a/src/venus/vkr_device_memory.c b/src/venus/vkr_device_memory.c
+index 03f84b6..efe97e5 100644
+--- a/src/venus/vkr_device_memory.c
++++ b/src/venus/vkr_device_memory.c
+@@ -52,6 +52,10 @@ vkr_get_fd_info_from_resource_info(struct vkr_context *ctx,
+ #include <linux/udmabuf.h>
+ #include <sys/ioctl.h>
+ #include <sys/mman.h>
++#if defined(__ANDROID__) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 30)
++#include <sys/syscall.h>
++#include <unistd.h>
++#endif
+ 
+ static VkResult
+ vkr_udmabuf_get_fd_info_from_allocation_info(struct vkr_physical_device *physical_dev,
+@@ -63,7 +67,15 @@ vkr_udmabuf_get_fd_info_from_allocation_info(struct vkr_physical_device *physica
+    int udmabuf_fd = -1;
+    int fd = -1;
+ 
++#if defined(__ANDROID__) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 30)
++   /* bionic declares - and exports - memfd_create() only from API 30, while the
++    * kernel syscall has been there since Linux 3.17, which every kernel in the
++    * api24+ window provides.  Issue it directly, the same way mesa's
++    * anon_file.c does for Android. */
++   memfd = syscall(SYS_memfd_create, "vkr-udmabuf", MFD_CLOEXEC | MFD_ALLOW_SEALING);
++#else
+    memfd = memfd_create("vkr-udmabuf", MFD_CLOEXEC | MFD_ALLOW_SEALING);
++#endif
+    if (memfd < 0) {
+       vkr_log("memfd_create failed (%s)", strerror(errno));
+       goto fail;

@@ -343,6 +343,17 @@ CREATE_VIRGL_MESON_CROSS_FILE = \
 		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
 		"$(VIRGL_CROSS_FILE_TEMPLATE)" > "$(VIRGL_CROSS_FILE)"
 
+# The NDK ships libvulkan.so as one stub per API level.  They are versioned, and
+# venus calls 12 Vulkan 1.1 entry points directly (vkGetPhysicalDeviceProperties2,
+# vkEnumerateInstanceVersion, vkGetPhysicalDeviceExternalBufferProperties, ...)
+# which only show up from the API 28 variant on: the API 24-27 stubs stop at
+# Vulkan 1.0, so linking venus against the default (API $(ANDROID_API)) stub
+# fails with those 12 symbols undefined.  Point vulkan.pc at the API 28 stub -
+# the lowest one that carries them, which is also the real runtime floor (the
+# device needs a Vulkan 1.1 loader, i.e. Android 9+).  The compile/link API
+# level itself stays $(ANDROID_API).
+VIRGL_VULKAN_STUB_API ?= 28
+
 # Android ships libEGL/libGLESv2/libvulkan (and their headers) with the NDK
 # sysroot but no pkg-config files for them, while virglrenderer looks them up
 # through pkg-config ("dependency('egl')", "dependency('vulkan')").  These
@@ -369,10 +380,10 @@ CREATE_EGL_PC = \
 		> "$(VIRGL_PKG_CONFIG_DIR)/glesv2.pc" && \
 	printf '%s\n' \
 		'Name: Vulkan' \
-		'Description: Android Vulkan loader (NDK sysroot stub)' \
+		'Description: Android Vulkan loader (NDK sysroot stub, API $(VIRGL_VULKAN_STUB_API) variant)' \
 		'Version: 1.3.0' \
 		'Cflags: -I$(SYSROOT)/usr/include' \
-		'Libs: -lvulkan' \
+		'Libs: -L$(SYSROOT)/usr/lib/$(HOST_PREFIX)/$(VIRGL_VULKAN_STUB_API) -lvulkan' \
 		'' \
 		> "$(VIRGL_PKG_CONFIG_DIR)/vulkan.pc"
 

@@ -11,7 +11,8 @@ plugins {
 //        推荐第 2、3 种方式）
 //   2) Gradle 属性 bugly.appId          —— 例如写进 ~/.gradle/gradle.properties，
 //      或用 -Pbugly.appId=xxx 传入；该文件在仓库之外，不会被覆盖
-//   3) 环境变量 BUGLY_APP_ID            —— CI 里用 repository secret 注入
+//   3) 环境变量 BUGLY_APP_ID            —— CI 发版时在 release workflow 里手动输入
+//      （workflow_dispatch 的 bugly_app_id）后透传进来
 //   4) 空串                             —— CrashApplication 会跳过 Bugly 初始化
 // 只要按上面任一种方式配置，崩溃上报功能与以前完全一致。
 // ---------------------------------------------------------------------------

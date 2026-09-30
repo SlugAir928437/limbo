@@ -14,6 +14,10 @@ on:
         description: 'Release 标签/版本（留空则自动生成 release-<时间戳>）'
         required: false
         default: ''
+      bugly_app_id:
+        description: 'Bugly AppID（崩溃上报用，发版时手动输入；留空则本次构建不启用 Bugly）'
+        required: false
+        default: ''
 
 # 机签密钥参数（用户指定：密码 123456，别名随意）
 env:
@@ -248,10 +252,10 @@ jobs:
 
       - name: Gradle 打包 Release
         env:
-          # Bugly AppID 用仓库 secret 注入（源码与仓库里都不再保存该值）：
-          # Settings -> Secrets and variables -> Actions 新建 BUGLY_APP_ID。
-          # 未配置时为空串，CrashApplication 会跳过 Bugly 初始化，打包照常通过。
-          BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID }}
+          # Bugly AppID 由发版时在 workflow_dispatch 里手动输入（源码与仓库里
+          # 都不保存该值），这里透传给 build.gradle 的 BUGLY_APP_ID 环境变量分支；
+          # 留空则 BuildConfig.BUGLY_APP_ID 为空，CrashApplication 跳过 Bugly 初始化。
+          BUGLY_APP_ID: ${{ github.event.inputs.bugly_app_id }}
         run: |
           chmod +x ./gradlew
           ./gradlew :limbo-app:assembleRelease

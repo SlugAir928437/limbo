@@ -81,7 +81,8 @@ public class ArchDefinitions {
 
         if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
             // NVIDIA Quadro2 Pro PCI VGA, provided by the merged experimental HP
-            // i2000/zx6000 machines via '-vga quadro2'; experimental like ati
+            // i2000/zx2000/zx6000 machines via '-vga quadro2'; experimental like
+            // ati.  hp-zx2000/hp-zx6000 default to the ATI Radeon RV100 instead.
             vgaValues.add("quadro2");
         }
 
@@ -217,6 +218,12 @@ public class ArchDefinitions {
             case ia64:
             case ia64w:
                 arrList.add("Default");
+                // The list mirrors the CPU aliases the IA-64 fork advertises
+                // (target/ia64/cpu.c ia64_cpu_aliases): merced, mckinley,
+                // deerfield, madison, montecito, montvale, itanium, itanium2.
+                // The HP workstation models force their own CPU (see
+                // VMExecutor#addCpuBoardOptions), so the selection only applies
+                // to the VPC machines.
                 arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_cpu)));
                 break;
         }
@@ -242,6 +249,9 @@ public class ArchDefinitions {
                 break;
             case ia64:
             case ia64w:
+                // Virtual PC models (itanium-vpc / itanium2-vpc / ia64-vpc) plus
+                // the HP workstation models: hp-i2000, hp-zx2000 (added with the
+                // upstream zx2000 merge), hp-zx6000 and the "none" pseudo machine.
                 arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_machine_types)));
                 break;
         }

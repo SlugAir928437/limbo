@@ -404,9 +404,9 @@ class VMExecutor extends MachineExecutor {
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
                 // "i8042" machine property exists only on the IA-64 VPC machines
                 // (itanium-vpc / ia64-vpc / itanium2-vpc). The HP workstation
-                // models (hp-i2000 / hp-zx6000) have no i8042 controller, so
-                // appending i8042=off there makes QEMU reject the machine and
-                // fail to start.
+                // models (hp-i2000 / hp-zx2000 / hp-zx6000) have no i8042
+                // controller, so appending i8042=off there makes QEMU reject the
+                // machine and fail to start.
                 if (machineParams.contains("vpc") && getMachine().getDisableI8042() == 1) {
                     machineParams += ",i8042=off";
                 }
@@ -463,9 +463,10 @@ class VMExecutor extends MachineExecutor {
             }
         }
 
-        // The HP workstation models (hp-i2000 / hp-zx6000) hard-require their own
-        // CPU (Merced / Madison-zx6000) and reject a -cpu override, so never pass a
-        // user-selected CPU for them; QEMU then uses the machine default CPU.
+        // The HP workstation models (hp-i2000 / hp-zx2000 / hp-zx6000) hard-require
+        // their own CPU (merced-800 / mckinley-900 / madison-1500) and reject a
+        // -cpu override, so never pass a user-selected CPU for them; QEMU then
+        // uses the machine default CPU.
         boolean isHpMachine = getMachineType() != null && getMachineType().startsWith("hp-");
         if (!isHpMachine && cpu != null && !cpu.equals("Default")) {
             paramsList.add("-cpu");
@@ -810,12 +811,15 @@ class VMExecutor extends MachineExecutor {
         // per-drive format when set, otherwise the legacy auto/raw detection.
         // cache= comes from the machine's per-drive cache when the user set one,
         // otherwise falls back to the global disk-cache setting.
-        // The HP workstation models (hp-i2000 / hp-zx6000) wire their on-board
-        // storage through the IFB (82468GX) / CMD649 IDE controller only; their
-        // firmware boots from IDE, and -drive if=scsi would land on a PCI SCSI
+        // The HP workstation models (hp-i2000 / hp-zx2000 / hp-zx6000) wire their
+        // on-board storage through the IFB (82468GX) / CMD649 IDE controller only;
+        // their firmware boots from IDE, and -drive if=scsi would land on a PCI SCSI
         // HBA (isp12160 / lsi53c895a) the firmware cannot read. Force IDE for
         // them regardless of the configured per-drive interface (the VPC models
         // keep riding the LSI on-board SCSI).
+        // NOTE hp-zx2000: its EFI firmware only enumerates the primary IDE channel,
+        // so only index=0/1 media is visible to it - leave HDA/HDB free (or unused)
+        // when booting from CD on that machine.
         boolean isHp = getMachineType() != null && getMachineType().startsWith("hp-");
         String ifaceHda = resolveDriveInterface(getMachine().getHdaInterface());
         String ifaceHdb = resolveDriveInterface(getMachine().getHdbInterface());

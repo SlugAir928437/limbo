@@ -48,6 +48,24 @@ jobs:
         with:
           submodules: false
 
+      # 防回归：Bugly AppID 已从历史里用 git-filter-repo 改写清除，此后它只允许
+      # 存放在 repository secret（BUGLY_APP_ID）或本地未跟踪的 local.properties
+      # 里。一旦该值明文出现在被 git 跟踪的文件中，这里直接失败，避免再次提交进
+      # 仓库；用于比对的值取自 secret，本步骤自身不含明文。
+      - name: 检查 Bugly AppID 未泄漏到仓库
+        env:
+          BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID }}
+        run: |
+          if [ -z "${BUGLY_APP_ID}" ]; then
+            echo ">> 未配置 BUGLY_APP_ID secret：跳过检查（Gradle 构建时也不会启用 Bugly 上报）"
+            exit 0
+          fi
+          if git grep -I -l -F -- "$BUGLY_APP_ID" -- . ; then
+            echo "::error::被 git 跟踪的文件里出现了 BUGLY_APP_ID 的值，请改为通过 secret 或本地 local.properties 注入"
+            exit 1
+          fi
+          echo ">> OK：仓库跟踪的文件中没有 AppID 明文"
+
       # 源码获取 / 补丁应用统一收进 jni/Makefile 的 fetch 目标（qemu/gtk4android
       # 已取消 git submodule，全部由 `make fetch` 克隆）：
       #   x86/arm 模拟架构  -> 下载官方 QEMU v11.0.0 + 应用 qemu-v11.0.0.patch

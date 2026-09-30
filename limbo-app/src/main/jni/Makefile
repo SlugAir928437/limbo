@@ -111,6 +111,51 @@ ifneq ($(NDK_DEBUG),1)
 	STRIP_LIBS=$(STRIP) $(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/*.so*
 endif
 
+# ---------------------------------------------------------------------------
+# 符号表收集：把所有 .so 构建产物的符号表输出到 obj（崩溃符号化用：
+# ndk-stack / llvm-symbolizer / addr2line）。
+#   obj/symbols/$(APP_ABI)/<name>.so         未 strip 的副本（完整符号+调试信息）
+#   obj/symbols/$(APP_ABI)/<name>.so.sym     完整符号表（llvm-nm，含局部/静态符号）
+#   obj/symbols/$(APP_ABI)/<name>.so.dynsym  动态符号表（运行时可见的符号）
+# 采集源只用未 strip 的构建产物：ndk-build 的 obj/local/$(APP_ABI)（各 ndk 模块、
+# glib/pixman、libqemu-system-*.so）与各 meson 安装前缀（GTK4 及其自带依赖、
+# virglrenderer）。jniLibs 下的是 strip 过的部署副本（符号表为空），故不作为源。
+# SYMBOLS_KEEP_UNSTRIPPED=false 时只导出符号表文本、不复制 .so（省磁盘）。
+# obj/ 整体会被 ndk-build clean / make clean-ndk 清掉，属于临时构建输出。
+# ---------------------------------------------------------------------------
+SYMBOLS_DIR := $(NDK_PROJECT_PATH)/obj/symbols/$(APP_ABI)
+SYMBOLS_KEEP_UNSTRIPPED ?= true
+SYMBOLS_SRC_DIRS := $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI) \
+	$(GLIB_INSTALL_DIR)/lib \
+	$(PIXMAN_INSTALL_DIR)/lib \
+	$(GTK_INSTALL_DIR)/lib \
+	$(VIRGL_INSTALL_DIR)/lib
+
+COLLECT_SYMBOLS= \
+	mkdir -p "$(SYMBOLS_DIR)" && \
+	count=0; \
+	emit() { \
+		base=$$1; src=$$2; \
+		if [ "$(SYMBOLS_KEEP_UNSTRIPPED)" = "true" ]; then \
+			cp -Lf "$$src" "$(SYMBOLS_DIR)/$$base"; \
+		fi; \
+		$(NM) -C -D --defined-only "$$src" > "$(SYMBOLS_DIR)/$$base.dynsym" 2>/dev/null || true; \
+		$(NM) -C --defined-only "$$src" > "$(SYMBOLS_DIR)/$$base.sym" 2>/dev/null || true; \
+		count=$$((count + 1)); \
+	}; \
+	for d in $(SYMBOLS_SRC_DIRS); do \
+		[ -d "$$d" ] || continue; \
+		for so in "$$d"/*.so; do \
+			[ -f "$$so" ] || continue; \
+			emit "$$(basename "$$so")" "$$so"; \
+		done; \
+	done; \
+	for ncat in $(NCAT_BUILD_DIR)/nmap-*/ncat/ncat; do \
+		[ -f "$$ncat" ] || continue; \
+		emit libncat.so "$$ncat"; \
+	done; \
+	echo ">> 符号表已输出到 $(SYMBOLS_DIR)（共 $$count 个 .so）"
+
 # we disable for now some options so armv7 host can compile with gcc
 PIXMAN_DISABLE_OPTIONS=--disable-mmx --disable-arm-iwmmxt --disable-arm-iwmmxt2  \
 	--disable-openmp  --disable-loongson-mmi  --disable-mmx    --disable-sse2   --disable-ssse3 \
@@ -134,7 +179,7 @@ endif
 
 export
 
-.PHONY: limbo clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl
+.PHONY: limbo symbols clean-symbols clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl
 
 default: limbo
 	
@@ -520,10 +565,17 @@ clean-ncat:
 	-rm -rf "$(NCAT_BUILD_DIR)/lib" $(NCAT_BUILD_DIR)/openssl-* $(NCAT_BUILD_DIR)/nmap-*.tgz $(NCAT_BUILD_DIR)/nmap-*
 	-rm -f $(NCAT_OUT_DIR)/$(APP_ABI_DIR)/libncat.so
 
+symbols:
+	$(COLLECT_SYMBOLS)
+
+clean-symbols:
+	-rm -rf "$(SYMBOLS_DIR)"
+
 install-common:
 	$(CREATE_LIBSDIR)
 	$(INSTALL_LIBS)
 	$(STRIP_LIBS)
+	$(COLLECT_SYMBOLS)
 
 install:
 	make install-common
@@ -847,7 +899,7 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-ncat clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-ncat clean-symbols clean-ndk
 
 clean: 
 	make clean-qemu 
@@ -858,6 +910,7 @@ clean:
 	make clean-spice
 	make clean-gtk
 	make clean-virgl
+	make clean-symbols
 	make clean-ndk
 	# only remove build artifacts (files), never directories -- the old -name
 	# "*.d" pattern also matched any dir whose basename ends in ".d" (e.g.
@@ -873,4 +926,6 @@ help:
 	@echo "  emu-arch (emulator): x86_64, aarch64"
 	@echo "  eabi (device): armeabi-v7a, arm64-v8a, x86, x86_64"
 	@echo "  optional: export NDK_DEBUG=1 for debuggable binaries"
+	@echo "  optional: make symbols 把所有 .so 构建产物的符号表输出到 obj/symbols/<abi>/"
+	@echo "           （SYMBOLS_KEEP_UNSTRIPPED=false 可只导出符号表文本、不复制 .so）"
 	@echo " example: export BUILD_GUEST=x86_64-softmmu && export BUILD_HOST=armeabi-v7a && make limbo"

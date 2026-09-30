@@ -3,6 +3,27 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// ---------------------------------------------------------------------------
+// Bugly(com.tencent.bugly) 的 AppID 不写死在源码里（否则会随仓库一起上传到
+// GitHub）。取值优先级：
+//   1) local.properties 的 bugly.appId  —— 该文件已在根 .gitignore 中，不会提交
+//      （注意：Android Studio 改 SDK 路径时可能重写该文件，所以在 CI/多机上更
+//        推荐第 2、3 种方式）
+//   2) Gradle 属性 bugly.appId          —— 例如写进 ~/.gradle/gradle.properties，
+//      或用 -Pbugly.appId=xxx 传入；该文件在仓库之外，不会被覆盖
+//   3) 环境变量 BUGLY_APP_ID            —— CI 里用 repository secret 注入
+//   4) 空串                             —— CrashApplication 会跳过 Bugly 初始化
+// 只要按上面任一种方式配置，崩溃上报功能与以前完全一致。
+// ---------------------------------------------------------------------------
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+def buglyAppId = localProps.getProperty('bugly.appId') \
+        ?: project.findProperty('bugly.appId') \
+        ?: (System.getenv('BUGLY_APP_ID') ?: '')
+
 android {
     namespace 'com.limbo.emu'
     compileSdk {
@@ -15,6 +36,9 @@ android {
         targetSdk 37
         versionCode 10000
         versionName "1.0.0"
+
+        // 由上面的 buglyAppId 注入，源码中不再出现字面量
+        buildConfigField "String", "BUGLY_APP_ID", "\"${buglyAppId}\""
 
         ndk {
             abiFilters 'arm64-v8a'

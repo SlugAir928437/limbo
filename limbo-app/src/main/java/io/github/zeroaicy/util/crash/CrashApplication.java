@@ -24,9 +24,14 @@ public class CrashApplication extends LimboApplication {
 	@Override
 	public void onCreate(){
 		super.onCreate();
-        CrashReport.initCrashReport(getApplicationContext(), "REDACTED-BUGLY-APPID", BuildConfig.DEBUG);
+		// Bugly AppID 不再硬编码在源码里：构建时由 build.gradle 从
+		// local.properties(bugly.appId) 或环境变量 BUGLY_APP_ID 注入 BuildConfig，
+		// 避免 AppID 随仓库上传到 GitHub。未配置时跳过初始化，构建照常通过。
+		if ( BuildConfig.BUGLY_APP_ID != null && !BuildConfig.BUGLY_APP_ID.isEmpty() ){
+			CrashReport.initCrashReport(getApplicationContext(), BuildConfig.BUGLY_APP_ID, BuildConfig.DEBUG);
+		}
 		//闪退日志
-		mCrashApplication = CrashApplication.this;
+        mCrashApplication = CrashApplication.this;
 		//注册
 		CrashApphandler.getInstance().onCreated();
     }

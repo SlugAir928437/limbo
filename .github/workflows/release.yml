@@ -218,6 +218,17 @@ jobs:
           set -o pipefail
           make install 2>&1 | tee "$LOGDIR/20-install.log"
 
+      # make install 末尾会把所有 .so 构建产物的符号表输出到
+      # obj/symbols/<abi>/（未 strip 的 .so 副本 + .sym/.dynsym 文本），
+      # 每个 guest 各传一份（名字带 matrix.guest，避免互相覆盖），
+      # 供发版后崩溃栈符号化用（ndk-stack / llvm-symbolizer / addr2line）。
+      - name: 上传符号表（obj/symbols）
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: symbols-${{ matrix.guest }}
+          path: limbo-app/src/main/obj/symbols/${{ env.BUILD_HOST }}/
+          if-no-files-found: error
+
       - name: 显示失败阶段的日志尾部
         if: failure()
         run: |
@@ -236,6 +247,11 @@ jobs:
           path: ci-logs/
 
       - name: Gradle 打包 Release
+        env:
+          # Bugly AppID 用仓库 secret 注入（源码与仓库里都不再保存该值）：
+          # Settings -> Secrets and variables -> Actions 新建 BUGLY_APP_ID。
+          # 未配置时为空串，CrashApplication 会跳过 Bugly 初始化，打包照常通过。
+          BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID }}
         run: |
           chmod +x ./gradlew
           ./gradlew :limbo-app:assembleRelease

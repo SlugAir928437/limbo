@@ -238,6 +238,17 @@ jobs:
           set -o pipefail
           make install 2>&1 | tee "$LOGDIR/20-install.log"
 
+      # make install 末尾会把所有 .so 构建产物的符号表输出到
+      # obj/symbols/<abi>/（未 strip 的 .so 副本 + .sym/.dynsym 文本），
+      # 单独上传一份，供崩溃栈符号化用（ndk-stack / llvm-symbolizer / addr2line）。
+      # 只在这个 job 成功跑到 install 时才会执行，所以缺失即视为构建回归。
+      - name: 上传符号表（obj/symbols）
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: symbols-${{ env.BUILD_HOST }}
+          path: limbo-app/src/main/obj/symbols/${{ env.BUILD_HOST }}/
+          if-no-files-found: error
+
       - name: 显示失败阶段的日志尾部
         if: failure()
         run: |
@@ -256,6 +267,11 @@ jobs:
           path: ci-logs/
 
       - name: Build with Gradle
+        env:
+          # Bugly AppID 用仓库 secret 注入（源码与仓库里都不再保存该值）：
+          # Settings -> Secrets and variables -> Actions 新建 BUGLY_APP_ID。
+          # 未配置时为空串，CrashApplication 会跳过 Bugly 初始化，构建照常通过。
+          BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID }}
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug

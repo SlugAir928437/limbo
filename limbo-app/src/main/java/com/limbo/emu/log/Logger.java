@@ -52,6 +52,22 @@ import java.util.Scanner;
 public class Logger {
     public static final String TAG = "Logger";
 
+    /**
+     * 统一的测试/调试日志入口：写入 logcat。
+     *
+     * <p>与 {@link #viewLimboLog(Activity)} 展示的内置日志同源（{@code FileUtils.startLogging()}
+     * 会把 logcat 主缓冲区落盘），因此这些日志既能在 {@code adb logcat} 中查看，
+     * 应用内「查看日志」也能看到。
+     */
+    public static int logInfo(String tag, String message) {
+        return Log.i(tag, message);
+    }
+
+    /** 同 {@link #logInfo(String, String)}，用于异常/失败路径，级别为 WARN。 */
+    public static int logWarn(String tag, String message) {
+        return Log.w(tag, message);
+    }
+
     public static Spannable formatAndroidLog(String contents) {
         Scanner scanner = null;
         Spannable formattedString = new SpannableString(contents);

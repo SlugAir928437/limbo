@@ -1,7 +1,9 @@
 name: release
 # 手动触发的发版工作流：
 #  - 按「模拟架构(guest)」构建 3 个独立 APK：x86_64 / aarch64 / ia64
-#  - 每次联动原生库构建与 gradle 打包，产物用签名密钥机签
+#  - 每次联动原生库构建与 gradle 打包，产物用【仓库内固定密钥】签名
+#    （keystore/release.jks，随仓库提交，本地与 CI 共用同一把密钥，
+#      保证历次发布 APK 签名一致、可互相覆盖升级）
 #  - 全部成功后在 GitHub 上自动创建 Release 并上传 APK
 # 原生库构建不再用单步 `make limbo`，而是拆成 20 个步骤：fetch -> ndk ->
 # 每个依赖各自的 config-X + X（libffi / glib / pixman / slirp / spice / gtk /
@@ -19,11 +21,13 @@ on:
         required: false
         default: ''
 
-# 机签密钥参数（用户指定：密码 123456，别名随意）
+# 机签密钥参数：密钥库随仓库提交（keystore/release.jks），密码与别名与
+# keystore.properties 保持一致，本地与 CI 由此共用同一把发布密钥。
 env:
+  KS_STORE_REL: 'keystore/release.jks'
   KS_STORE_PASS: '123456'
   KS_KEY_PASS: '123456'
-  KS_ALIAS: 'limbo'
+  KS_ALIAS: 'FreshingAir'
 
 jobs:
   build:
@@ -260,31 +264,35 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :limbo-app:assembleRelease
 
-      - name: 机签发布 APK
+      - name: 签名并重命名发布 APK
         shell: bash
         run: |
           set -euo pipefail
           SDK="$ANDROID_SDK_ROOT"
           APK_DIR="limbo-app/build/outputs/apk/release"
           BT="$SDK/build-tools/$(ls -1 "$SDK/build-tools" | sort -V | tail -1)"
-          KS="$RUNNER_TEMP/release.jks"
+          # 密钥库随仓库检出，不再每次临时生成；本地与 CI 共用同一把密钥
+          KS="$GITHUB_WORKSPACE/$KS_STORE_REL"
+          [ -f "$KS" ] || { echo "仓库内缺少签名密钥库：$KS"; exit 1; }
 
-          keytool -genkeypair -v -keystore "$KS" -alias "$KS_ALIAS" \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass "$KS_STORE_PASS" -keypass "$KS_KEY_PASS" \
-            -dname "CN=Limbo, OU=Limbo, O=Limbo, C=" -noprompt
+          # keystore.properties 已随仓库提交，Gradle 构建时即完成签名，
+          # 产物名不带 -unsigned；万一凭据缺失则退回未签名包，由下面统一重签。
+          SRC="$APK_DIR/limbo-app-release.apk"
+          if [ ! -f "$SRC" ]; then
+            SRC="$(ls "$APK_DIR"/*-unsigned.apk 2>/dev/null | head -1 || true)"
+          fi
+          [ -n "${SRC:-}" ] && [ -f "$SRC" ] || { echo "no apk under $APK_DIR"; exit 1; }
+          echo ">> 输入 APK：$SRC"
 
-          for apk in "$APK_DIR"/*-unsigned.apk; do
-            [ -e "$apk" ] || { echo "no unsigned apk under $APK_DIR"; exit 1; }
-            "$BT/zipalign" -f -p 4 "$apk" "$RUNNER_TEMP/aligned.apk"
-            out="Limbo-${{ matrix.guest }}.apk"
-            "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$KS_ALIAS" \
-              --ks-pass "pass:$KS_STORE_PASS" --key-pass "pass:$KS_KEY_PASS" \
-              --out "$out" "$RUNNER_TEMP/aligned.apk"
-            echo "signed -> $out"
-            # 确认签名有效
-            "$BT/apksigner" verify --print-certs "$out"
-          done
+          OUT="Limbo-${{ matrix.guest }}.apk"
+          # 统一用仓库内密钥重签，保证三个 guest 的产物与本地构建签名完全一致
+          "$BT/zipalign" -f -p 4 "$SRC" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$KS_ALIAS" \
+            --ks-pass "pass:$KS_STORE_PASS" --key-pass "pass:$KS_KEY_PASS" \
+            --out "$OUT" "$RUNNER_TEMP/aligned.apk"
+          echo "signed -> $OUT"
+          # 确认签名有效
+          "$BT/apksigner" verify --print-certs "$OUT"
 
       - name: 上传 APK 构建产物
         uses: actions/upload-artifact@v7.0.1
@@ -333,7 +341,8 @@ jobs:
             - guest aarch64
             - guest ia64
 
-            所有 APK 使用公钥在构建时签名（密码 123456）。
+            所有 APK 统一使用仓库内的发布密钥签名（别名 `FreshingAir`，
+            密钥库 `keystore/release.jks`），与本地构建签名一致，可互相覆盖升级。
             `Limbo-<tag>.zip` 内附 SHA-256 校验和。
           files: |
             dist/*.apk

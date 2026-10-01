@@ -3,3 +3,7 @@ libs
 obj
 assets/roms
 assets/QEMU_VERSION
+
+UploadSymbol.bat
+UploadSymbol.jar
+buglybin

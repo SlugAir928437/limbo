@@ -3,3 +3,7 @@
 .kotlin
 build
 local.properties
+# 注意：keystore/release.jks 与 keystore.properties 是【有意提交】到仓库的，
+# 目的是让 CI 与本地构建共用同一把发布密钥（别名 FreshingAir，密码 123456），
+# 避免每次 CI 临时生成密钥导致 APK 无法互相覆盖升级。
+# 请不要把这两个路径加回忽略列表。

@@ -4,6 +4,7 @@ import android.app.Application;
 import android.content.Context;
 
 import com.limbo.emu.BuildConfig;
+import com.limbo.emu.local_properties;
 import com.limbo.emu.main.LimboApplication;
 import com.tencent.bugly.crashreport.CrashReport;
 
@@ -27,13 +28,14 @@ public class CrashApplication extends LimboApplication {
 		// Bugly AppID 不再硬编码在源码里：构建时由 build.gradle 从
 		// local.properties(bugly.appId) 或环境变量 BUGLY_APP_ID 注入 BuildConfig，
 		// 避免 AppID 随仓库上传到 GitHub。未配置时跳过初始化，构建照常通过。
-		if ( BuildConfig.BUGLY_APP_ID != null && !BuildConfig.BUGLY_APP_ID.isEmpty() ){
-			CrashReport.initCrashReport(getApplicationContext(), BuildConfig.BUGLY_APP_ID, BuildConfig.DEBUG);
-		}
+        String BuglyAppid = local_properties.get("bugly.appId", "");
+		if ( !BuglyAppid.isEmpty() ) {
+            CrashReport.initCrashReport(getApplicationContext(), BuglyAppid, BuildConfig.DEBUG);
+        }
 		//闪退日志
         mCrashApplication = CrashApplication.this;
 		//注册
-		CrashApphandler.getInstance().onCreated();
+        CrashApphandler.getInstance().onCreated();
     }
 
 	@Override

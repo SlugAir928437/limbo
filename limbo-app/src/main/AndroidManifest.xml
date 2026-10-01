@@ -79,6 +79,18 @@
             android:name=".ui.StorageDeviceEditorActivity"
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar"/>
+        <!-- 测试用：执行 Intent 传入的 QEMU 命令行（最长 5 秒），弹窗返回执行结果。
+             通过 adb 启动（-e 为 am start 的 extra 简写）：
+             adb shell am start -n com.limbo.emu/com.limbo.emu.QemuCmdTestActivity
+                 -e qemu_command "qemu-system-x86_64 -m 512 -display none"
+             注意：该 Activity 会原样执行传入的命令行（无 Intent 值时直接抛异常），
+             exported=true 是为了方便 adb/其他应用拉起测试；若不需要请改为 false。 -->
+        <activity
+            android:name=".QemuCmdTestActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />
         <service
             android:name=".machine.MachineService"
             android:enabled="true"

@@ -4,26 +4,88 @@ plugins {
 }
 
 // ---------------------------------------------------------------------------
-// Bugly(com.tencent.bugly) 的 AppID 不写死在源码里（否则会随仓库一起上传到
-// GitHub）。取值优先级：
-//   1) local.properties 的 bugly.appId  —— 该文件已在根 .gitignore 中，不会提交
-//      （注意：Android Studio 改 SDK 路径时可能重写该文件，所以在 CI/多机上更
-//        推荐第 2、3 种方式）
-//   2) Gradle 属性 bugly.appId          —— 例如写进 ~/.gradle/gradle.properties，
-//      或用 -Pbugly.appId=xxx 传入；该文件在仓库之外，不会被覆盖
-//   3) 环境变量 BUGLY_APP_ID            —— CI 发版时在 release workflow 里手动输入
-//      （workflow_dispatch 的 bugly_app_id）后透传进来
-//   4) 空串                             —— CrashApplication 会跳过 Bugly 初始化
-// 只要按上面任一种方式配置，崩溃上报功能与以前完全一致。
+// local.properties 中除 sdk.dir 以外的所有键值对，全部注入到 BuildConfig。
+//
+// 例如 local.properties 里写：
+//     bugly.appId=xxxxxxxx
+// 会生成：
+//     BuildConfig.bugly_appId  // 值为 "xxxxxxxx"
+//
+// 字段名合法化规则：非 [A-Za-z0-9_] 的字符替换为下划线，
+// 因此 bugly.appId -> bugly_appId。
+//
+// 注意：
+//   1) local.properties 已在根 .gitignore 中，不会提交，AppID 不会泄露到 GitHub。
+//   2) Android Studio 改 SDK 路径时可能重写该文件，CI/多机上更推荐把密钥写进
+//      ~/.gradle/gradle.properties 或用 -P 传入（见下方 fallback）。
+//   3) 若 bugly.appId 缺失，BuildConfig.bugly_appId 为空串，
+//      CrashApplication 会跳过 Bugly 初始化。
 // ---------------------------------------------------------------------------
 def localProps = new Properties()
 def localPropsFile = rootProject.file('local.properties')
 if (localPropsFile.exists()) {
     localPropsFile.withInputStream { localProps.load(it) }
 }
-def buglyAppId = localProps.getProperty('bugly.appId') \
-        ?: project.findProperty('bugly.appId') \
-        ?: (System.getenv('BUGLY_APP_ID') ?: '')
+
+// 把 local.properties 中除 sdk.dir 外的所有键值对收集起来，稍后注入 BuildConfig
+def localPropsForBuildConfig = [:]
+localProps.each { key, value ->
+    def k = key.toString()
+    if (k == 'sdk.dir') return
+    def fieldName = k.replaceAll(/[^A-Za-z0-9_]/, '_')
+    localPropsForBuildConfig[fieldName] = value.toString()
+}
+
+// bugly.appId 的 fallback：local.properties -> Gradle 属性 -> 环境变量 -> 空串
+// （local.properties 有值时上面的循环已经注入，这里仅在其缺失时补一个占位）
+if (!localPropsForBuildConfig.containsKey('bugly_appId')) {
+    def buglyAppId = project.findProperty('bugly.appId') \
+            ?: (System.getenv('BUGLY_APP_ID') ?: '')
+    localPropsForBuildConfig['bugly_appId'] = buglyAppId
+}
+
+// bugly.appKey 的 fallback：local.properties -> Gradle 属性 -> 环境变量 -> 空串。
+// AppKey 只用于上传 mapping 符号表（见文件末尾的 uploadBuglyMapping 任务），
+// 运行时不需要，因此不注入 BuildConfig。
+def buglyAppKey = localProps.getProperty('bugly.appKey') \
+        ?: (project.findProperty('bugly.appKey') ?: (System.getenv('BUGLY_APP_KEY') ?: ''))
+
+// ---------------------------------------------------------------------------
+// Release 签名配置
+//
+// 凭据来源优先级：
+//   1) 根目录 keystore.properties（随仓库提交，本地与 CI 共用同一把密钥）
+//         storeFile=keystore/release.jks
+//         storePassword=123456
+//         keyAlias=FreshingAir
+//         keyPassword=123456
+//   2) Gradle 属性：-PstoreFile=... -PstorePassword=... -PkeyAlias=... -PkeyPassword=...
+//   3) 环境变量：LIMBO_STORE_FILE / LIMBO_STORE_PASSWORD / LIMBO_KEY_ALIAS / LIMBO_KEY_PASSWORD
+//
+// 三者都没有时，release 不配置签名，assembleRelease 只产出 unsigned APK，
+// 不会因为缺少密钥而直接构建失败。
+// ---------------------------------------------------------------------------
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file('keystore.properties')
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+def ksStoreFile = keystoreProps.getProperty('storeFile') ?: project.findProperty('storeFile') ?: System.getenv('LIMBO_STORE_FILE')
+def ksStorePass = keystoreProps.getProperty('storePassword') ?: project.findProperty('storePassword') ?: System.getenv('LIMBO_STORE_PASSWORD')
+def ksKeyAlias = keystoreProps.getProperty('keyAlias') ?: project.findProperty('keyAlias') ?: System.getenv('LIMBO_KEY_ALIAS')
+def ksKeyPass = keystoreProps.getProperty('keyPassword') ?: project.findProperty('keyPassword') ?: System.getenv('LIMBO_KEY_PASSWORD')
+
+def hasReleaseSigning = ksStoreFile && ksStorePass && ksKeyAlias && ksKeyPass
+if (hasReleaseSigning) {
+    def ksFile = rootProject.file(ksStoreFile)
+    if (!ksFile.exists()) {
+        throw new GradleException("Release 签名密钥库不存在：${ksFile}（请检查 keystore.properties 中的 storeFile）")
+    }
+    logger.lifecycle("[signing] release 使用密钥库 ${ksFile}，别名 ${ksKeyAlias}")
+} else {
+    logger.lifecycle('[signing] 未找到 release 签名配置（keystore.properties / -P 参数 / 环境变量），assembleRelease 将产出未签名 APK')
+}
 
 android {
     namespace 'com.limbo.emu'
@@ -38,14 +100,37 @@ android {
         versionCode 10000
         versionName "1.0.0"
 
-        // 由上面的 buglyAppId 注入，源码中不再出现字面量
-        buildConfigField "String", "BUGLY_APP_ID", "\"${buglyAppId}\""
+        // local.properties 里的变量全部注入 BuildConfig（含 bugly_appId）
+        localPropsForBuildConfig.each { fieldName, fieldValue ->
+            // 转义反斜杠、双引号和换行，避免生成非法 Java 字符串字面量
+            def escaped = fieldValue
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+            buildConfigField "String", fieldName, "\"${escaped}\""
+        }
 
         ndk {
             abiFilters 'arm64-v8a'
         }
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile rootProject.file(ksStoreFile)
+                storePassword ksStorePass
+                keyAlias ksKeyAlias
+                keyPassword ksKeyPass
+                // 打开 V1/V2/V3 签名，minSdk 24 起 V2/V3 生效，V1 用于兼容旧设备
+                v1SigningEnabled true
+                v2SigningEnabled true
+                enableV3Signing true
+            }
+        }
     }
 
     sourceSets {
@@ -70,8 +155,11 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
             jniDebuggable true
@@ -102,9 +190,10 @@ dependencies {
 
     implementation libs.markwon.core
 
-    implementation libs.appupdater
-
+    // 异常上报
     implementation libs.crashreport
+
+    // 内存泄露检测
     androidTestImplementation libs.leakcanary.android.instrumentation
     debugImplementation libs.leakcanary.android
 

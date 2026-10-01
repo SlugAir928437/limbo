@@ -718,7 +718,8 @@ public class LimboActivity extends AppCompatActivity implements
                 (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64)) {
             uiState.setDisableACPIEnabled(true);
             uiState.setDisableHPETEnabled(true);
-            uiState.setDisableTSCEnabled(true);
+            // Disable TSC only exists for the 32-bit x86 target (see VMExecutor)
+            uiState.setDisableTSCEnabled(LimboApplication.arch == Config.Arch.x86);
         } else {
             uiState.setDisableACPIEnabled(false);
             uiState.setDisableHPETEnabled(false);
@@ -753,7 +754,7 @@ public class LimboActivity extends AppCompatActivity implements
         DialogInterface.OnClickListener cancelListener = (dialog, which) -> uiState.setCpuNumValue("1");
         DialogUtils.UIAlert(this, getString(R.string.multipleVCPU),
                 getString(R.string.multipleVCPUWarning)
-                        + (LimboApplication.arch == Config.Arch.x86_64
+                        + (LimboApplication.arch == Config.Arch.x86
                         ? getString(R.string.disableTSCInstructions) : "")
                         + " " + getString(R.string.DoYouWantToContinue),
                 16, false, getString(android.R.string.ok), okListener,
@@ -1346,7 +1347,10 @@ public class LimboActivity extends AppCompatActivity implements
         // motherboard settings
         uiState.setDisableACPI(getMachine() != null && getMachine().getDisableAcpi() == 1);
         uiState.setDisableHPET(getMachine() != null && getMachine().getDisableHPET() == 1);
-        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64)
+        // "Disable TSC" is a 32-bit x86 only option: VMExecutor strips the TSC
+        // from the CPU only for that target, because a 64-bit Windows guest
+        // bugchecks 0x5D (UNSUPPORTED_PROCESSOR) on a CPU without a TSC.
+        if (LimboApplication.arch == Config.Arch.x86)
             uiState.setDisableTSC(getMachine() != null && getMachine().getDisableTSC() == 1);
         if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w)
             uiState.setDisableI8042(getMachine() != null && getMachine().getDisableI8042() == 1);
@@ -2898,8 +2902,9 @@ public class LimboActivity extends AppCompatActivity implements
             firstMTTCGCheck = true;
             promptMultiCPU(cleaned);
         }
-        uiState.setDisableTSC(cpuNum > 1 && (LimboApplication.arch == Config.Arch.x86
-                || LimboApplication.arch == Config.Arch.x86_64));
+        // Auto-tick Disable TSC for multi-core 32-bit guests only; the x86_64
+        // target keeps the TSC (see VMExecutor).
+        uiState.setDisableTSC(cpuNum > 1 && LimboApplication.arch == Config.Arch.x86);
         debounceHandler.removeCallbacks(cpuNumCommit);
         debounceHandler.postDelayed(cpuNumCommit, DEBOUNCE_MS);
     }

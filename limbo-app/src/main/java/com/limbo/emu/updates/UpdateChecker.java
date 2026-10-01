@@ -28,7 +28,6 @@ import android.util.Log;
 import android.widget.TextView;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.king.app.updater.AppUpdater;
 import com.limbo.emu.R;
 import com.limbo.emu.main.Config;
 import com.limbo.emu.main.LimboApplication;
@@ -162,17 +161,5 @@ public class UpdateChecker {
     }
 
     private static void startDownload(Context context, String apkUrl) {
-        try {
-            new AppUpdater.Builder(context)
-                    .setUrl(apkUrl)
-                    .setFilename("limbo-update.apk")
-                    .setShowNotification(true)
-                    .setShowPercentage(true)
-                    .setInstallApk(true)
-                    .build()
-                    .start();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 }

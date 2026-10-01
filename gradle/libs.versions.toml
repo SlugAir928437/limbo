@@ -18,9 +18,10 @@ kotlin = "2.4.10"
 material = "1.14.0"
 picasso = "2.71828"
 recyclerview = "1.4.0"
+shiplyintegration = "1.0.0"
 swiperefreshlayout = "1.2.0"
+upgrade = "2.2.1"
 xxpermissions = "28.3"
-appupdater = "2.2.0"
 
 [libraries]
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
@@ -42,8 +43,11 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 picasso = { module = "com.squareup.picasso:picasso", version.ref = "picasso" }
+shiplyintegration = { module = "com.tencent.shiply:shiplyintegration", version.ref = "shiplyintegration" }
+upgrade = { module = "com.tencent.shiply:upgrade", version.ref = "upgrade" }
+upgrade-diff-pkg-patch = { module = "com.tencent.shiply:upgrade-diff-pkg-patch", version.ref = "upgrade" }
+upgrade-ui = { module = "com.tencent.shiply:upgrade-ui", version.ref = "upgrade" }
 xxpermissions = { module = "com.github.getActivity:XXPermissions", version.ref = "xxpermissions" }
-appupdater = { module = "com.github.jenly1314.AppUpdater:app-updater", version.ref = "appupdater" }
 
 # Compose
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }

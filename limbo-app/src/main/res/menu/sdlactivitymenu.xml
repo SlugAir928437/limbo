@@ -16,11 +16,6 @@
         android:title="@string/drives"></item>
 
     <item
-        android:id="@+id/itemDisplay"
-        android:icon="@drawable/screen"
-        android:title="@string/display" />
-
-    <item
         android:id="@+id/itemConsole"
         android:icon="@drawable/terminal"
         android:title="@string/nc_console" />
@@ -34,11 +29,6 @@
         android:id="@+id/itemMonitor"
         android:icon="@drawable/terminal"
         android:title="@string/monitor"></item>
-
-    <item
-        android:id="@+id/itemHideToolbar"
-        android:icon="@drawable/pan"
-        android:title="@string/hide_toolbar" />
 
     <item
         android:id="@+id/itemKeyboardMapper"

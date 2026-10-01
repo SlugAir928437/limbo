@@ -30,6 +30,9 @@
 #include <dlfcn.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <ucontext.h>
 #include <android/native_window_jni.h>
 #include "vm-executor-jni.h"
 #include "limbo_compat.h"
@@ -312,6 +315,178 @@ JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
     return res;
 }
 
+/* ---------------------------------------------------------------------------
+ * SIGABRT 兜底回溯
+ *
+ * gunyah/gzvm 的 VM 跑在应用进程里，而 KernelSU 的进程内提权会把本进程变成
+ * uid 0：这种进程 Android 的 crash_dump/debuggerd 不会转储（logcat 里只剩一行
+ * "crash_dump helper failed to exec, or was killed"），崩溃线程的调用栈就没了。
+ * 而 bionic 的 FORTIFY（"pthread_mutex_lock called on a destroyed mutex
+ * (0x...)") 只打印一个地址，看不出是谁在锁这把锁。
+ *
+ * 这里自己装一个 SIGABRT handler：用 ucontext 里的帧指针走栈 + dladdr 解析，
+ * 打完再把 bionic 原来的 handler 装回去并重新触发信号，tombstone/debuggerd 的
+ * 行为和以前保持一致。handler 内只做栈读取、snprintf、dladdr 和 log 写入，
+ * 不分配内存、不加锁。
+ * ------------------------------------------------------------------------- */
+#define LIMBO_BT_MAX_FRAMES   48
+#define LIMBO_BT_STACK_LIMIT  (16 * 1024 * 1024)
+#define LIMBO_BT_SCAN_BYTES   (64 * 1024)
+#define LIMBO_BT_SCAN_MAX     12
+
+/* 装我们之前保存的原 SIGABRT 处理（通常是 bionic 的 debuggerd handler） */
+static struct sigaction limbo_bt_prev_sigabrt;
+static int limbo_bt_installed;
+
+static void limbo_bt_log_line(const char *line) {
+	__android_log_write(ANDROID_LOG_FATAL, "LIMBO-CRASH", line);
+}
+
+static void limbo_bt_dump_frame(int index, uintptr_t pc) {
+	char line[256];
+	Dl_info info;
+
+	if (pc == 0)
+		return;
+
+	memset(&info, 0, sizeof(info));
+	if (dladdr((void *) pc, &info) != 0 && info.dli_fname != NULL) {
+		if (info.dli_sname != NULL) {
+			snprintf(line, sizeof(line),
+					"#%02d pc %016" PRIxPTR "  %s (%s+0x%" PRIxPTR ")",
+					index, pc, info.dli_fname, info.dli_sname,
+					pc - (uintptr_t) info.dli_saddr);
+		} else {
+			snprintf(line, sizeof(line),
+					"#%02d pc %016" PRIxPTR "  %s +0x%" PRIxPTR,
+					index, pc, info.dli_fname,
+					pc - (uintptr_t) info.dli_fbase);
+		}
+	} else {
+		snprintf(line, sizeof(line), "#%02d pc %016" PRIxPTR "  <unknown>",
+				index, pc);
+	}
+	limbo_bt_log_line(line);
+}
+
+static int limbo_bt_frame_ok(uintptr_t fp, uintptr_t sp) {
+	return (fp & (sizeof(uintptr_t) - 1)) == 0 &&
+			fp >= sp && fp < sp + LIMBO_BT_STACK_LIMIT;
+}
+
+/* 按各 ABI 的帧记录布局走栈：AArch64/x86_64 都是 {上一帧 fp, 返回地址}。
+ * 返回实际打印的帧数，帧数太少时调用方再退化成扫栈。 */
+static int limbo_bt_walk_fp(uintptr_t pc, uintptr_t fp, uintptr_t sp, uintptr_t lr) {
+	int index = 0;
+
+	limbo_bt_dump_frame(index++, pc);
+	if (lr != 0 && lr != pc)
+		limbo_bt_dump_frame(index++, lr);
+
+	while (index < LIMBO_BT_MAX_FRAMES && limbo_bt_frame_ok(fp, sp)) {
+#if defined(__aarch64__) || defined(__x86_64__)
+		uintptr_t next_fp = ((uintptr_t *) fp)[0]; /* 保存的上一帧 fp */
+		uintptr_t ret = ((uintptr_t *) fp)[1];     /* 保存的返回地址 */
+		if (ret == 0 || next_fp <= fp)             /* 必须递增，防死循环 */
+			break;
+		limbo_bt_dump_frame(index++, ret);
+		fp = next_fp;
+#else
+		break;
+#endif
+	}
+	return index;
+}
+
+/* 帧指针链断了（某个库不带帧指针）时，退化成在栈上扫返回地址：
+ * 只挑能解析到共享库、且不在 libc 里的候选，避免刷屏。 */
+static void limbo_bt_scan_stack(uintptr_t sp) {
+	uintptr_t *p;
+	uintptr_t *end = (uintptr_t *) (sp + LIMBO_BT_SCAN_BYTES);
+	int found = 0;
+
+	for (p = (uintptr_t *) sp;
+			p < end && found < LIMBO_BT_SCAN_MAX; p++) {
+		Dl_info info;
+		uintptr_t val = *p;
+
+		if (val < 0x1000)
+			continue;
+		memset(&info, 0, sizeof(info));
+		if (dladdr((void *) val, &info) == 0 || info.dli_fname == NULL)
+			continue;
+		if (strstr(info.dli_fname, "libc.so") != NULL)
+			continue;
+		limbo_bt_dump_frame(100 + found, val);
+		found++;
+	}
+}
+
+static void limbo_bt_sigabrt(int sig, siginfo_t *si, void *uctx) {
+	uintptr_t pc = 0, fp = 0, sp = 0, lr = 0;
+	char line[160];
+	int frames;
+
+	(void) sig;
+	(void) si;
+
+#if defined(__aarch64__)
+	{
+		ucontext_t *uc = (ucontext_t *) uctx;
+		pc = (uintptr_t) uc->uc_mcontext.pc;
+		fp = (uintptr_t) uc->uc_mcontext.regs[29];
+		sp = (uintptr_t) uc->uc_mcontext.sp;
+		lr = (uintptr_t) uc->uc_mcontext.regs[30];
+	}
+#elif defined(__x86_64__)
+	{
+		ucontext_t *uc = (ucontext_t *) uctx;
+		pc = (uintptr_t) uc->uc_mcontext.gregs[REG_RIP];
+		fp = (uintptr_t) uc->uc_mcontext.gregs[REG_RBP];
+		sp = (uintptr_t) uc->uc_mcontext.gregs[REG_RSP];
+	}
+#else
+	(void) uctx;
+#endif
+
+	snprintf(line, sizeof(line),
+			"===== SIGABRT backtrace (tid %d, pc %p, fp %p, sp %p) =====",
+			(int) gettid(), (void *) pc, (void *) fp, (void *) sp);
+	limbo_bt_log_line(line);
+
+	if (pc != 0) {
+		frames = limbo_bt_walk_fp(pc, fp, sp, lr);
+		if (frames < 3) {
+			limbo_bt_log_line("----- stack scan (fallback) -----");
+			limbo_bt_scan_stack(sp);
+		}
+	}
+	limbo_bt_log_line("===== end of backtrace =====");
+
+	/* 把信号交还给系统原来的处理（通常是 bionic 的 debuggerd），
+	 * 保证 tombstone/debuggerd 的既有行为不变。 */
+	sigaction(SIGABRT, &limbo_bt_prev_sigabrt, NULL);
+	raise(SIGABRT);
+}
+
+static void limbo_install_crash_handler(void) {
+	struct sigaction sa;
+
+	if (limbo_bt_installed)
+		return;
+
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_sigaction = limbo_bt_sigabrt;
+	sa.sa_flags = SA_SIGINFO | SA_RESTART;
+	sigemptyset(&sa.sa_mask);
+	if (sigaction(SIGABRT, &sa, &limbo_bt_prev_sigabrt) != 0) {
+		LOGE("SIGABRT backtrace handler install failed: %s", strerror(errno));
+		return;
+	}
+	limbo_bt_installed = 1;
+	LOGI("SIGABRT backtrace handler installed");
+}
+
 /* Shared VM bootstrap used by both the in-process VMExecutor.start() and
  * the root child process (RootVmLauncher.startVm).  In the root child
  * thiz is NULL, so the per-instance JNI wiring (set_jni) is skipped. */
@@ -428,6 +603,9 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
     main_t qemu_main = NULL;
     qemu_main_loop_t qemu_main_loop = NULL;
     qemu_cleanup_t qemu_cleanup = NULL;
+
+	/* 装 SIGABRT 兜底回溯：uid 0 的进程拿不到 tombstone，QEMU 崩了只能靠它出栈 */
+	limbo_install_crash_handler();
 
 	dlerror();
 	qemu_init = (qemu_init_t) dlsym(handle, "qemu_init");

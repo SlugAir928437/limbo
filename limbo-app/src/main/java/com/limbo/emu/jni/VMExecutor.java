@@ -68,6 +68,11 @@ class VMExecutor extends MachineExecutor {
     private static final String fdaDeviceName = "floppy0";
     private static final String fdbDeviceName = "floppy1";
     private static final String sdDeviceName = "sd0";
+    // Size of the virtio-gpu-gl host memory window (hostmem=...).  The window is
+    // a real qemu_ram_mmap() reservation (hw/display/virtio-gpu-gl.c), so it has
+    // to stay small enough to succeed on a phone while still holding the usual
+    // Vulkan blob working set.
+    private static final String GL_HOSTMEM_SIZE = "2G";
     private static int vm_width;
     private static int vm_height;
     //TODO: make this a proper singleton but the views should not be able to access it
@@ -429,13 +434,18 @@ class VMExecutor extends MachineExecutor {
             cpu = "'" + getMachine().getCpu() + "'"; // XXX: needed for sparc cpu names
 
         //XXX: we disable tsc feature for x86 since some guests are kernel panicking
-        // if the cpu has not specified by user we use the internal qemu32/64
-        if (getMachine().getDisableTSC() == 1 && (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64)) {
+        // if the cpu has not specified by user we use the internal qemu32
+        //
+        // The ",-tsc" suffix clears CPUID.1:EDX.TSC, and only 32-bit guests can
+        // live with that (they fall back to the PIT/PM timer).  A 64-bit Windows
+        // kernel treats a processor that does not advertise the timestamp
+        // counter as unsupported and bugchecks STOP 0x0000005D
+        // (UNSUPPORTED_PROCESSOR) while booting - whatever -cpu model the user
+        // picked, because the suffix is appended to every model.  The workaround
+        // is therefore never applied to the x86_64 target.
+        if (getMachine().getDisableTSC() == 1 && LimboApplication.arch == Config.Arch.x86) {
             if (cpu == null || cpu.equals("Default")) {
-                if (LimboApplication.arch == Config.Arch.x86)
-                    cpu = "qemu32";
-                else if (LimboApplication.arch == Config.Arch.x86_64)
-                    cpu = "qemu64";
+                cpu = "qemu32";
             }
             cpu += ",-tsc";
         }
@@ -631,8 +641,21 @@ class VMExecutor extends MachineExecutor {
                 // advertise VIRTIO_GPU_CAPSET_VENUS and ask virglrenderer for
                 // VIRGL_RENDERER_VENUS | VIRGL_RENDERER_RENDER_SERVER, so the
                 // renderer has to be built with venus support too (-Dvenus).
-                if (vgaDevice.startsWith("virtio-gpu-gl") && !vgaDevice.contains(",venus=")) {
-                    vgaDevice += ",venus=on";
+                //
+                // venus also needs host blobs: hw/display/virtio-gpu.c fails the
+                // realize with "venus requires enabled blob and hostmem options"
+                // unless blob=on and hostmem=<size> are both given, so the two
+                // prerequisites ride along with the venus property here.
+                if (vgaDevice.startsWith("virtio-gpu-gl")) {
+                    if (!vgaDevice.contains(",blob=")) {
+                        vgaDevice += ",blob=on";
+                    }
+                    if (!vgaDevice.contains(",hostmem=")) {
+                        vgaDevice += ",hostmem=" + GL_HOSTMEM_SIZE;
+                    }
+                    if (!vgaDevice.contains(",venus=")) {
+                        vgaDevice += ",venus=on";
+                    }
                 }
                 paramsList.add("-vga");
                 paramsList.add("none");
@@ -1054,6 +1077,45 @@ class VMExecutor extends MachineExecutor {
         return res;
     }
 
+    /**
+     * 测试入口（{@code com.limbo.emu.debug.QemuCommandTestActivity} 使用）：不走
+     * {@link #prepareParams(Context)} 的参数拼装，直接把给定参数交给原生 QEMU 引导流程
+     * （loadLib + qemu_init + qemu_main_loop + qemu_cleanup）。
+     *
+     * <p>必须在非主线程调用，调用期间会一直阻塞到 QEMU 退出。
+     *
+     * @param params      原样交给 QEMU 的参数数组，不会追加任何参数
+     * @param libFilename 需要 dlopen 的 QEMU 库文件名（如 libqemu-system-x86_64.so）
+     * @return 原生层返回的结果字符串
+     */
+    String startRaw(@NonNull String[] params, @NonNull String libFilename) {
+        String libPath = FileUtils.getNativeLibDir(LimboApplication.getInstance())
+                + "/" + libFilename;
+        return start(Config.storagedir, LimboApplication.getBasefileDir(),
+                libFilename, libPath, params);
+    }
+
+    /** 测试入口：请求终止由 {@link #startRaw(String[], String)} 启动的 QEMU。 */
+    String stopRaw(int restart) {
+        return stop(restart);
+    }
+
+    /**
+     * 测试入口：取当前进程的 {@link VMExecutor} 实例。
+     *
+     * <p>优先复用 {@link MachineController} 已经创建的实例；若还没有创建过，
+     * MachineController 的构造过程会创建它自己的 VMExecutor，这里直接取该实例，
+     * 避免出现第二个实例。
+     */
+    @Nullable
+    static VMExecutor obtain() {
+        if (mInstance == null) {
+            // noinspection ResultOfMethodCallIgnored
+            MachineController.getInstance();
+        }
+        return mInstance;
+    }
+
     /** True when this VM paints through the AGL display (in-process Surface). */
     private boolean isAglDisplay() {
         return getMachine() != null && "AGL".equals(getMachine().getUI());
@@ -1118,7 +1180,13 @@ class VMExecutor extends MachineExecutor {
             sb.append("export LD_LIBRARY_PATH=").append(shq(nativeLibDir)).append("\n");
             sb.append("export CLASSPATH=").append(shq(apkPath)).append("\n");
             sb.append("echo $$ > ").append(shq(pidFile.getAbsolutePath())).append("\n");
-            sb.append("exec ").append(appProcess).append(" /system/bin com.limbo.emu.jni.RootVmLauncher");
+            // 新版 app_process 只认命令行 vm 选项，不再读取 CLASSPATH 环境变量：
+            // 必须在“父目录”参数之前用 -cp 传类路径，否则子进程 boot classpath 里没有
+            // 应用 dex，FindClass("com/limbo/emu/jni/RootVmLauncher") 返回 null，留下的
+            // pending ClassNotFoundException 会让 startReg() 里的 AssertNoPendingException
+            // 直接 abort。上面的 export CLASSPATH 仅对老版本 app_process 有效，保留无副作用。
+            sb.append("exec ").append(appProcess).append(" -cp ").append(shq(apkPath))
+                    .append(" /system/bin com.limbo.emu.jni.RootVmLauncher");
             sb.append(' ').append(shq(nativeLibDir));
             sb.append(' ').append(shq(filesDir.getAbsolutePath()));
             sb.append(' ').append(shq(libFilename));

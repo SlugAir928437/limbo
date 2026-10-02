@@ -18,7 +18,6 @@ Copyright (C) Max Kastanas 2012
  */
 package com.limbo.emu.network;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -99,8 +98,6 @@ public class NetworkUtils {
                 bos.write(buff, 0, read);
             }
             streamData = bos.toByteArray();
-        } catch (IOException e) {
-            throw e;
         } finally {
             if (is != null) {
                 try {

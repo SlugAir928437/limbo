@@ -105,12 +105,12 @@ public class QmpClient {
 
 	    if(Config.debugQmp)
 		    Log.d(TAG, "QMP request" + request);
-		out.println(request);
+        out.println(request);
 	}
 
-    private static String getResponse(BufferedReader in) throws Exception {
+    private static String getResponse(BufferedReader in) {
         String line;
-        StringBuilder stringBuilder = new StringBuilder("");
+        StringBuilder stringBuilder = new StringBuilder();
         try {
             do {
                 line = in.readLine();
@@ -158,10 +158,10 @@ public class QmpClient {
         return stringBuilder.toString();
     }
 
-	private static String getQueryMigrateResponse(BufferedReader in) throws Exception {
+	private static String getQueryMigrateResponse(BufferedReader in) {
 
 		String line;
-		StringBuilder stringBuilder = new StringBuilder("");
+		StringBuilder stringBuilder = new StringBuilder();
 
 		try {
 			do {

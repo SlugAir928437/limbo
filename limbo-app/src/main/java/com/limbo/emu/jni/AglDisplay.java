@@ -31,6 +31,11 @@ import android.view.Surface;
  * <p>这是 gunyah/gzvm 加速虚拟机唯一可用的显示方式：这两个加速器要求 QEMU
  * 在本进程内以 root 运行（参见 {@link RootUtils#grantRoot()}），而独立 root
  * 子进程拿不到 App 的 Surface。
+ *
+ * <p>显示通道的接口划分（{@link #setSurface(Surface, float)}、
+ * {@link #pointer(float, float, int)} 等）参考自
+ * <a href="https://github.com/AnyLaySys/als">AnyLaySys/als</a> 的 AGL.kt，
+ * Java 侧实现由本项目编写。
  */
 public final class AglDisplay {
     private AglDisplay() {

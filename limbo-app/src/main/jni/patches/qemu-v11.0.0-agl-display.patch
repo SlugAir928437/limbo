@@ -126,7 +126,17 @@ diff --git a/include/ui/agl.h b/include/ui/agl.h
 new file mode 100644
 --- /dev/null
 +++ b/include/ui/agl.h
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,30 @@
++/*
++ * AGL (Android Graphics Layer) display backend, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#ifndef QEMU_UI_AGL_H
 +#define QEMU_UI_AGL_H
 +
@@ -151,7 +161,17 @@ diff --git a/ui/agl.c b/ui/agl.c
 new file mode 100644
 --- /dev/null
 +++ b/ui/agl.c
-@@ -0,0 +1,1067 @@
+@@ -0,0 +1,1077 @@
++/*
++ * AGL (Android Graphics Layer) display backend, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +
 +#ifdef __ANDROID__

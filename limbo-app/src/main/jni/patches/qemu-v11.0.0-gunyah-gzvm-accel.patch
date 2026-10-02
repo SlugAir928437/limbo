@@ -17,10 +17,20 @@ index 6d05287..9a4bbb4 100644
      select FSDEV_9P if VIRTFS
 diff --git a/accel/gunyah/gunyah-accel-ops.c b/accel/gunyah/gunyah-accel-ops.c
 new file mode 100644
-index 0000000..b91bb4c
+index 0000000..27dfb58dbc882892e02526cdc3c01cacf21e1ab8
 --- /dev/null
 +++ b/accel/gunyah/gunyah-accel-ops.c
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,85 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include "hw/core/boards.h"
 +#include "hw/core/cpu.h"
@@ -98,10 +108,20 @@ index 0000000..b91bb4c
 +type_init(gunyah_accel_ops_register_types);
 diff --git a/accel/gunyah/gunyah-ioctl.c b/accel/gunyah/gunyah-ioctl.c
 new file mode 100644
-index 0000000..891b394
+index 0000000..a7303fe921b5856b45774ec135b2b73b343f8873
 --- /dev/null
 +++ b/accel/gunyah/gunyah-ioctl.c
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,38 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +static int gunyah_ioctl(int type, ...) {
 +  void *arg;
 +  va_list ap;
@@ -132,10 +152,20 @@ index 0000000..891b394
 +}
 diff --git a/accel/gunyah/gunyah-mem.c b/accel/gunyah/gunyah-mem.c
 new file mode 100644
-index 0000000..b108e2c
+index 0000000..b72b0c4f6f90dec77364be1a0e0b4662e2b8e447
 --- /dev/null
 +++ b/accel/gunyah/gunyah-mem.c
-@@ -0,0 +1,453 @@
+@@ -0,0 +1,463 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#define gunyah_slots_lock(s) qemu_mutex_lock(&s->slots_lock)
 +#define gunyah_slots_unlock(s) qemu_mutex_unlock(&s->slots_lock)
 +static gunyah_slot *gunyah_find_overlap_slot(GUNYAHState *s, uint64_t start,
@@ -591,10 +621,20 @@ index 0000000..b108e2c
 +}
 diff --git a/accel/gunyah/gunyah-mmio.c b/accel/gunyah/gunyah-mmio.c
 new file mode 100644
-index 0000000..23df45a
+index 0000000..6fe69f7d30574d775dcc1e80dafdf4498671b356
 --- /dev/null
 +++ b/accel/gunyah/gunyah-mmio.c
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,43 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +static int gunyah_handle_mmio_exit(CPUState *cpu, struct gh_vcpu_run *run) {
 +  uint64_t mmio_addr = run->mmio.phys_addr;
 +  if ((mmio_addr >= 0x09000000 && mmio_addr < 0x09001000) ||
@@ -630,10 +670,20 @@ index 0000000..23df45a
 +}
 diff --git a/accel/gunyah/gunyah-page-fault.c b/accel/gunyah/gunyah-page-fault.c
 new file mode 100644
-index 0000000..6137af8
+index 0000000..7f0a247758024da8279859c89f0a536346c76649
 --- /dev/null
 +++ b/accel/gunyah/gunyah-page-fault.c
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,22 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +static int gunyah_handle_page_fault(CPUState *cpu, struct gh_vcpu_run *run) {
 +  uint64_t fault_addr = run->page_fault.phys_addr;
 +  int32_t attempt = run->page_fault.attempt;
@@ -648,10 +698,20 @@ index 0000000..6137af8
 +}
 diff --git a/accel/gunyah/gunyah-report.c b/accel/gunyah/gunyah-report.c
 new file mode 100644
-index 0000000..2565b6d
+index 0000000..62405c352ea11a31409b52ae858ea1276fbddaf1
 --- /dev/null
 +++ b/accel/gunyah/gunyah-report.c
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,42 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include "system/gunyah_report.h"
 +#undef gh_report
@@ -686,10 +746,20 @@ index 0000000..2565b6d
 +}
 diff --git a/accel/gunyah/gunyah-signal.c b/accel/gunyah/gunyah-signal.c
 new file mode 100644
-index 0000000..27be6a6
+index 0000000..90a9850c5f8575f26239b11064678b361eb6b579
 --- /dev/null
 +++ b/accel/gunyah/gunyah-signal.c
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,168 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +enum gh_vm_exit_type {
 +  GH_RM_EXIT_TYPE_VM_EXIT = 0,
 +  GH_RM_EXIT_TYPE_PSCI_POWER_OFF = 1,
@@ -850,10 +920,20 @@ index 0000000..27be6a6
 +}
 diff --git a/accel/gunyah/gunyah-vcpu.c b/accel/gunyah/gunyah-vcpu.c
 new file mode 100644
-index 0000000..1ac7c28
+index 0000000..599055f62f0d19bd82914ed66a555ecf7e078418
 --- /dev/null
 +++ b/accel/gunyah/gunyah-vcpu.c
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,190 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +GUNYAHState *get_gunyah_state(void) { return GUNYAH_STATE(current_accel()); }
 +static void gunyah_ipi_signal(int sig) {
 +  if (current_cpu) {
@@ -1036,10 +1116,20 @@ index 0000000..1ac7c28
 +}
 diff --git a/accel/gunyah/gunyah-vm-start.c b/accel/gunyah/gunyah-vm-start.c
 new file mode 100644
-index 0000000..ea13645
+index 0000000..be7b173752992842a9ce3c5ec6e8eb8daee7b486
 --- /dev/null
 +++ b/accel/gunyah/gunyah-vm-start.c
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,245 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +bool gunyah_vm_stopped;
 +static bool gunyah_restart_requested;
 +static bool gunyah_shutdown_requested;
@@ -1277,10 +1367,20 @@ index 0000000..ea13645
 +}
 diff --git a/accel/gunyah/gunyah.c b/accel/gunyah/gunyah.c
 new file mode 100644
-index 0000000..6aa3090
+index 0000000..f4e12e18c3dd060211cd903fcae916ddd95d2c93
 --- /dev/null
 +++ b/accel/gunyah/gunyah.c
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,87 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <dlfcn.h>
 +#include <fcntl.h>
@@ -1360,10 +1460,17 @@ index 0000000..6aa3090
 +}
 diff --git a/accel/gunyah/meson.build b/accel/gunyah/meson.build
 new file mode 100644
-index 0000000..4250766
+index 0000000..cca2961f18ed489345f98b4d3ffb07b4e038e836
 --- /dev/null
 +++ b/accel/gunyah/meson.build
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,14 @@
++# Gunyah accelerator support, ported to this tree from
++# AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++# GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++# QEMU 11.0.0 API and the Android/NDK build.
++# Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++# Modifications copyright (C) 2026 Limbo Emulator Project.
++# SPDX-License-Identifier: GPL-2.0-or-later
 +gunyah_ss = ss.source_set()
 +gunyah_ss.add(files(
 +'gunyah.c',
@@ -1373,10 +1480,20 @@ index 0000000..4250766
 +specific_ss.add_all(when: 'CONFIG_GH', if_true: gunyah_ss)
 diff --git a/accel/gzvm/gzvm-accel-ops.c b/accel/gzvm/gzvm-accel-ops.c
 new file mode 100644
-index 0000000..e2b99c5
+index 0000000..6e1687803293bac489c7d51df1554cc677889e69
 --- /dev/null
 +++ b/accel/gzvm/gzvm-accel-ops.c
-@@ -0,0 +1,270 @@
+@@ -0,0 +1,280 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include "qemu/error-report.h"
 +#include "qemu/thread.h"
@@ -1649,10 +1766,20 @@ index 0000000..e2b99c5
 +type_init(gzvm_accel_ops_register_types);
 diff --git a/accel/gzvm/gzvm-internal.h b/accel/gzvm/gzvm-internal.h
 new file mode 100644
-index 0000000..3ef2bd5
+index 0000000..a91a427e78d80b1a46d8c7891aae297e4919121f
 --- /dev/null
 +++ b/accel/gzvm/gzvm-internal.h
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,24 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +/*
 + * Compatibility shim for the gzvm accelerator.
 + *
@@ -1670,10 +1797,20 @@ index 0000000..3ef2bd5
 \ No newline at end of file
 diff --git a/accel/gzvm/gzvm-ioctl.c b/accel/gzvm/gzvm-ioctl.c
 new file mode 100644
-index 0000000..0d4caba
+index 0000000..a9111b6e4a78317ae3d8d4162c3e3310c71727e0
 --- /dev/null
 +++ b/accel/gzvm/gzvm-ioctl.c
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,39 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <sys/ioctl.h>
 +#include "hw/core/cpu.h"
@@ -1705,10 +1842,20 @@ index 0000000..0d4caba
 +}
 diff --git a/accel/gzvm/gzvm-irq.c b/accel/gzvm/gzvm-irq.c
 new file mode 100644
-index 0000000..7b7c460
+index 0000000..e6c90969554199ead63595a387bf36544db18434
 --- /dev/null
 +++ b/accel/gzvm/gzvm-irq.c
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,211 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <sys/ioctl.h>
 +#include "qapi/error.h"
@@ -1912,10 +2059,20 @@ index 0000000..7b7c460
 +};
 diff --git a/accel/gzvm/gzvm-mem.c b/accel/gzvm/gzvm-mem.c
 new file mode 100644
-index 0000000..a18ab63
+index 0000000..d427cf0bc1ba9782cecfef15688499428d1186bf
 --- /dev/null
 +++ b/accel/gzvm/gzvm-mem.c
-@@ -0,0 +1,443 @@
+@@ -0,0 +1,453 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <sys/ioctl.h>
 +#include "qemu/error-report.h"
@@ -2361,10 +2518,20 @@ index 0000000..a18ab63
 +}
 diff --git a/accel/gzvm/gzvm-mmio.c b/accel/gzvm/gzvm-mmio.c
 new file mode 100644
-index 0000000..64e1d2f
+index 0000000..6c3ab61e287e36422a6f664b41633c20f8885c50
 --- /dev/null
 +++ b/accel/gzvm/gzvm-mmio.c
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,146 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include "qemu/error-report.h"
 +#include "exec/cpu-common.h"
@@ -2503,10 +2670,20 @@ index 0000000..64e1d2f
 +}
 diff --git a/accel/gzvm/gzvm-report.c b/accel/gzvm/gzvm-report.c
 new file mode 100644
-index 0000000..89b8bcd
+index 0000000..69b8eacf780e6ab187d8eda5a8158d5ebe6b0b80
 --- /dev/null
 +++ b/accel/gzvm/gzvm-report.c
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,66 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include "system/gzvm_report.h"
 +
@@ -2565,10 +2742,20 @@ index 0000000..89b8bcd
 +}
 diff --git a/accel/gzvm/gzvm-signal.c b/accel/gzvm/gzvm-signal.c
 new file mode 100644
-index 0000000..bf920a4
+index 0000000..2873cb0e9d22188591f516fb0813c9e76cf0ad08
 --- /dev/null
 +++ b/accel/gzvm/gzvm-signal.c
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,215 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +/*
 + * Demand-paging fallback for GZVM guest memory.
 + *
@@ -2776,10 +2963,20 @@ index 0000000..bf920a4
 +}
 diff --git a/accel/gzvm/gzvm-vcpu.c b/accel/gzvm/gzvm-vcpu.c
 new file mode 100644
-index 0000000..9cdaa14
+index 0000000..86e211e239d91c0f346d05419bc01fae7a0cef99
 --- /dev/null
 +++ b/accel/gzvm/gzvm-vcpu.c
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,62 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <signal.h>
 +#include "qemu/atomic.h"
@@ -2834,10 +3031,20 @@ index 0000000..9cdaa14
 +}
 diff --git a/accel/gzvm/gzvm-vm-start.c b/accel/gzvm/gzvm-vm-start.c
 new file mode 100644
-index 0000000..9110b76
+index 0000000..cace4b224ebb28ea72928540fbf4fb02fa2669e5
 --- /dev/null
 +++ b/accel/gzvm/gzvm-vm-start.c
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,64 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include "qemu/error-report.h"
 +#include "system/gzvm.h"
@@ -2894,10 +3101,20 @@ index 0000000..9110b76
 +}
 diff --git a/accel/gzvm/gzvm.c b/accel/gzvm/gzvm.c
 new file mode 100644
-index 0000000..280992b
+index 0000000..8e765afbbd88c25f77842b01bde2cb760317b711
 --- /dev/null
 +++ b/accel/gzvm/gzvm.c
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,273 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <sys/ioctl.h>
 +#include "qemu/error-report.h"
@@ -3163,10 +3380,17 @@ index 0000000..280992b
 +}
 diff --git a/accel/gzvm/meson.build b/accel/gzvm/meson.build
 new file mode 100644
-index 0000000..23a56de
+index 0000000..6888d4762a5a27f1855122d7c5c3f8f7c4043650
 --- /dev/null
 +++ b/accel/gzvm/meson.build
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,21 @@
++# GZVM accelerator support, ported to this tree from
++# AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++# GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++# QEMU 11.0.0 API and the Android/NDK build.
++# Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++# Modifications copyright (C) 2026 Limbo Emulator Project.
++# SPDX-License-Identifier: GPL-2.0-or-later
 +gzvm_ss = ss.source_set()
 +gzvm_ss.add(files(
 +  'gzvm.c',
@@ -3196,7 +3420,7 @@ index 7da12b9..dc0b545 100644
    subdir('kvm')
 diff --git a/accel/stubs/gunyah-stub.c b/accel/stubs/gunyah-stub.c
 new file mode 100644
-index 0000000..69705e6
+index 0000000..69705e6890bb7ba64a140c116ac976699be3e6ea
 --- /dev/null
 +++ b/accel/stubs/gunyah-stub.c
 @@ -0,0 +1,13 @@
@@ -3237,10 +3461,20 @@ index b187b94..3cc168a 100644
  arm_common_ss.add(when: 'CONFIG_EMCRAFT_SF2', if_true: files('msf2-som.c'))
 diff --git a/hw/arm/virt-gzvm.c b/hw/arm/virt-gzvm.c
 new file mode 100644
-index 0000000..ee21579
+index 0000000..ff66dc8e437907537142a39fc7306f0f744acdcd
 --- /dev/null
 +++ b/hw/arm/virt-gzvm.c
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,116 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include "qemu/units.h"
 +#include "hw/arm/virt.h"
@@ -3613,10 +3847,20 @@ index 9200671..a34895e 100644
      } else if (whpx_enabled()) {
 diff --git a/hw/intc/arm_gicv3_gunyah.c b/hw/intc/arm_gicv3_gunyah.c
 new file mode 100644
-index 0000000..d0d2a55
+index 0000000..52a4682fe140f8c402e5c22bef53f692a70e7083
 --- /dev/null
 +++ b/hw/intc/arm_gicv3_gunyah.c
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,127 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +
 +#include "qemu/osdep.h"
 +#include "qapi/error.h"
@@ -3736,10 +3980,20 @@ index 0000000..d0d2a55
 +type_init(gunyah_arm_gicv3_register_types)
 diff --git a/hw/intc/arm_gicv3_gzvm.c b/hw/intc/arm_gicv3_gzvm.c
 new file mode 100644
-index 0000000..1b23789
+index 0000000..ab5d19b3ca3032c84b5c62a71a46329440c13544
 --- /dev/null
 +++ b/hw/intc/arm_gicv3_gzvm.c
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,225 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <sys/ioctl.h>
 +#include "qapi/error.h"
@@ -4023,10 +4277,20 @@ index bcab2d1..c258a38 100644
              if (err != -ENOTSUP) {
 diff --git a/include/hw/arm/virt-gzvm.h b/include/hw/arm/virt-gzvm.h
 new file mode 100644
-index 0000000..604e497
+index 0000000..0fd41f03e6c57c4b0bdb8ef921ca80e598557faa
 --- /dev/null
 +++ b/include/hw/arm/virt-gzvm.h
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,22 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#ifndef VIRT_GZVM_H
 +#define VIRT_GZVM_H
 +
@@ -4041,10 +4305,20 @@ index 0000000..604e497
 +#endif
 diff --git a/include/system/gunyah.h b/include/system/gunyah.h
 new file mode 100644
-index 0000000..f206a47
+index 0000000..2ec8c70bb0857c4899222109f3a5f8f375a16fb0
 --- /dev/null
 +++ b/include/system/gunyah.h
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,53 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +
 +
 +#ifndef QEMU_GUNYAH_H
@@ -4090,10 +4364,20 @@ index 0000000..f206a47
 +#endif  /* QEMU_GUNYAH_H */
 diff --git a/include/system/gunyah_int.h b/include/system/gunyah_int.h
 new file mode 100644
-index 0000000..6c7f74f
+index 0000000..fb93c00cf06c1562bb1bdb5de9c3a0f0821a29f6
 --- /dev/null
 +++ b/include/system/gunyah_int.h
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,68 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +
 +#ifndef GUNYAH_INT_H
 +#define GUNYAH_INT_H
@@ -4154,10 +4438,20 @@ index 0000000..6c7f74f
 +#endif
 diff --git a/include/system/gunyah_report.h b/include/system/gunyah_report.h
 new file mode 100644
-index 0000000..d58108d
+index 0000000..147b68ce54c7f1f99945aa79857252b04bd1391b
 --- /dev/null
 +++ b/include/system/gunyah_report.h
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,23 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#ifndef GUNYAH_REPORT_H
 +#define GUNYAH_REPORT_H
 +
@@ -4173,10 +4467,20 @@ index 0000000..d58108d
 +#endif
 diff --git a/include/system/gzvm.h b/include/system/gzvm.h
 new file mode 100644
-index 0000000..af9e8ad
+index 0000000..e270f3bb00559e23a2aa9a6bc60f04eeaa8137bf
 --- /dev/null
 +++ b/include/system/gzvm.h
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,63 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#ifndef QEMU_GZVM_H
 +#define QEMU_GZVM_H
 +
@@ -4232,10 +4536,20 @@ index 0000000..af9e8ad
 +#endif
 diff --git a/include/system/gzvm_int.h b/include/system/gzvm_int.h
 new file mode 100644
-index 0000000..d5b6fe4
+index 0000000..7dc12cd824762546864d4857f492e837069d6a10
 --- /dev/null
 +++ b/include/system/gzvm_int.h
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,107 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#ifndef GZVM_INT_H
 +#define GZVM_INT_H
 +
@@ -4335,10 +4649,20 @@ index 0000000..d5b6fe4
 +#endif
 diff --git a/include/system/gzvm_report.h b/include/system/gzvm_report.h
 new file mode 100644
-index 0000000..336d800
+index 0000000..0505987eb1f3d997a683ff9b56286c418575ec19
 --- /dev/null
 +++ b/include/system/gzvm_report.h
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,27 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#ifndef GZVM_REPORT_H
 +#define GZVM_REPORT_H
 +
@@ -4370,7 +4694,7 @@ index f0c10b6..16f046c 100644
   * cpu_synchronize_state:
 diff --git a/linux-headers/linux/gunyah.h b/linux-headers/linux/gunyah.h
 new file mode 100644
-index 0000000..4051d52
+index 0000000..4051d52506847be9c5316e8e8b768dba77b30cef
 --- /dev/null
 +++ b/linux-headers/linux/gunyah.h
 @@ -0,0 +1,170 @@
@@ -4546,7 +4870,7 @@ index 0000000..4051d52
 +#endif
 diff --git a/linux-headers/linux/gzvm.h b/linux-headers/linux/gzvm.h
 new file mode 100644
-index 0000000..530ef5d
+index 0000000..530ef5db00e245bd8d93eab784d09ab36e1f4b8e
 --- /dev/null
 +++ b/linux-headers/linux/gzvm.h
 @@ -0,0 +1,276 @@
@@ -5028,10 +5352,20 @@ index d6feba2..b9e835d 100644
          /* The nitro accel uses -cpu host, but does not actually consume it */
 diff --git a/target/arm/gunyah.c b/target/arm/gunyah.c
 new file mode 100644
-index 0000000..9d7eca4
+index 0000000..2005b0411fdfb95fe0244cb8b2c9e2adb4c07dc3
 --- /dev/null
 +++ b/target/arm/gunyah.c
-@@ -0,0 +1,409 @@
+@@ -0,0 +1,419 @@
++/*
++ * Gunyah accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +
 +#include "qemu/osdep.h"
 +#include <libfdt.h>
@@ -5443,10 +5777,20 @@ index 0000000..9d7eca4
 +}
 diff --git a/target/arm/gzvm.c b/target/arm/gzvm.c
 new file mode 100644
-index 0000000..b3b1dfc
+index 0000000..c24794c4dd931aaf182d74fe9f8d0fc3130fda74
 --- /dev/null
 +++ b/target/arm/gzvm.c
-@@ -0,0 +1,646 @@
+@@ -0,0 +1,656 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#include "qemu/osdep.h"
 +#include <stdio.h>
 +#include "qemu/error-report.h"
@@ -6095,10 +6439,20 @@ index 0000000..b3b1dfc
 +}
 diff --git a/target/arm/gzvm_arm.h b/target/arm/gzvm_arm.h
 new file mode 100644
-index 0000000..5810c10
+index 0000000..1b90ccf3d03d6e71805c694f902666f01f2bbeea
 --- /dev/null
 +++ b/target/arm/gzvm_arm.h
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,19 @@
++/*
++ * GZVM accelerator support, ported to this tree from
++ * AnyLaySys/qemu-gzvm (https://github.com/AnyLaySys/qemu-gzvm,
++ * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
++ * QEMU 11.0.0 API and the Android/NDK build.
++ * Original copyright belongs to the AnyLaySys/qemu-gzvm contributors.
++ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
 +#ifndef GZVM_ARM_H
 +#define GZVM_ARM_H
 +

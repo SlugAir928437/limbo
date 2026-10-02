@@ -1,3 +1,23 @@
+Subject: [PATCH] gunyah/gzvm accelerators ported from AnyLaySys (QEMU 11.0.0)
+
+Ported to this tree from:
+  * https://github.com/AnyLaySys/qemu-gunyah  (gunyah accelerator, AGL display backend)
+  * https://github.com/AnyLaySys/qemu-gzvm    (gzvm accelerator)
+
+Both upstream projects are released under GPL-2.0-or-later (library parts
+LGPL-2.1) and are based on QEMU.  Original copyright belongs to the
+AnyLaySys/qemu-gunyah and AnyLaySys/qemu-gzvm contributors.
+
+Modifications in this tree by FreshingAir (Limbo Emulator Project),
+2026-09-24: ported to the QEMU 11.0.0 API and adapted for the Android/NDK
+build.  Newly added source files carry a source/copyright header; the hunks
+that modify pre-existing QEMU files (hw/arm/virt.c, hw/intc/arm_gicv3_common.c,
+hw/virtio/virtio-pci.c, target/arm/cpu.c, target/arm/cpu64.c,
+include/system/hw_accel.h) are ported material as well.  See NOTICE section
+8.1 and 8.2 for the complete list.
+
+SPDX-License-Identifier: GPL-2.0-or-later
+
 diff --git a/accel/Kconfig b/accel/Kconfig
 index 6d05287..9a4bbb4 100644
 --- a/accel/Kconfig
@@ -3684,10 +3704,12 @@ index ec0d847..70be59f 100644
      pci_bus_add_fw_cfg_extra_pci_roots(vms->fw_cfg, vms->bus,
                                         &error_abort);
  
-@@ -2091,6 +2120,91 @@ static VirtGICType finalize_gic_version_do(const char *accel_name,
+@@ -2091,6 +2120,93 @@ static VirtGICType finalize_gic_version_do(const char *accel_name,
   *
   * Default GIC type is v2
   */
++
++/* Ported from AnyLaySys/qemu-gunyah (GPL-2.0-or-later); see NOTICE 8.1. */
 +#define V2M_MSI_TYPER 0x008
 +#define V2M_MSI_SETSPI_NS 0x040
 +
@@ -3827,10 +3849,12 @@ diff --git a/hw/intc/arm_gicv3_common.c b/hw/intc/arm_gicv3_common.c
 index 9200671..a34895e 100644
 --- a/hw/intc/arm_gicv3_common.c
 +++ b/hw/intc/arm_gicv3_common.c
-@@ -31,6 +31,7 @@
+@@ -31,6 +31,9 @@
  #include "migration/vmstate.h"
  #include "gicv3_internal.h"
  #include "hw/arm/linux-boot-if.h"
++
++/* Ported from AnyLaySys/qemu-gunyah (GPL-2.0-or-later); see NOTICE 8.1. */
 +#include "system/gunyah.h"
  #include "system/kvm.h"
  #include "system/whpx.h"
@@ -4226,10 +4250,12 @@ diff --git a/hw/virtio/virtio-pci.c b/hw/virtio/virtio-pci.c
 index bcab2d1..c258a38 100644
 --- a/hw/virtio/virtio-pci.c
 +++ b/hw/virtio/virtio-pci.c
-@@ -36,6 +36,8 @@
+@@ -36,6 +36,10 @@
  #include "hw/core/loader.h"
  #include "system/accel-irq.h"
  #include "system/kvm.h"
++
++/* Ported from AnyLaySys/qemu-gunyah (GPL-2.0-or-later); see NOTICE 8.1. */
 +#include "system/gunyah.h"
 +#include "system/gunyah_report.h"
  #include "hw/virtio/virtio-pci.h"
@@ -4684,10 +4710,12 @@ diff --git a/include/system/hw_accel.h b/include/system/hw_accel.h
 index f0c10b6..16f046c 100644
 --- a/include/system/hw_accel.h
 +++ b/include/system/hw_accel.h
-@@ -18,6 +18,7 @@
+@@ -18,6 +18,9 @@
  #include "system/whpx.h"
  #include "system/nvmm.h"
  #include "system/nitro-accel.h"
++
++/* Ported from AnyLaySys/qemu-gunyah (GPL-2.0-or-later); see NOTICE 8.1. */
 +#include "system/gunyah.h"
  
  /**
@@ -5330,10 +5358,11 @@ diff --git a/target/arm/cpu.c b/target/arm/cpu.c
 index ccc47c8..a06f67a 100644
 --- a/target/arm/cpu.c
 +++ b/target/arm/cpu.c
-@@ -1153,6 +1153,10 @@ static void arm_cpu_initfn(Object *obj)
+@@ -1153,6 +1153,11 @@ static void arm_cpu_initfn(Object *obj)
      }
      cpu->kvm_target = QEMU_KVM_ARM_TARGET_NONE;
  
++    /* Ported from AnyLaySys/qemu-gunyah (GPL-2.0-or-later); see NOTICE 8.1. */
 +    if (gunyah_enabled()) {
 +        cpu->psci_version = QEMU_PSCI_VERSION_1_1;
 +    }
@@ -5356,10 +5385,11 @@ diff --git a/target/arm/cpu64.c b/target/arm/cpu64.c
 index d6feba2..b9e835d 100644
 --- a/target/arm/cpu64.c
 +++ b/target/arm/cpu64.c
-@@ -814,6 +814,11 @@ static void aarch64_host_initfn(Object *obj)
+@@ -814,6 +814,12 @@ static void aarch64_host_initfn(Object *obj)
  {
      ARMCPU *cpu = ARM_CPU(obj);
  
++    /* Ported from AnyLaySys/qemu-gunyah (GPL-2.0-or-later); see NOTICE 8.1. */
 +    if (gunyah_enabled()) {
 +        aarch64_a57_initfn(obj);
 +        return;

@@ -1,3 +1,24 @@
+Subject: [PATCH] AGL (Android Graphics Layer) display backend ported from AnyLaySys
+
+Ported to this tree from:
+  * https://github.com/AnyLaySys/qemu-gunyah  (ui/agl.c, ui/agl-input.c, include/ui/agl.h)
+  * https://github.com/AnyLaySys/als         (AGL display channel interface design)
+
+The ported display backend is GPL-2.0-or-later; the AGL display channel
+interface design in the paired app (AnyLaySys/als) is GPL-3.0.  Original
+copyright belongs to the AnyLaySys contributors.  The backend depends on the
+EGL/OpenGL stack provided by the GTK4/VirGL build, plus the Android EGL
+bring-up in ui/egl-helpers.c.
+
+Modifications in this tree by FreshingAir (Limbo Emulator Project),
+2026-09-26/27: ported to the QEMU 11.0.0 API and adapted for the Android/NDK
+build.  Newly added source files carry a source/copyright header.  Of the
+pre-existing QEMU files, the qapi/ui.json additions follow the upstream AGL
+display definition, while the Android EGL bring-up added to
+ui/egl-helpers.c is this project's own code (see NOTICE section 8.1).
+
+SPDX-License-Identifier: GPL-2.0-or-later
+
 diff --git a/meson_options.txt b/meson_options.txt
 --- a/meson_options.txt
 +++ b/meson_options.txt

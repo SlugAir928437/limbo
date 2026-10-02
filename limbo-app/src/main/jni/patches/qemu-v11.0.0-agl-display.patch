@@ -133,7 +133,7 @@ new file mode 100644
 + * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
 + * QEMU 11.0.0 API and the Android/NDK build.
 + * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
-+ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * Modifications by FreshingAir (Limbo Emulator Project), 2026-09-26/27.
 + * SPDX-License-Identifier: GPL-2.0-or-later
 + */
 +
@@ -168,7 +168,7 @@ new file mode 100644
 + * GPL-2.0-or-later; library parts LGPL-2.1) and adjusted for the
 + * QEMU 11.0.0 API and the Android/NDK build.
 + * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
-+ * Modifications copyright (C) 2026 Limbo Emulator Project.
++ * Modifications by FreshingAir (Limbo Emulator Project), 2026-09-26/27.
 + * SPDX-License-Identifier: GPL-2.0-or-later
 + */
 +
@@ -1243,7 +1243,7 @@ diff --git a/ui/agl-input.c b/ui/agl-input.c
 new file mode 100644
 --- /dev/null
 +++ b/ui/agl-input.c
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,183 @@
 +/*
 + * AGL input path.
 + *
@@ -1252,13 +1252,17 @@ new file mode 100644
 + * they are queued onto the QEMU main loop, which then feeds them into the
 + * input subsystem exactly like the other display backends do.
 + *
-+ * Adapted from the ALS reference implementation (AnyLaySys/qemu-gunyah,
-+ * system/jni.c).
++ * Adapted from AnyLaySys/qemu-gunyah
++ * (https://github.com/AnyLaySys/qemu-gunyah, system/jni.c).
++ * Original copyright belongs to the AnyLaySys/qemu-gunyah contributors.
++ * Modifications by FreshingAir (Limbo Emulator Project), 2026-09-26/27.
 + *
 + * This program is free software; you can redistribute it and/or modify
 + * it under the terms of the GNU General Public License as published by
 + * the Free Software Foundation; either version 2 of the License, or
 + * (at your option) any later version.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
 + */
 +
 +#include "qemu/osdep.h"

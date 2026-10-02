@@ -1,5 +1,4 @@
 jniLibs
 libs
 obj
-assets/roms
-assets/QEMU_VERSION
+assets

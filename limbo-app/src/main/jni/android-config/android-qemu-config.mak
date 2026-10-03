@@ -44,6 +44,12 @@ endif
 # gzvm / gunyah 加速器开启（由顶层 Makefile config-qemu 传入，默认启用两者）
 ACCEL_MESON_FLAGS ?= -Dgunyah=enabled -Dgzvm=enabled
 
+# SPICE 提供 qxl-vga 显示卡（CONFIG_QXL）。IA-64 客户机跳过整个 spice 栈
+# （见 jni/Makefile），其 QEMU 必须以 --disable-spice 配置，否则 configure
+# 会因找不到 spice-server 直接失败。顶层 Makefile 会把 SPICE_CONFIGURE_FLAG
+# 显式传进来，这里的默认值仅用于其它调用路径。
+SPICE_CONFIGURE_FLAG ?= --enable-spice
+
 ifeq ($(APP_ABI), armeabi)
     QEMU_HOST_CPU = arm
 else ifeq ($(APP_ABI), armeabi-v7a)
@@ -89,7 +95,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--enable-vnc --disable-vnc-jpeg --disable-vnc-sasl \
 	--disable-smartcard \
 	--enable-kvm \
-	--enable-spice \
+	$(SPICE_CONFIGURE_FLAG) \
 	--disable-xen --disable-xen-pci-passthrough \
 	--disable-numa \
 	--disable-linux-aio \

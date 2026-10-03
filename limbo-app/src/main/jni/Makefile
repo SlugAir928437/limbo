@@ -8,6 +8,36 @@ else
 	NDK_BUILD = ndk-build
 endif
 
+# ---------------------------------------------------------------------------
+# IA-64 客户机（BUILD_GUEST=ia64-softmmu）走 IA-64 QEMU fork，跳过 VirGL/VirtIO-GPU
+# 与 SPICE 两套栈：
+#   * VirGL/VirtIO-GPU：virglrenderer + QEMU 的 -Dopengl=enabled
+#     -Dvirglrenderer=enabled（即 virtio-gpu-gl-pci）。IA-64 机型用不到，关掉
+#     USE_VIRGL 后 fetch/config/build/link 各环节都自动跳过。
+#   * SPICE：spice-server 栈（openssl/libjpeg-turbo/spice-protocol）+ QEMU 的
+#     --enable-spice（即 qxl-vga 显示卡）。IA-64 的 QEMU 改为 --disable-spice，
+#     spice 相关的 fetch/config/build 目标也不再执行。
+# Java 侧同步隐藏这些显示卡（见 ArchDefinitions#getVGAValues）。
+# ---------------------------------------------------------------------------
+ifeq ($(strip $(BUILD_GUEST)),ia64-softmmu)
+IA64_GUEST := yes
+else
+IA64_GUEST := no
+endif
+
+ifeq ($(IA64_GUEST),yes)
+USE_VIRGL := false
+SPICE_CONFIGURE_FLAG := --disable-spice
+SPICE_CONFIG_TARGET :=
+SPICE_DEPS_TARGET :=
+SPICE_FETCH_TARGETS :=
+else
+SPICE_CONFIGURE_FLAG := --enable-spice
+SPICE_CONFIG_TARGET := config-spice
+SPICE_DEPS_TARGET := spice
+SPICE_FETCH_TARGETS := fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice
+endif
+
 ndkbuild=cd $(NDK_PROJECT_PATH) && GTK_INSTALL_DIR="$(GTK_INSTALL_DIR)" $(NDK_BUILD) -j $(BUILD_THREADS)
 ndkclean=cd $(NDK_PROJECT_PATH) && $(NDK_BUILD) clean
 ndkcleanobj=rm -rf $(NDK_PROJECT_PATH)/obj/
@@ -527,7 +557,7 @@ config-qemu: ndk pkg-config-link fetch-qemu
 		echo ">> NOTE: this QEMU tree declares no virglrenderer/opengl meson option:"; \
 		echo ">>       virtio-gpu-gl-pci will NOT be part of the build (set USE_VIRGL=false to silence)"; \
 	fi
-	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" AGL_MESON_FLAGS="$(AGL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)"
+	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" AGL_MESON_FLAGS="$(AGL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)" SPICE_CONFIGURE_FLAG="$(SPICE_CONFIGURE_FLAG)"
 
 clean-qemu:
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) distclean
@@ -538,10 +568,10 @@ clean-qemu:
 
 # virglrenderer 不在这里配置/构建：它依赖 GTK4 安装出来的 epoxy（见 config-virgl
 # 注释），必须排在 deps（构建+安装 GTK4）之后，因此由 limbo 目标显式执行。
-config-deps: ndk config-ffi config-glib config-pixman config-slirp config-spice $(if $(USE_GTK),config-gtk)
+config-deps: ndk config-ffi config-glib config-pixman config-slirp $(SPICE_CONFIG_TARGET) $(if $(USE_GTK),config-gtk)
 
 # virglrenderer 同上：由 limbo 在 GTK4 安装完成后显式构建
-deps: ndk glib pixman slirp spice $(if $(USE_GTK),gtk)
+deps: ndk glib pixman slirp $(SPICE_DEPS_TARGET) $(if $(USE_GTK),gtk)
 
 _build-qemu: ndk 
 	make _qemu
@@ -708,7 +738,7 @@ endif
 #    and aborts with "unterminated call to function 'if'".
 VIRGL_MESON_FLAGS = $(if $(filter true,$(USE_VIRGL)),$(shell if grep -q virglrenderer "$(LIMBO_JNI_ROOT)/qemu/meson_options.txt" 2>/dev/null && grep -q opengl "$(LIMBO_JNI_ROOT)/qemu/meson_options.txt" 2>/dev/null; then echo -Dopengl=enabled -Dvirglrenderer=enabled; fi))
 
-fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-gtk4android fetch-virgl fetch-qemu
+fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp $(SPICE_FETCH_TARGETS) fetch-gtk4android fetch-virgl fetch-qemu
 
 fetch-virgl:
 	@if [ "$(USE_VIRGL)" != "true" ]; then \

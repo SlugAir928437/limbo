@@ -172,13 +172,18 @@ jobs:
           set -o pipefail
           make slirp 2>&1 | tee "$LOGDIR/10-slirp.log"
 
+      # IA-64 客户机跳过 spice 栈与 VirGL/virtio-gpu 栈（见 jni/Makefile）：
+      # spice 只服务于 qxl-vga，IA-64 的 QEMU 以 --disable-spice 配置，故这两步
+      # 在 BUILD_GUEST=ia64-softmmu 时不执行。
       - name: 11/20 配置 spice 栈（make config-spice）
+        if: env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-spice 2>&1 | tee "$LOGDIR/11-config-spice.log"
 
       - name: 12/20 构建 spice 栈（make spice）
+        if: env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
@@ -201,14 +206,14 @@ jobs:
       # virglrenderer 依赖 gtk4android 安装出来的 libepoxy，必须排在 gtk 之后，
       # 因此它在 Makefile 的 limbo 目标里也是独立于 config-deps/deps 的一环。
       - name: 15/20 配置 virglrenderer（make config-virgl）
-        if: env.USE_VIRGL == 'true'
+        if: env.USE_VIRGL == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-virgl 2>&1 | tee "$LOGDIR/15-config-virgl.log"
 
       - name: 16/20 构建 virglrenderer（make virgl）
-        if: env.USE_VIRGL == 'true'
+        if: env.USE_VIRGL == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail

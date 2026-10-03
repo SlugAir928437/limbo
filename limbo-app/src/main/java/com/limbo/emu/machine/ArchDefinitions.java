@@ -67,19 +67,28 @@ public class ArchDefinitions {
 
     public static ArrayList<String> getVGAValues(Context context) {
         ArrayList<String> vgaValues = new ArrayList<>();
+        // IA-64 客户机走 IA-64 QEMU fork，构建时跳过 VirGL/virtio-gpu 与 SPICE 两套
+        // 栈（见 jni/Makefile）：virtio-gpu-pci / virtio-gpu-gl-pci 与 qxl 都没有
+        // 编进 libqemu-system-ia64.so，因此这里不能再向下拉列表提供，否则选中后
+        // QEMU 会在启动时报 "unknown device" / "invalid vga type"。
+        boolean isIa64 = LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w;
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
                 || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64
-                || LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+                || isIa64) {
             vgaValues.add("std");
             // ATI VGA is available when libqemu-system-*.*.so was built with CONFIG_ATI_VGA;
             // this is an experimental PCI vga option and may not be supported by every board
             vgaValues.add("ati");
             // QXL (qxl-vga) is a PCI VGA device that requires the SPICE stack
-            // (CONFIG_QXL); only offered when libqemu-system-*.*.so was built with spice
-            vgaValues.add("qxl");
+            // (CONFIG_QXL); only offered when libqemu-system-*.*.so was built with spice.
+            // The IA-64 build skips spice (see jni/Makefile), so qxl is hidden there.
+            if (!isIa64) {
+                vgaValues.add("qxl");
+            }
         }
 
-        if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
+        if (isIa64) {
             // NVIDIA Quadro2 Pro PCI VGA, provided by the merged experimental HP
             // i2000/zx2000/zx6000 machines via '-vga quadro2'; experimental like
             // ati.  hp-zx2000/hp-zx6000 default to the ATI Radeon RV100 instead.
@@ -97,6 +106,8 @@ public class ArchDefinitions {
             // (not -vga). virtio-gpu-gl-pci additionally needs a
             // libqemu-system-*.so built with CONFIG_VIRGL (virglrenderer +
             // OpenGL); when that is missing QEMU rejects the device at start.
+            // Only x86/x86_64 and arm/arm64 build those (the IA-64 build skips
+            // the whole VirGL/virtio-gpu stack, see jni/Makefile).
             vgaValues.add("virtio-gpu-pci");
             vgaValues.add("virtio-gpu-gl-pci");
         }

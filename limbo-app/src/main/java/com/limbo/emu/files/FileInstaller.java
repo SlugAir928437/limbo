@@ -45,6 +45,12 @@ import java.util.logging.Logger;
 public class FileInstaller {
     private static final String TAG = "FileInstaller";
 
+    /**
+     * 记录上次安装 assets/roms 时 APK 的 lastUpdateTime。
+     * 用于在 APK 升级后强制刷新一次系统固件（见 isApkUpdatedSinceLastInstall）。
+     */
+    private static final String ROMS_STAMP_FILE = ".roms_installed_stamp";
+
     public static void installFiles(Activity activity, boolean force) {
         Log.d(TAG, "Installing files");
         File tmpDir = new File(LimboApplication.getBasefileDir());
@@ -74,6 +80,20 @@ public class FileInstaller {
         }
 
         String destDir = LimboApplication.getBasefileDir();
+
+        // assets/roms 里是随 APK 发布的系统固件（bios*.bin、edk2-*.fd 等）。
+        // 下方循环原本只在目标文件“不存在”时才复制（!file.exists() || force），
+        // 于是 APK 换了新固件后设备上的旧副本永远不会被替换：典型症状是重新构建出
+        // 新版 EDK2 固件（例如修正为统一 FD 后的 4MiB 镜像），设备却仍旧加载
+        // /data/user/0/.../cache/limbo/edk2-*.fd 里的旧文件，QEMU 继续报
+        // “could not load PC BIOS”。这里以 APK 的 lastUpdateTime 作为版本标记，
+        // 每次 APK 升级后强制把系统固件重装一遍。
+        if (!force) {
+            force = isApkUpdatedSinceLastInstall(activity, destDir);
+            if (force) {
+                Log.d(TAG, "APK updated, force reinstalling roms");
+            }
+        }
 
         //Get each file in assets under ./roms/ and install in SDCARD
         AssetManager am = activity.getResources().getAssets();
@@ -120,6 +140,44 @@ public class FileInstaller {
                 }
             }
         }
+    }
+
+    /**
+     * 判断 APK 是否在上次安装 roms 之后被更新过（升级/覆盖安装）。
+     * 以 APK 的 lastUpdateTime 作为版本标记持久化在基础目录下的戳文件里；
+     * 一旦变化就说明是新的安装包，需要整体重装 assets/roms 里的系统固件。
+     */
+    private static boolean isApkUpdatedSinceLastInstall(Activity activity, String destDir) {
+        long apkTime;
+        try {
+            apkTime = activity.getPackageManager()
+                    .getPackageInfo(activity.getPackageName(), 0).lastUpdateTime;
+        } catch (Exception ex) {
+            Log.w(TAG, "could not read APK lastUpdateTime: " + ex.getMessage());
+            return false;
+        }
+
+        File stamp = new File(destDir, ROMS_STAMP_FILE);
+        String current = Long.toString(apkTime);
+        if (stamp.exists()) {
+            String previous = null;
+            try (java.io.BufferedReader reader =
+                         new java.io.BufferedReader(new java.io.FileReader(stamp))) {
+                previous = reader.readLine();
+            } catch (Exception ex) {
+                Log.w(TAG, "could not read roms stamp: " + ex.getMessage());
+            }
+            if (previous != null && current.equals(previous.trim())) {
+                return false;
+            }
+        }
+
+        try (java.io.FileWriter writer = new java.io.FileWriter(stamp)) {
+            writer.write(current);
+        } catch (Exception ex) {
+            Log.w(TAG, "could not write roms stamp: " + ex.getMessage());
+        }
+        return true;
     }
 
     public static boolean installAssetFile(Activity activity, String srcFile,

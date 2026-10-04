@@ -9,7 +9,10 @@ name: edk2
 #   * 仅手动触发（workflow_dispatch）；
 #   * 用户自选要构建的客户机架构（可任意组合）；
 #   * 每个架构一条 matrix 任务【并行】构建（fail-fast: false，互不取消）；
-#   * 每个架构各自上传产物（.fd 固件 + SHA256SUMS.txt）。
+#   * 每个架构各自上传产物（.fd 固件 + SHA256SUMS.txt）；
+#   * 全部构建成功后，由 publish 任务把 .fd 固件提交回仓库
+#     limbo-app/src/main/assets2/roms/（单任务统一提交，避免多架构并行推送
+#     同一分支造成的 non-fast-forward 冲突）。
 #
 # 构建逻辑复用 jni/edk2/make_edk2.sh，与本地 `make edk2` 完全一致。
 on:
@@ -166,3 +169,61 @@ jobs:
           name: edk2-${{ matrix.arch }}
           path: dist/
           if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # 汇总各架构固件并提交回仓库（assets2/roms）
+  #
+  # 由单一任务统一提交，而不是在每个 matrix 腿里各自推送：多腿并行 push 同一
+  # 分支会互相 non-fast-forward 冲突。这里 needs: build，只有全部所选架构都构建
+  # 成功才提交；任一失败则该任务跳过（不会写入半套固件）。
+  # 写入的目标目录 limbo-app/src/main/assets2/roms/ 随仓库跟踪（.gitignore 只
+  # 忽略 assets，不含 assets2），仅复制 .fd 固件，SHA256SUMS.txt 仍只随 artifact
+  # 上传、不落库。
+  # -------------------------------------------------------------------------
+  publish:
+    name: 提交固件到 assets2/roms
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          # workflow_dispatch 触发时 github.ref_name 即所选分支；用分支名显式检出，
+          # 保证后续 push 目标分支正确。
+          ref: ${{ github.ref_name }}
+
+      - name: 下载全部固件产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          # 每个架构一个 artifact，分别落到 dist/edk2-<ARCH>/，避免同名
+          # SHA256SUMS.txt 合并冲突（故不启用 merge-multiple）。
+          pattern: edk2-*
+
+      - name: 写入 assets2/roms
+        run: |
+          set -euo pipefail
+          DEST="limbo-app/src/main/assets2/roms"
+          mkdir -p "$DEST"
+          echo ">> 下载到的固件："
+          find dist -type f -name '*.fd' -print
+          find dist -type f -name '*.fd' -exec cp -f {} "$DEST/" \;
+          echo ">> $DEST 内容："
+          ls -lh "$DEST"
+
+      - name: 提交并推送
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add limbo-app/src/main/assets2/roms
+          if git diff --cached --quiet; then
+            echo ">> 固件无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore(edk2): 更新客户机 UEFI 固件 [skip ci]"
+          # GITHUB_TOKEN 推送不会再次触发工作流（无递归），[skip ci] 为额外保险。
+          git push origin "HEAD:${{ github.ref_name }}"

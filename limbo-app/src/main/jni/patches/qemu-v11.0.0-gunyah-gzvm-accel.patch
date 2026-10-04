@@ -3877,14 +3877,24 @@ index ec0d847..70be59f 100644
      virt_post_cpus_gic_realized(vms, sysmem);
  
      fdt_add_pmu_nodes(vms);
-@@ -2614,8 +2734,14 @@ static void machvirt_init(MachineState *machine)
+@@ -2614,8 +2734,24 @@ static void machvirt_init(MachineState *machine)
      vms->bootinfo.skip_dtb_autoload = true;
      vms->bootinfo.firmware_loaded = firmware_loaded;
      vms->bootinfo.psci_conduit = vms->psci_conduit;
-+    vms->bootinfo.modify_dtb = gunyah_arm_build_dtb;
++    /*
++     * Only install the Gunyah DTB builder when the Gunyah accelerator is the
++     * one actually selected.  gunyah_arm_build_dtb() resolves the accelerator
++     * state through get_gunyah_state(), i.e. GUNYAH_STATE(current_accel()),
++     * which aborts with "Object ... is not an instance of type gunyah-accel"
++     * whenever the VM runs on TCG/KVM.  The same applies to the
++     * vms->bootinfo.entry -> s->kernel_entry handoff below.
++     */
++    if (gunyah_enabled()) {
++        vms->bootinfo.modify_dtb = gunyah_arm_build_dtb;
++    }
      arm_load_kernel(ARM_CPU(first_cpu), machine, &vms->bootinfo);
  
-+    if (vms->bootinfo.entry) {
++    if (gunyah_enabled() && vms->bootinfo.entry) {
 +        GUNYAHState *gs = get_gunyah_state();
 +        gs->kernel_entry = vms->bootinfo.entry;
 +    }

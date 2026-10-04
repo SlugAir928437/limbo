@@ -9,9 +9,8 @@ Limbo 是一款运行在 Android 上的虚拟机模拟器，基于 [QEMU](https:
  * [limboemu/limbo](https://github.com/limboemu/limbo)（原版）
  * [GNOME/gtk](https://github.com/GNOME/gtk)（实现 GTK 显示）
  * [syunnPC/qemu-system-ia64](https://github.com/syunnPC/qemu-system-ia64)（IA-64 架构模拟支持）
- * [AnyLaySys/qemu-gunyah](https://github.com/AnyLaySys/qemu-gunyah)（gunyah 加速与 AGL 显示后端来源）
+ * [AnyLaySys/qemu-gunyah](https://github.com/AnyLaySys/qemu-gunyah)（gunyah 加速来源）
  * [AnyLaySys/qemu-gzvm](https://github.com/AnyLaySys/qemu-gzvm)（gzvm 加速来源）
- * [AnyLaySys/als](https://github.com/AnyLaySys/als)（配套 App 的 AGL 显示通道接口设计来源）
  * [ruvolof/nc-for-android](https://github.com/ruvolof/nc-for-android)（实现 QEMU Console）
  * [rosuH/AndroidFilePicker](https://github.com/rosuH/AndroidFilePicker)（文件选取器）
  * [getActivity/XXPermissions](https://github.com/getActivity/XXPermissions)（权限请求器）

@@ -301,7 +301,6 @@
     <string name="root_vm_no_su">su not available. Gunyah/Gzvm acceleration requires a rooted device: the VM must run in a root process.</string>
     <string name="root_vm_start_failed">Failed to start the VM in a root process</string>
     <string name="root_vm_already_running">The VM is already running in a root process</string>
-    <string name="agl_root_fallback">KernelSU did not grant root, so the AGL display cannot run the VM in this process. The VM was started in a separate root process without a display: switch the display to VNC, or grant root to this app in KernelSU.</string>
     <string name="label_disable_hpet">Disable HPET</string>
     <string name="label_disable_tsc">Disable TSC</string>
     <string name="label_disable_acpi">Disable ACPI</string>

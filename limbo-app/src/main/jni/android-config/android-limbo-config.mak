@@ -161,3 +161,18 @@ USE_VIRGL ?= true
 # Set to false to go back to a venus-less renderer (and drop ,venus=on from the
 # virtio-gpu-gl-pci device).
 USE_VIRGL_VENUS ?= true
+
+# ---------------------------------------------------------------------------
+# EDK2 客户机 UEFI 固件
+# ---------------------------------------------------------------------------
+# 是否构建 EDK2（TianoCore）UEFI 固件并部署到 assets/roms/（见 jni/Makefile 的
+# edk2 目标与 jni/edk2/make_edk2.sh）。固件与 BUILD_HOST 无关，只为当前
+# BUILD_GUEST 对应的客户机架构构建：
+#   x86(IA32)/x86_64(X64)/Arm(ARM)/Aarch64(AARCH64) -> edk2-stable202508
+#   ia64(IPF)                                       -> 不构建（上游无 IA64 平台）
+# 设为 false 可整体跳过（更快，但固件下拉框里就没有对应的 EDK2 固件项）。
+# 想一次构建全部架构： export EDK2_ARCHS="IA32 X64 ARM AARCH64"
+# 想换标签：           export EDK2_TAG=edk2-stable202505
+# 想换工具链：         export EDK2_TOOLCHAIN=GCC5
+#                      （默认 GCCNOLTO 非 LTO：新版 binutils 下 GCC5 的 -flto 会失败）
+USE_EDK2 ?= true

@@ -23,9 +23,7 @@ LOCAL_SHARED_LIBRARIES := glib-2.0
 # additional libs we don't use right now
 #LOCAL_SHARED_LIBRARIES += spice png
 
-# -landroid: AGL 显示通道需要 ANativeWindow_fromSurface/acquire/release
-# （把 Activity 的 Surface 交给 QEMU 的 AGL 后端）
-LOCAL_LDLIBS := -ldl -llog -landroid
+LOCAL_LDLIBS := -ldl -llog
 
 #LOCAL_CFLAGS += $(ARCH_CFLAGS)
 LOCAL_CFLAGS += -include $(LOGUTILS)

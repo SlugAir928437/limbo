@@ -76,3 +76,8 @@
 -keepclassmembers class com.limbo.emu.jni.VMExecutor {
     public int close_fd(int);
 }
+
+# ncat JNI: NativeNcat 用 System.loadLibrary("ncat") 加载 libncat.so，native 方法
+# 按 "类名_方法名" 解析符号（Java_com_werebug_androidnetcat_NativeNcat_fork /
+# _sendSignal）。类名或方法名被重命名后调用即抛 UnsatisfiedLinkError。
+-keep class com.werebug.androidnetcat.NativeNcat { *; }

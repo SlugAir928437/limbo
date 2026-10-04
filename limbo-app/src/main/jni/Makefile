@@ -95,7 +95,10 @@ LIMBO_PRJ_ROOT=../../../..
 LIMBO_APP_LIBS=$(LIMBO_PRJ_ROOT)/limbo-app/src/main
 
 # ncat (Nmap's netcat) - cross-compiled per BUILD_HOST ABI into jniLibs so
-# Android bundles it as libncat.so (executed at runtime, not dlopen'ed).
+# Android bundles it as libncat.so.  It is loaded with System.loadLibrary()
+# and run in-process (native fork) instead of being executed as a standalone
+# binary, so jniLibs can be packaged with useLegacyPackaging=false
+# (no install-time extraction).  See ncat/ncat_jni.c and ncat/make_ncat.sh.
 NCAT_BUILD_DIR=$(LIMBO_JNI_ROOT)/ncat
 NCAT_OUT_DIR=$(NDK_PROJECT_PATH)/jniLibs
 
@@ -112,6 +115,9 @@ SYNC_LIBS_IA64=rsync -av --include='libqemu-system-ia64*.so' \
     --include='gdbserver' --include='gdb.setup' \
     --include='*/' --exclude='*' \
     ../jniLibs/ $(LIMBO_APP_LIBS)/jniLibs/
+
+# 注意：ncat 由 make ncat 直接产出到 $(NCAT_OUT_DIR)，而 NCAT_OUT_DIR 就是 app 的
+# src/main/jniLibs，因此不需要额外的同步规则（STRIP_LIBS/COLLECT_SYMBOLS 也会覆盖到它）。
 
 COPY_ROMS=-mkdir -p ../assets/roms && cp -rf ./qemu/pc-bios/*.rom \
 ./qemu/pc-bios/*.bin \
@@ -180,7 +186,7 @@ COLLECT_SYMBOLS= \
 			emit "$$(basename "$$so")" "$$so"; \
 		done; \
 	done; \
-	for ncat in $(NCAT_BUILD_DIR)/nmap-*/ncat/ncat; do \
+	for ncat in $(NCAT_BUILD_DIR)/nmap-*/ncat/libncat.so; do \
 		[ -f "$$ncat" ] || continue; \
 		emit libncat.so "$$ncat"; \
 	done; \
@@ -209,7 +215,7 @@ endif
 
 export
 
-.PHONY: limbo symbols clean-symbols clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl
+.PHONY: limbo symbols clean-symbols clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl edk2 fetch-edk2 clean-edk2
 
 default: limbo
 	
@@ -557,7 +563,7 @@ config-qemu: ndk pkg-config-link fetch-qemu
 		echo ">> NOTE: this QEMU tree declares no virglrenderer/opengl meson option:"; \
 		echo ">>       virtio-gpu-gl-pci will NOT be part of the build (set USE_VIRGL=false to silence)"; \
 	fi
-	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" AGL_MESON_FLAGS="$(AGL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)" SPICE_CONFIGURE_FLAG="$(SPICE_CONFIGURE_FLAG)"
+	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)" SPICE_CONFIGURE_FLAG="$(SPICE_CONFIGURE_FLAG)"
 
 clean-qemu:
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) distclean
@@ -595,6 +601,24 @@ clean-ncat:
 	-rm -rf "$(NCAT_BUILD_DIR)/lib" $(NCAT_BUILD_DIR)/openssl-* $(NCAT_BUILD_DIR)/nmap-*.tgz $(NCAT_BUILD_DIR)/nmap-*
 	-rm -f $(NCAT_OUT_DIR)/$(APP_ABI_DIR)/libncat.so
 
+# EDK2 客户机固件（详见上方 EDK2 段与 edk2/make_edk2.sh）。
+# 与 QEMU/ncat 不同，固件不依赖 NDK，也不需要先 make ndk。
+#
+# 这里必须用【执行期】的 $(if ...) 而不是解析期 ifeq：EDK2_ARCHS 在文件下方才按
+# BUILD_GUEST 推导，解析到这里时它还没赋值，ifeq 会把它误判为空而永远跳过。
+# EDK2_ARCHS 为空（例如只选了 ia64-softmmu 客户机：上游无 IA64 平台）时只打印提示。
+EDK2_SKIP_MSG = >> EDK2_ARCHS 为空（BUILD_GUEST=$(BUILD_GUEST)）：没有对应的 EDK2 客户机固件，跳过
+
+fetch-edk2:
+	$(if $(EDK2_ARCHS),$(EDK2_ENV) fetch $(EDK2_ARCHS),@echo "$(EDK2_SKIP_MSG)")
+
+edk2:
+	$(if $(EDK2_ARCHS),$(EDK2_ENV) build $(EDK2_ARCHS),@echo "$(EDK2_SKIP_MSG)")
+
+# clean 不需要提示：EDK2_ARCHS 为空（ia64）时本来就没有产物可清，展开为空行即空操作
+clean-edk2:
+	$(if $(EDK2_ARCHS),$(EDK2_ENV) clean $(EDK2_ARCHS))
+
 symbols:
 	$(COLLECT_SYMBOLS)
 
@@ -619,8 +643,8 @@ limbo:
 	make config-deps
 	make deps
 # virglrenderer 显式排在 config-qemu 之前：QEMU 只有拿到 virglrenderer.pc 才能
-# 用 -Dopengl=enabled -Dvirglrenderer=enabled 配出 virtio-gpu-gl-pci（AGL 显示
-# 的 3D 客户机要用它）。config-virgl/virgl 本身也会被 config-deps/deps 条件带上，
+# 用 -Dopengl=enabled -Dvirglrenderer=enabled 配出 virtio-gpu-gl-pci。
+# config-virgl/virgl 本身也会被 config-deps/deps 条件带上，
 # 这里显式列出是为了让依赖顺序一目了然、且 USE_VIRGL 被覆盖时也不会漏。
 ifeq ($(USE_VIRGL),true)
 	make config-virgl
@@ -630,6 +654,11 @@ endif
 	make qemu
 	make ncat
 	make install
+# EDK2 客户机固件：与 BUILD_HOST 无关，只为当前 BUILD_GUEST 对应的客户机架构
+# 构建一份 UEFI 固件并部署到 assets/roms/（USE_EDK2=false 可整体跳过）。
+ifeq ($(USE_EDK2),true)
+	make edk2
+endif
 
 # ---------------------------------------------------------------------------
 # 源码获取与补丁（把 build workflow 里的“下载代码 / 打补丁”收进 Makefile）
@@ -647,13 +676,12 @@ QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
 # gzvm / gunyah 加速器补丁（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）
 ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.patch
 
-# AGL（Android Graphics Layer）显示后端补丁：gunyah/gzvm 加速的 aarch64 虚拟机
-# 必须把画面画到 App 自己的 Surface 上（-display agl），而独立 root 子进程拿不到
-# Surface，因此还需要配合进程内提权（见 RootUtils.grantRoot）。该后端依赖
-# epoxy/EGL，即 USE_GTK/USE_VIRGL 提供的 OpenGL 栈。同样只适用于官方 QEMU 树。
-AGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-agl-display.patch
-AGL_MESON_FLAGS     := -Dagl=enabled
-AGL_APPLY           := yes
+# Android EGL 初始化补丁：把系统 libEGL 的 surfaceless GLES3 上下文接进
+# ui/egl-helpers.c，供 USE_VIRGL=true（-Dopengl=enabled -Dvirglrenderer=enabled）
+# 时的 virtio-gpu-gl / virglrenderer 使用。仅适用于官方 QEMU 树
+# （IA-64 fork 关闭 VirGL/OpenGL，无需该补丁）。
+EGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-android-egl.patch
+EGL_APPLY           := yes
 
 # 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
 #  export BUILD_ACCEL=gunyah / gzvm / both / none 覆盖）
@@ -715,14 +743,13 @@ else
 QEMU_USE_OFFICIAL := no
 endif
 
-# gzvm / gunyah 加速器仅适用于官方 QEMU 11.0.0 树：
+# gzvm / gunyah 加速器与 Android EGL 初始化补丁仅适用于官方 QEMU 11.0.0 树：
 # IA-64 fork 无对应 meson 选项，传入 -Dgunyah/-Dgzvm 会导致
 # "Unknown option" 配置失败，补丁也不应打到 fork 树上。
 ifneq ($(QEMU_USE_OFFICIAL), yes)
 ACCEL_MESON_FLAGS    :=
 ACCEL_APPLY          :=
-AGL_MESON_FLAGS      :=
-AGL_APPLY            :=
+EGL_APPLY            :=
 endif
 
 # VirtIO GPU GL (virtio-gpu-gl-pci): hw/display/meson.build only builds
@@ -738,7 +765,64 @@ endif
 #    and aborts with "unterminated call to function 'if'".
 VIRGL_MESON_FLAGS = $(if $(filter true,$(USE_VIRGL)),$(shell if grep -q virglrenderer "$(LIMBO_JNI_ROOT)/qemu/meson_options.txt" 2>/dev/null && grep -q opengl "$(LIMBO_JNI_ROOT)/qemu/meson_options.txt" 2>/dev/null; then echo -Dopengl=enabled -Dvirglrenderer=enabled; fi))
 
-fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp $(SPICE_FETCH_TARGETS) fetch-gtk4android fetch-virgl fetch-qemu
+# ---------------------------------------------------------------------------
+# EDK2（TianoCore）客户机 UEFI 固件
+#
+# 为各客户机架构产出 QEMU 可直接 -bios 使用的 UEFI 固件，部署到 assets/roms/：
+#   x86(IA32)   -> edk2-i386-code.fd      x86_64(X64)      -> edk2-x86_64-code.fd
+#   Arm(ARM)    -> edk2-arm-code.fd       Aarch64(AARCH64) -> edk2-aarch64-code.fd
+#
+# 标签固定 edk2-stable202508（理由详见 edk2/make_edk2.sh 头部说明）：它是最后一
+# 个同时保留【纯 32 位 x86 的 OvmfPkgIa32.dsc】与【32 位 ARM 支持（ArmVirtQemu
+# 的 SUPPORTED_ARCHITECTURES 含 ARM）】的稳定版；202511 起上游已先后移除二者。
+#
+# 不构建 IA64：上游 edk2 已于 2019 年移除 IPF，且仍含 IPF 的 edk2-stable201808
+# 与 UDK2018 也没有任何可构建的 IA64 平台（同样详见 edk2/make_edk2.sh 头部说明）。
+# 因此 ia64-softmmu 客户机的 EDK2_ARCHS 为空，edk2 目标整体跳过。
+#
+# 固件与 BUILD_HOST 无关、只与客户机架构有关，因此默认只构建当前 BUILD_GUEST
+# 对应的那一个架构；需要一次构建全部时用 EDK2_ARCHS="IA32 X64 ARM AARCH64"。
+# ---------------------------------------------------------------------------
+EDK2_DIR          := $(LIMBO_JNI_ROOT)/edk2
+EDK2_SCRIPT       := $(EDK2_DIR)/make_edk2.sh
+EDK2_FIRMWARE_DIR := $(LIMBO_APP_LIBS)/assets/roms
+EDK2_GIT_URL      ?= https://github.com/tianocore/edk2.git
+EDK2_TAG          ?= edk2-stable202508
+# edk2 工具链标签。默认 GCCNOLTO（非 LTO）：GCC5/GCC 带 -flto，在很新的 binutils
+# （例如 Ubuntu 26.04 的 2.46）下链接超大 LTO 归档会失败
+# （ld.bfd: .../OpensslLibCrypto.lib: ELF section name out of range），
+# GCCNOLTO 不产生 .gnu.lto_* 节，可稳定构建。需要 LTO 时可 export EDK2_TOOLCHAIN=GCC5。
+EDK2_TOOLCHAIN    ?= GCCNOLTO
+
+# BUILD_GUEST 可以是逗号分隔的多客户机列表（见 make all 的 EXPORT_GUEST_ALL，例如
+# x86_64-softmmu,aarch64-softmmu,ia64-softmmu），也可能是单个；先拆成空格分隔，
+# 再逐项映射到 EDK2 架构。ia64-softmmu 不映射：上游没有可构建的 IA64 平台。
+EDK2_COMMA := ,
+EDK2_EMPTY :=
+EDK2_SPACE := $(EDK2_EMPTY) $(EDK2_EMPTY)
+EDK2_GUESTS := $(subst $(EDK2_COMMA),$(EDK2_SPACE),$(strip $(BUILD_GUEST)))
+
+ifeq ($(strip $(EDK2_GUESTS)),)
+# 未指定 BUILD_GUEST：默认构建全部四个架构
+EDK2_ARCHS_DERIVED := IA32 X64 ARM AARCH64
+else
+EDK2_ARCHS_DERIVED := $(strip $(if $(filter x86_64-softmmu,$(EDK2_GUESTS)),X64) \
+	$(if $(filter i386-softmmu,$(EDK2_GUESTS)),IA32) \
+	$(if $(filter arm-softmmu,$(EDK2_GUESTS)),ARM) \
+	$(if $(filter aarch64-softmmu,$(EDK2_GUESTS)),AARCH64))
+endif
+
+# 可用命令行/环境覆盖（export EDK2_ARCHS="IA32 X64 ARM AARCH64"）；派生结果为空
+# （只选了 ia64 客户机）时 edk2 / fetch-edk2 会跳过。
+ifndef EDK2_ARCHS
+EDK2_ARCHS := $(EDK2_ARCHS_DERIVED)
+endif
+
+EDK2_ENV = EDK2_FIRMWARE_DIR="$(EDK2_FIRMWARE_DIR)" EDK2_GIT_URL="$(EDK2_GIT_URL)" \
+	EDK2_TAG="$(EDK2_TAG)" EDK2_TOOLCHAIN="$(EDK2_TOOLCHAIN)" \
+	BUILD_THREADS="$(BUILD_THREADS)" bash "$(EDK2_SCRIPT)"
+
+fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp $(SPICE_FETCH_TARGETS) fetch-gtk4android fetch-virgl fetch-qemu $(if $(filter true,$(USE_EDK2)),fetch-edk2)
 
 fetch-virgl:
 	@if [ "$(USE_VIRGL)" != "true" ]; then \
@@ -904,7 +988,7 @@ fetch-qemu:
 		fi; \
 	fi
 	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
-	$(if $(AGL_APPLY),@if [ -f "$(AGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(AGL_PATCH)" 2>/dev/null; then echo ">> 应用 AGL 显示后端补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(AGL_PATCH)"; fi;)
+	$(if $(EGL_APPLY),@if [ -f "$(EGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(EGL_PATCH)" 2>/dev/null; then echo ">> 应用 Android EGL 初始化补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(EGL_PATCH)"; fi;)
 
 fetch-gtk4android:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \
@@ -929,7 +1013,7 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-ncat clean-symbols clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-ncat clean-edk2 clean-symbols clean-ndk
 
 clean: 
 	make clean-qemu 
@@ -940,6 +1024,7 @@ clean:
 	make clean-spice
 	make clean-gtk
 	make clean-virgl
+	make clean-edk2
 	make clean-symbols
 	make clean-ndk
 	# only remove build artifacts (files), never directories -- the old -name
@@ -958,4 +1043,6 @@ help:
 	@echo "  optional: export NDK_DEBUG=1 for debuggable binaries"
 	@echo "  optional: make symbols 把所有 .so 构建产物的符号表输出到 obj/symbols/<abi>/"
 	@echo "           （SYMBOLS_KEEP_UNSTRIPPED=false 可只导出符号表文本、不复制 .so）"
+	@echo "  optional: make edk2 构建当前 BUILD_GUEST 对应的 EDK2 UEFI 固件到 assets/roms/"
+	@echo "           （EDK2_ARCHS=\"IA32 X64 ARM AARCH64\" 可一次构建全部；IA64 不在范围内，见 edk2/make_edk2.sh）"
 	@echo " example: export BUILD_GUEST=x86_64-softmmu && export BUILD_HOST=armeabi-v7a && make limbo"

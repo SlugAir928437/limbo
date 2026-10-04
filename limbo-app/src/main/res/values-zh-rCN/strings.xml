@@ -299,7 +299,6 @@
     <string name="root_vm_no_su">未检测到 su。Gunyah/Gzvm 加速需要已 root 的设备：虚拟机必须在 root 进程中运行。</string>
     <string name="root_vm_start_failed">以 root 进程启动虚拟机失败</string>
     <string name="root_vm_already_running">虚拟机已在 root 进程中运行</string>
-    <string name="agl_root_fallback">KernelSU 未授予 root，AGL 显示无法在本进程内运行虚拟机，已回退到无画面的独立 root 子进程。请把显示方式改为 VNC，或在 KernelSU 中为本应用授予 root 权限。</string>
     <string name="label_disable_hpet">禁用 HPET</string>
     <string name="label_disable_tsc">禁用 TSC</string>
     <string name="label_disable_acpi">禁用 ACPI</string>

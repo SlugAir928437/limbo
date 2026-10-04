@@ -1,0 +1,96 @@
+Subject: [PATCH] ui/egl-helpers.c: Android EGL/GLES3 bring-up for the GL backends
+
+This project's own Android/NDK adaptation, split out of the former
+qemu-v11.0.0-agl-display.patch (the AGL display backend itself has been
+removed).  It brings up a surfaceless GLES3 context through the system
+libEGL so qemu_egl_display / qemu_egl_config / qemu_egl_rn_ctx /
+qemu_egl_mode are populated for the OpenGL display backends (GTK) and for
+virglrenderer, which QEMU reaches through the get_egl_display callback
+(USE_VIRGL=true, i.e. -Dopengl=enabled -Dvirglrenderer=enabled).
+
+Android is neither Windows nor GBM: there is no desktop GL and no render
+node, and the system libEGL only speaks GLES and is reached through
+EGL_DEFAULT_DISPLAY, bound to the app process.
+
+Author: FreshingAir (Limbo Emulator Project), 2026-09-27.
+SPDX-License-Identifier: GPL-2.0-or-later
+
+diff --git a/ui/egl-helpers.c b/ui/egl-helpers.c
+--- a/ui/egl-helpers.c
++++ b/ui/egl-helpers.c
+@@ -723,6 +723,75 @@ bool egl_init(const char *rendernode, DisplayGLMode mode, Error **errp)
+         error_setg(errp, "egl: render node init failed");
+         return false;
+     }
++#elif defined(__ANDROID__)
++    /*
++     * Android is neither Windows nor GBM: there is no desktop GL and no
++     * render node, the system libEGL only speaks GLES and is reached through
++     * EGL_DEFAULT_DISPLAY, bound to the app process.  Bring up a surfaceless
++     * GLES3 context here so qemu_egl_display / qemu_egl_config /
++     * qemu_egl_rn_ctx / qemu_egl_mode are populated for the GL display
++     * backends and for virglrenderer, which QEMU reaches through the
++     * get_egl_display callback.
++     *
++     * The config must accept both window surfaces and pbuffers (the
++     * offscreen render target and the shared contexts created by
++     * egl-context.c).
++     */
++    {
++        static const EGLint cfg_attr[] = {
++            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
++            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
++            EGL_RED_SIZE, 8,
++            EGL_GREEN_SIZE, 8,
++            EGL_BLUE_SIZE, 8,
++            EGL_ALPHA_SIZE, 8,
++            EGL_NONE
++        };
++        static const EGLint ctx_attr[] = {
++            EGL_CONTEXT_CLIENT_VERSION, 3,
++            EGL_NONE
++        };
++        EGLint major, minor, num_cfg = 0;
++        EGLDisplay dpy;
++
++        dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
++        if (dpy == EGL_NO_DISPLAY) {
++            error_setg(errp, "egl: eglGetDisplay failed: %s",
++                       qemu_egl_get_error_string());
++            return false;
++        }
++        if (!eglInitialize(dpy, &major, &minor)) {
++            error_setg(errp, "egl: eglInitialize failed: %s",
++                       qemu_egl_get_error_string());
++            return false;
++        }
++        qemu_egl_display = dpy;
++
++        if (!eglChooseConfig(dpy, cfg_attr, &qemu_egl_config, 1, &num_cfg) ||
++            num_cfg == 0) {
++            error_setg(errp, "egl: eglChooseConfig failed: %s",
++                       qemu_egl_get_error_string());
++            return false;
++        }
++
++        eglBindAPI(EGL_OPENGL_ES_API);
++        qemu_egl_rn_ctx = eglCreateContext(dpy, qemu_egl_config,
++                                           EGL_NO_CONTEXT, ctx_attr);
++        if (qemu_egl_rn_ctx == EGL_NO_CONTEXT) {
++            error_setg(errp, "egl: eglCreateContext failed: %s",
++                       qemu_egl_get_error_string());
++            return false;
++        }
++        if (!eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE,
++                            qemu_egl_rn_ctx)) {
++            error_setg(errp, "egl: eglMakeCurrent failed: %s",
++                       qemu_egl_get_error_string());
++            return false;
++        }
++
++        /* Android EGL exposes GLES only, whatever mode the caller asked for. */
++        qemu_egl_mode = DISPLAY_GL_MODE_ES;
++    }
+ #endif
+ 
+     if (!qemu_egl_rn_ctx) {

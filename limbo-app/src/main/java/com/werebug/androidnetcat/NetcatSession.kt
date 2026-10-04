@@ -24,16 +24,22 @@ class NetcatSession(private val context: Context) : View.OnClickListener {
         binding = ActivityNetcatSessionBinding.inflate(LayoutInflater.from(context))
 
         val ncCmdArgv = ncCmd.split(" ").toMutableList()
-        val ncatPath = context.applicationInfo.nativeLibraryDir + "/libncat.so"
         if (ncCmdArgv[0] != "nc" && ncCmdArgv[0] != "ncat") {
             Toast.makeText(context, R.string.error_missing_nc, Toast.LENGTH_SHORT).show()
             return
         }
-        ncCmdArgv.removeAt(0)
-        ncCmdArgv.add(0, ncatPath)
-        val shellWrappedArgv = listOf("/system/bin/sh", "-c", ncCmdArgv.joinToString(" "))
+        // ncat 现在是进程内运行（见 NativeNcat）：把 libncat.so 当 JNI 库从 APK
+        // 直接加载，再由 native 侧 fork 出子进程执行，因此不再需要可执行文件路径，
+        // 也不再需要 /system/bin/sh 包装。
+        try {
+            NativeNcat.ensureLoaded()
+        } catch (t: Throwable) {
+            Toast.makeText(context, "Failed to load libncat.so: ${t.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+        ncCmdArgv[0] = "ncat"
 
-        worker = NetcatWorker(shellWrappedArgv, WeakReference(this))
+        worker = NetcatWorker(ncCmdArgv, WeakReference(this))
         dialog = MaterialAlertDialogBuilder(context, R.style.Theme_NetcatSession_Dialog)
             .setTitle(ncCmd)
             .setView(binding.root)

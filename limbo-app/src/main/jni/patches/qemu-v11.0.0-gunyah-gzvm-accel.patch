@@ -1,7 +1,7 @@
 Subject: [PATCH] gunyah/gzvm accelerators ported from AnyLaySys (QEMU 11.0.0)
 
 Ported to this tree from:
-  * https://github.com/AnyLaySys/qemu-gunyah  (gunyah accelerator, AGL display backend)
+  * https://github.com/AnyLaySys/qemu-gunyah  (gunyah accelerator)
   * https://github.com/AnyLaySys/qemu-gzvm    (gzvm accelerator)
 
 Both upstream projects are released under GPL-2.0-or-later (library parts
@@ -3468,17 +3468,76 @@ index ccad583..212dbab 100644
    'kvm-stub.c',
    'nitro-stub.c',
 diff --git a/hw/arm/meson.build b/hw/arm/meson.build
-index b187b94..3cc168a 100644
+index b187b94..8d364ae 100644
 --- a/hw/arm/meson.build
 +++ b/hw/arm/meson.build
-@@ -1,6 +1,7 @@
+@@ -1,6 +1,18 @@
  arm_ss = ss.source_set()
  arm_common_ss = ss.source_set()
  arm_common_ss.add(when: 'CONFIG_ARM_VIRT', if_true: files('virt.c'))
-+arm_common_ss.add(when: 'CONFIG_ARM_VIRT', if_true: files('virt-gzvm.c'))
++# virt-gzvm.c talks to the gzvm accelerator, which exists only on
++# aarch64-softmmu (see accelerator_targets in meson.build).  Building it for
++# 32-bit arm-softmmu would reference gzvm_allowed/gzvm_set_* with no
++# implementation and fail to link, so gate it on CONFIG_GZVM.
++arm_common_ss.add(when: ['CONFIG_ARM_VIRT', 'CONFIG_GZVM'],
++                  if_true: files('virt-gzvm.c'))
++# virt.c is shared by arm-softmmu and aarch64-softmmu and calls into the
++# gunyah accelerator behind gunyah_enabled(), but the accelerator only exists
++# on aarch64-softmmu (CONFIG_GH).  Provide no-op stubs for the other targets,
++# the same way target/arm/meson.build does for KVM.
++arm_common_ss.add(when: ['CONFIG_ARM_VIRT', 'CONFIG_GH'],
++                  if_false: files('virt-gunyah-stub.c'))
  arm_common_ss.add(when: 'CONFIG_ACPI', if_true: files('virt-acpi-build.c'))
  arm_common_ss.add(when: 'CONFIG_DIGIC', if_true: files('digic_boards.c'))
  arm_common_ss.add(when: 'CONFIG_EMCRAFT_SF2', if_true: files('msf2-som.c'))
+diff --git a/hw/arm/virt-gunyah-stub.c b/hw/arm/virt-gunyah-stub.c
+new file mode 100644
+index 0000000..2cfe00e
+--- /dev/null
++++ b/hw/arm/virt-gunyah-stub.c
+@@ -0,0 +1,42 @@
++/*
++ * Stubs for the gunyah accelerator hooks that hw/arm/virt.c calls
++ * unconditionally.
++ *
++ * virt.c guards every one of these behind gunyah_enabled(), but it still
++ * references them at compile time, so the symbols have to exist even when the
++ * gunyah accelerator itself is not built.  CONFIG_GH is only set for
++ * aarch64-softmmu (see accelerator_targets in meson.build), yet virt.c is
++ * common to arm-softmmu and aarch64-softmmu, and Meson cannot use CONFIG_*
++ * symbols here (they are GCC-poisoned in this library).  This file is
++ * therefore selected by Meson whenever CONFIG_GH is false, exactly like
++ * accel/stubs/gunyah-stub.c does for gunyah_allowed and accel/stubs/kvm-stub.c
++ * does for the KVM accelerator.
++ *
++ * Gunyah is a 64-bit ARM hypervisor, so on 32-bit arm-softmmu (and in a build
++ * configured with -Dgunyah=disabled) gunyah_enabled() is always false and none
++ * of these are ever reached.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "system/gunyah.h"
++#include "system/gunyah_int.h"
++
++GUNYAHState *get_gunyah_state(void)
++{
++    return NULL;
++}
++
++int gunyah_arm_set_dtb(uint64_t dtb_start, uint64_t dtb_size)
++{
++    (void)dtb_start;
++    (void)dtb_size;
++    return 0;
++}
++
++void gunyah_arm_build_dtb(const struct arm_boot_info *binfo, void *fdt)
++{
++    (void)binfo;
++    (void)fdt;
++}
 diff --git a/hw/arm/virt-gzvm.c b/hw/arm/virt-gzvm.c
 new file mode 100644
 index 0000000..ff66dc8e437907537142a39fc7306f0f744acdcd

@@ -9,6 +9,7 @@ name: release
 # 每个依赖各自的 config-X + X（libffi / glib / pixman / slirp / spice / gtk /
 # virglrenderer）-> config-qemu -> qemu -> ncat -> install，
 # 失败时能直接看出卡在哪一依赖的哪一环。
+# 另有一步独立的 EDK2 客户机 UEFI 固件构建（make edk2），排在 install 之后。
 on:
   workflow_dispatch:
     inputs:
@@ -80,7 +81,14 @@ jobs:
           sudo -E apt-get install -y --fix-missing \
             make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync \
-            gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev zip
+            gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev zip \
+            nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib
+          # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉工具链）。
+          # 32 位 ARM 的软浮点工具链在部分发行版上缺失，故这两个包容错安装：
+          # 真的缺工具链时 make edk2 会在对应架构上给出明确报错，而不是静默编出错误固件。
+          sudo -E apt-get install -y --fix-missing gcc-aarch64-linux-gnu || true
+          sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabi \
+            || sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabihf || true
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
@@ -225,6 +233,16 @@ jobs:
         run: |
           set -o pipefail
           make install 2>&1 | tee "$LOGDIR/20-install.log"
+
+      # EDK2（TianoCore）客户机 UEFI 固件。按 matrix.guest 只构建对应客户机架构
+      # （x86_64 -> X64，aarch64 -> AARCH64；ia64 客户机没有可用的 EDK2 平台固件，
+      # EDK2_ARCHS 为空、该步骤自动跳过，见 jni/Makefile 的 EDK2_ARCHS 推导），
+      # 产物部署到 assets/roms/ 并随 APK 打包。主标签固定 edk2-stable202508。
+      - name: 构建 EDK2 客户机固件（make edk2）
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make edk2 2>&1 | tee "$LOGDIR/21-edk2.log"
 
       # make install 末尾会把所有 .so 构建产物的符号表输出到
       # obj/symbols/<abi>/（未 strip 的 .so 副本 + .sym/.dynsym 文本），

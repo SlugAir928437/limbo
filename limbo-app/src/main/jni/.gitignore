@@ -13,6 +13,10 @@ spice
 spice-protocol
 virglrenderer
 
+# EDK2 源码树（由 jni/edk2/make_edk2.sh 按标签克隆，如 edk2-202508 / edk2-201808）；
+# 脚本本身 make_edk2.sh 需要提交，故只忽略 edk2-* 前缀的目录
+edk2/edk2-*
+
 # 临时构建物
 build_arm64-v8a
 qemu_gtk4_rollback.patch

@@ -97,13 +97,22 @@ function setup_openssl_dir_for_ncat_build() {
   done
 }
 
-# Cross-compiles nmap for a specified android target.
+# Cross-compiles nmap for a specified android target and links ncat as a shared
+# library (libncat.so) instead of a standalone executable.
+#
+# 关闭安装时解压（useLegacyPackaging=false / extractNativeLibs=false）后，
+# libncat.so 不会被复制到 nativeLibraryDir，也就不能再当可执行文件被
+# ProcessBuilder 拉起（Android 10+ 还禁止执行应用私有目录下的文件）。
+# 因此这里把 ncat 链接成真正的共享库，由 Java 侧 System.loadLibrary("ncat")
+# 直接从 APK 加载，再通过 ncat_jni.c 的 fork() 入口在进程内运行。
+#
 # Args:
 #   $1 Target (android target triple)
 #   $2 Android ABI (output subdirectory)
 function cross_compile_ncat() {
   export_make_toolchain "$1"
   local abi="$2"
+
   ./configure --host "${TARGET}" \
               --without-nping \
               --without-zenmap \
@@ -111,8 +120,46 @@ function cross_compile_ncat() {
               --with-openssl="${OPENSSL_BUILD_DIR}" \
               --with-libpcap=included \
               --with-liblua=included
+
+  # Android clang 默认不生成位置无关代码：aarch64 上会出现
+  # R_AARCH64_ADR_PREL_PG_HI21 之类的重定位，无法链接进 .so。
+  # 注意不能通过命令行覆盖 CFLAGS 注入 -fPIC：nmap 的 nbase/nsock 等 Makefile 把
+  # $(DEFS)（含 -DHAVE_CONFIG_H）、$(INCLS) 也拼进了 CFLAGS，覆盖会一并抹掉，
+  # 导致 nbase.h 走到 #ifndef HAVE_GETTIMEOFDAY 分支、与系统头文件类型冲突。
+  # 因此直接修改 configure 生成好的 Makefile，在 CFLAGS 前补 -fPIC。
+  add_pic_to_cflags() {
+    local mk="$1"
+    [ -f "${mk}" ] || return 0
+    sed -i -E 's/^(CFLAGS[[:space:]]*=[[:space:]]*)/\1-fPIC /' "${mk}"
+  }
+  add_pic_to_cflags Makefile
+  add_pic_to_cflags nbase/Makefile
+  add_pic_to_cflags nsock/src/Makefile
+  add_pic_to_cflags libpcap/Makefile
+  add_pic_to_cflags ncat/Makefile
+
+  # 按原样构建 ncat：会一并编译 liblua/libpcap/libnsock/libnbase 等依赖。
   make build-ncat
-  cp ncat/ncat "${NCAT_OUT_DIR}/${abi}/libncat.so"
+
+  # 编译 JNI 桥接对象（jni.h 由 NDK sysroot 提供）。
+  "${CC}" -fPIC -O2 -Wall -c "${SCRIPT_DIR}/ncat_jni.c" -o ncat/ncat_jni.o
+
+  # 往 ncat/Makefile 追加共享库目标：ncat 目标文件 + JNI 桥接对象一起链接成
+  # 可被 System.loadLibrary() 加载的 .so。
+  #   --exclude-libs,ALL       隐藏静态依赖（openssl/lua/pcap/nsock/nbase）的符号
+  #   --version-script=...     只导出 JNI 入口（见 ncat.ver）
+  #   -z,max-page-size=16384   与其余 jniLibs 一致的 16K 页对齐
+  {
+    printf '\n# --- added by limbo: build ncat as a loadable shared library ---\n'
+    printf 'libncat.so: $(top_srcdir)/../liblua/liblua.a $(OBJS) $(NSOCKLIB) $(NBASELIB) $(NCAT_EXTRA_OBJS)\n'
+    printf '\t$(CC) -shared -o $@ $(CFLAGS) $(LDFLAGS) $(OBJS) $(NCAT_EXTRA_OBJS) $(NSOCKLIB) $(NBASELIB) $(OPENSSL_LIBS) $(PCAP_LIBS) $(LUA_LIBS) $(LIBS) -Wl,-z,max-page-size=16384 -Wl,--exclude-libs,ALL -Wl,--version-script=$(NCAT_VERSION_SCRIPT)\n'
+  } >> ncat/Makefile
+
+  make -C ncat libncat.so \
+      NCAT_EXTRA_OBJS=ncat_jni.o \
+      NCAT_VERSION_SCRIPT="${SCRIPT_DIR}/ncat.ver"
+
+  cp ncat/libncat.so "${NCAT_OUT_DIR}/${abi}/libncat.so"
 }
 
 # Builds ncat (and its openssl dependency) for a single Android ABI.

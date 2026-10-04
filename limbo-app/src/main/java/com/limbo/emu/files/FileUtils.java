@@ -23,6 +23,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
@@ -66,6 +67,30 @@ public class FileUtils {
 
     public static String getNativeLibDir(Context context) {
         return context.getApplicationInfo().nativeLibraryDir;
+    }
+
+    /**
+     * 返回可以从中查找/加载 native 库的路径。
+     *
+     * APK 关闭了安装时解压（extractNativeLibs=false / useLegacyPackaging=false）时，
+     * nativeLibraryDir 不会被打包出来（目录为空/不存在）；此时回退到 APK 内部的
+     * lib/&lt;abi&gt; 路径，链接器可直接从 APK 内 mmap 加载，形如
+     * /data/app/.../base.apk!/lib/arm64-v8a 。
+     */
+    public static String getNativeLibSearchDir(Context context) {
+        String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
+        if (nativeLibDir != null && new File(nativeLibDir).isDirectory()) {
+            return nativeLibDir;
+        }
+        String abi = null;
+        String[] supportedAbis = Build.SUPPORTED_ABIS;
+        if (supportedAbis != null && supportedAbis.length > 0) {
+            abi = supportedAbis[0];
+        }
+        if (abi == null || abi.isEmpty()) {
+            abi = "arm64-v8a";
+        }
+        return context.getApplicationInfo().sourceDir + "!/lib/" + abi;
     }
 
     public static String getFullPathFromDocumentFilePath(String filePath) {

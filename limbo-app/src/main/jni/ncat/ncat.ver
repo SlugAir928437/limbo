@@ -1,0 +1,8 @@
+/* libncat.so 导出符号白名单：只导出 JNI 入口，其余（含 ncat 的 exit()）置 local。
+ * 详见 make_ncat.sh / ncat_jni.c 顶部说明。 */
+{
+  global:
+    Java_com_werebug_androidnetcat_NativeNcat_*;
+  local:
+    *;
+};

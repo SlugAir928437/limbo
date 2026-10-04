@@ -56,13 +56,6 @@
             android:launchMode="singleTask"
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar" />
-        <activity
-            android:name=".main.LimboAglActivity"
-            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"
-            android:enableOnBackInvokedCallback="false"
-            android:launchMode="singleTask"
-            android:exported="false"
-            android:theme="@style/AppTheme.NoActionBar" />
         <!-- GTK4 android backend creates its own toplevel window (org.gtk.android.ToplevelActivity) -->
         <activity
             android:name="org.gtk.android.ToplevelActivity"

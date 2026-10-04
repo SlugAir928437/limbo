@@ -94,15 +94,24 @@ public class RootVmLauncher {
     }
 
     private static void loadOrIgnore(String nativeLibDir, String lib, boolean optional) {
-        File f = new File(nativeLibDir, lib);
-        if (!f.exists()) {
-            if (!optional) {
-                throw new UnsatisfiedLinkError("Missing " + lib + " in " + nativeLibDir);
+        // nativeLibDir 可能是普通目录（安装时解压出 .so），也可能是 APK 内路径
+        // （<apk>!/lib/<abi>，关闭安装时解压的情形）。后者无法用 File 判断存在性，
+        // 直接交给链接器从 APK 内加载。
+        String path;
+        if (nativeLibDir != null && nativeLibDir.contains("!")) {
+            path = nativeLibDir + "/" + lib;
+        } else {
+            File f = new File(nativeLibDir, lib);
+            if (!f.exists()) {
+                if (!optional) {
+                    throw new UnsatisfiedLinkError("Missing " + lib + " in " + nativeLibDir);
+                }
+                Log.w(TAG, "Optional lib not present: " + lib);
+                return;
             }
-            Log.w(TAG, "Optional lib not present: " + lib);
-            return;
+            path = f.getAbsolutePath();
         }
-        System.load(f.getAbsolutePath());
+        System.load(path);
     }
 
     private static void writeStatus(File statusFile, String status) {

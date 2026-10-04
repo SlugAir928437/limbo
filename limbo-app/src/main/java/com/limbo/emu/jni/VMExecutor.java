@@ -217,7 +217,6 @@ class VMExecutor extends MachineExecutor {
     private void addUIOptions(Context context, ArrayList<String> paramsList) {
         String ui = getMachine().getUI();
         boolean gtk = "GTK".equals(ui);
-        boolean agl = "AGL".equals(ui);
         if (MachineController.getInstance().isVNCEnabled() && !gtk) {
             paramsList.add("-vnc");
             String vncParam = "";
@@ -258,13 +257,6 @@ class VMExecutor extends MachineExecutor {
             if (gtk) {
                 // GTK4 android backend (initialized by LimboGtk on the activity side)
                 paramsList.add("gtk" + getDisplayGLOption());
-            } else if (agl) {
-                // AGL (Android Graphics Layer): LimboAglActivity hands its
-                // Surface to the backend through nativeAglSetSurface(), and the
-                // touch/keyboard events go through nativeAglPointer/Scroll/Key.
-                // The backend enables OpenGL itself (agl_display_early_init()),
-                // so it must not get the ,gl=on option here.
-                paramsList.add("agl");
             } else {
                 paramsList.add("sdl" + getDisplayGLOption());
             }
@@ -307,7 +299,7 @@ class VMExecutor extends MachineExecutor {
      * QEMU aborts at device realize time with "The display backend does not have
      * OpenGL support enabled" (hw/display/virtio-gpu-gl.c).  The option therefore
      * ships together with the display backend instead of being left to the extra
-     * params of the machine.  The AGL backend switches OpenGL on by itself.
+     * params of the machine.
      *
      * @return ",gl=on" when the machine uses a VirGL (GL) virtio-gpu device,
      * an empty string otherwise
@@ -495,12 +487,8 @@ class VMExecutor extends MachineExecutor {
         // state (GUNYAHState.swiotlb_size, filled with the default in
         // gunyah_init()) and the gunyah code paths are selected by the
         // accelerator itself (gunyah_enabled()).  QEMU rejects an unknown
-        // "-object" with error_fatal -> exit(1) while qemu_init() runs, and
-        // because an accelerated VM runs inside the app process (that is what
-        // the AGL display needs), that exit() tears the whole app down: the UI
-        // threads then trip over libhwui/libc++ statics already destroyed by
-        // __cxa_finalize and abort with
-        // "FORTIFY: pthread_mutex_lock called on a destroyed mutex".
+        // "-object" with error_fatal -> exit(1) while qemu_init() runs, which
+        // aborts the VM before it ever starts.
     }
 
 
@@ -1037,22 +1025,7 @@ class VMExecutor extends MachineExecutor {
             boolean needsRootAccel = Machine.ACCEL_GUNYAH.equals(accelMode)
                     || Machine.ACCEL_GZVM.equals(accelMode);
             if (needsRootAccel && !RootUtils.isRoot()) {
-                // The AGL display paints into a Surface owned by this process,
-                // so the VM cannot live in the su/app_process child (that
-                // process has no window to render into).  Follow the ALS
-                // approach and elevate *this* process through KernelSU, then
-                // run QEMU in-process; when that is not available fall back to
-                // the (headless) root child process.
-                if (isAglDisplay() && grantRootInProcess()) {
-                    Log.d(TAG, "Root granted in-process (KernelSU), "
-                            + "running the VM in-process for the AGL display");
-                } else {
-                    if (isAglDisplay()) {
-                        ToastUtils.toastLong(LimboApplication.getInstance(),
-                                LimboApplication.getInstance().getString(R.string.agl_root_fallback));
-                    }
-                    return startRootProcess(params);
-                }
+                return startRootProcess(params);
             }
 
             // XXX: for VNC we need to resume manually after a reasonable amount of time
@@ -1068,7 +1041,7 @@ class VMExecutor extends MachineExecutor {
             // Read at VM start so the setting takes effect for the current run.
             String libFilename = getQemuLibrary();
             res = start(Config.storagedir, LimboApplication.getBasefileDir(),
-                    libFilename, FileUtils.getNativeLibDir(LimboApplication.getInstance()) + "/" + libFilename,
+                    libFilename, FileUtils.getNativeLibSearchDir(LimboApplication.getInstance()) + "/" + libFilename,
                     params);
         } catch (Exception ex) {
             ToastUtils.toastLong(LimboApplication.getInstance(), ex.getMessage());
@@ -1089,7 +1062,7 @@ class VMExecutor extends MachineExecutor {
      * @return 原生层返回的结果字符串
      */
     String startRaw(@NonNull String[] params, @NonNull String libFilename) {
-        String libPath = FileUtils.getNativeLibDir(LimboApplication.getInstance())
+        String libPath = FileUtils.getNativeLibSearchDir(LimboApplication.getInstance())
                 + "/" + libFilename;
         return start(Config.storagedir, LimboApplication.getBasefileDir(),
                 libFilename, libPath, params);
@@ -1116,30 +1089,6 @@ class VMExecutor extends MachineExecutor {
         return mInstance;
     }
 
-    /** True when this VM paints through the AGL display (in-process Surface). */
-    private boolean isAglDisplay() {
-        return getMachine() != null && "AGL".equals(getMachine().getUI());
-    }
-
-    /**
-     * 通过 KernelSU 给“当前线程”提权（ALS 参考实现的做法）。AGL 需要 App 的
-     * Surface，因此虚拟机必须跑在本进程里，不能像以往那样放到 su/app_process
-     * 子进程中。设备没有 KernelSU（或本应用未被授权）时返回 false。
-     */
-    private boolean grantRootInProcess() {
-        int res;
-        try {
-            res = RootUtils.grantRoot();
-        } catch (Throwable t) {
-            Log.w(TAG, "KernelSU root request failed", t);
-            return false;
-        }
-        boolean root = res == 0 && RootUtils.isRoot();
-        if (!root)
-            Log.w(TAG, "KernelSU root request failed: " + res);
-        return root;
-    }
-
     /**
      * Launches the VM in a root child process: su + app_process run an
      * independent JVM (RootVmLauncher) that loads the qemu library.  Blocks
@@ -1158,7 +1107,9 @@ class VMExecutor extends MachineExecutor {
             File statusFile = new File(filesDir, RootVmLauncher.STATUS_FILENAME);
             File errFile = new File(filesDir, ROOT_VM_STDERR);
 
-            String nativeLibDir = FileUtils.getNativeLibDir(ctx);
+            // 关闭安装时解压时 nativeLibraryDir 为空，getNativeLibSearchDir 会返回
+            // APK 内的 lib/<abi> 路径（<apk>!/lib/<abi>），子进程可直接从 APK 加载。
+            String nativeLibDir = FileUtils.getNativeLibSearchDir(ctx);
             String apkPath = ctx.getApplicationInfo().sourceDir;
             if (apkPath == null || !new File(apkPath).exists()) {
                 return LimboApplication.getInstance().getString(R.string.root_vm_start_failed)
@@ -1593,7 +1544,7 @@ class VMExecutor extends MachineExecutor {
     @Override
     public void enableAaudio(int value) {
         nativeEnableAaudio(value, Config.aaudioLibName,
-                FileUtils.getNativeLibDir(LimboApplication.getInstance())
+                FileUtils.getNativeLibSearchDir(LimboApplication.getInstance())
                         + "/" + Config.aaudioLibName);
     }
 

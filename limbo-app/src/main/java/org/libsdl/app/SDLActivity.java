@@ -303,6 +303,14 @@ public class SDLActivity
     protected void onDestroy() {
         Log.v(TAG, "onDestroy()");
 
+        // LIMBO: the clipboard handler registers an OnPrimaryClipChangedListener
+        // with the system clipboard service. That registration is a binder callback
+        // held in native code, so if it is never removed the ClipboardManager (and
+        // the Activity stored in its mContext) is retained forever -> Activity leak.
+        if (mClipboardHandler != null) {
+            mClipboardHandler.clipboardRelease();
+        }
+
         //LIMBO:
         //XXX: don't stop the sdl running
         if(SDLActivity.mSuspendOnly) {
@@ -1074,21 +1082,25 @@ public class SDLActivity
      * This method is called by SDL using JNI.
      */
     public static boolean clipboardHasText() {
-        return mClipboardHandler.clipboardHasText();
+        // LIMBO: mClipboardHandler is nulled by initialize() on destroy while the
+        // emulator thread may still call into the clipboard -> keep it null safe.
+        return mClipboardHandler != null && mClipboardHandler.clipboardHasText();
     }
 
     /**
      * This method is called by SDL using JNI.
      */
     public static String clipboardGetText() {
-        return mClipboardHandler.clipboardGetText();
+        return mClipboardHandler != null ? mClipboardHandler.clipboardGetText() : null;
     }
 
     /**
      * This method is called by SDL using JNI.
      */
     public static void clipboardSetText(String string) {
-        mClipboardHandler.clipboardSetText(string);
+        if (mClipboardHandler != null) {
+            mClipboardHandler.clipboardSetText(string);
+        }
     }
     //LIMBO:
     protected void runSDLMain(){ }
@@ -1641,6 +1653,9 @@ interface SDLClipboardHandler {
     public boolean clipboardHasText();
     public String clipboardGetText();
     public void clipboardSetText(String string);
+    // LIMBO: releases the system service registration. Called from
+    // SDLActivity#onDestroy() so the Activity is not leaked.
+    public void clipboardRelease();
 
 }
 
@@ -1652,8 +1667,25 @@ class SDLClipboardHandler_API11 implements
     protected android.content.ClipboardManager mClipMgr;
 
     SDLClipboardHandler_API11() {
-        mClipMgr = (android.content.ClipboardManager) SDL.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        // LIMBO: ClipboardManager keeps the Context it was created with
+        // (ContextImpl#getOuterContext()), so asking the Activity for it would make
+        // the clipboard service retain that Activity. Use the application context.
+        Context context = SDL.getContext();
+        if (context != null) {
+            Context appContext = context.getApplicationContext();
+            if (appContext != null) {
+                context = appContext;
+            }
+        }
+        mClipMgr = (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
         mClipMgr.addPrimaryClipChangedListener(this);
+    }
+
+    @Override
+    public void clipboardRelease() {
+        if (mClipMgr != null) {
+            mClipMgr.removePrimaryClipChangedListener(this);
+        }
     }
 
     @Override
@@ -1691,7 +1723,19 @@ class SDLClipboardHandler_Old implements
     protected android.text.ClipboardManager mClipMgrOld;
 
     SDLClipboardHandler_Old() {
-        mClipMgrOld = (android.text.ClipboardManager) SDL.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        Context context = SDL.getContext();
+        if (context != null) {
+            Context appContext = context.getApplicationContext();
+            if (appContext != null) {
+                context = appContext;
+            }
+        }
+        mClipMgrOld = (android.text.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+    }
+
+    @Override
+    public void clipboardRelease() {
+        // Pre API 11 there is no clipboard change notification to unregister.
     }
 
     @Override

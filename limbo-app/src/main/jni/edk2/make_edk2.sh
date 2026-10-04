@@ -33,10 +33,22 @@
 #   Aarch64       AARCH64     ArmVirtPkg/ArmVirtQemu.dsc   edk2-stable202508
 #
 # 产物命名沿用 QEMU pc-bios 的惯例，便于直接作为 -bios 固件使用：
-#   IA32    -> edk2-i386-code.fd      （OvmfPkgIa32 的 OVMF_CODE.fd）
-#   X64     -> edk2-x86_64-code.fd    （OvmfPkgX64 的 OVMF_CODE.fd）
-#   ARM     -> edk2-arm-code.fd       （ArmVirtQemu-ARM 的 QEMU_EFI.fd）
-#   AARCH64 -> edk2-aarch64-code.fd   （ArmVirtQemu-AARCH64 的 QEMU_EFI.fd）
+#   IA32    -> edk2-i386-code.fd      统一 FD [FD.OVMF]（= OVMF_VARS.fd + OVMF_CODE.fd）
+#   X64     -> edk2-x86_64-code.fd    统一 FD [FD.OVMF]（= OVMF_VARS.fd + OVMF_CODE.fd）
+#   ARM     -> edk2-arm-code.fd       统一 FD（ArmVirtQemu-ARM 的 QEMU_EFI.fd）
+#   AARCH64 -> edk2-aarch64-code.fd   统一 FD（ArmVirtQemu-AARCH64 的 QEMU_EFI.fd）
+#
+# x86 为什么必须部署【统一 FD】而不是单独的 OVMF_CODE.fd：
+# QEMU 的 -bios 走 hw/i386/x86-common.c:x86_bios_rom_init()，其中要求
+#     bios_size > 0 且 bios_size % 65536 == 0
+# 否则直接
+#     fprintf(stderr, "qemu: could not load PC BIOS '%s'\n", bios_name); exit(1);
+# 而 OVMF_CODE.fd 的大小是 CODE_SIZE（FD_SIZE_IN_KB=4096 时为 0x37C000 = 3653632），
+# 不是 64KiB 的整数倍，必然被拒（这就是 “qemu: could not load PC BIOS ...” 的来源）。
+# 统一 FD 的大小是 FW_SIZE（0x100000 / 0x200000 / 0x400000，都是 64KiB 的整数倍），
+# 且高地址端是 SECFV（内含 reset vector），被 QEMU 映射到 4GiB 顶端后正好落在
+# 0xFFFFFFF0，绝对地址与 OvmfPkgDefines.fdf.inc 的 FW_BASE_ADDRESS 完全一致。
+# ArmVirtQemu 的 QEMU_EFI.fd 本身就是统一 FD，没有这个问题。
 #
 # -----------------------------------------------------------------------------
 # 为什么主标签固定在 edk2-stable202508
@@ -357,7 +369,7 @@ ensure_tools_def_flag() {
 build_one() {
     local arch="$1"
 
-    local dsc fv out dir outdir_rel fvpath
+    local dsc fv out dir outdir_rel fvpath fvdir sz
     dsc="$(arch_dsc "$arch")"
     fv="$(arch_fv "$arch")"
     out="$(arch_out "$arch")"
@@ -399,12 +411,46 @@ build_one() {
     # 从 DSC 的 OUTPUT_DIRECTORY 推导产物路径（ArmVirtQemu 里含 $(ARCH) 占位）
     outdir_rel="$(grep -E '^[[:space:]]*OUTPUT_DIRECTORY' "$dir/$dsc" | head -n1 | cut -d= -f2- | tr -d ' \r')"
     outdir_rel="${outdir_rel/\$(ARCH)/$arch}"
-    fvpath="$dir/$outdir_rel/${BUILD_TARGET}_${TOOLCHAIN_TAG}/FV/$fv"
-    [ -f "$fvpath" ] || { warn "未找到构建产物：$fvpath"; return 1; }
+    fvdir="$dir/$outdir_rel/${BUILD_TARGET}_${TOOLCHAIN_TAG}/FV"
 
     mkdir -p "$EDK2_FIRMWARE_DIR"
-    cp -f "$fvpath" "$EDK2_FIRMWARE_DIR/$out"
-    msg "部署 $out（$(du -h "$EDK2_FIRMWARE_DIR/$out" 2>/dev/null | cut -f1)）"
+
+    case "$arch" in
+        IA32|X64)
+            # x86 部署【统一 FD】而不是单独的 OVMF_CODE.fd（原因见文件头）。
+            # GenFds 通常直接产出 FV/OVMF.fd；若没有，则用
+            #   OVMF_VARS.fd + OVMF_CODE.fd
+            # 拼接复现统一 FD：VARS 段在低地址，随后是 FVMAIN_COMPACT，最后是
+            # SECFV，与 OvmfPkgX64.fdf 里 [FD.OVMF] 的区域布局逐一对应，总大小
+            # 恰为 FW_SIZE。
+            if [ -f "$fvdir/OVMF.fd" ]; then
+                cp -f "$fvdir/OVMF.fd" "$EDK2_FIRMWARE_DIR/$out"
+            elif [ -f "$fvdir/OVMF_VARS.fd" ] && [ -f "$fvdir/OVMF_CODE.fd" ]; then
+                cat "$fvdir/OVMF_VARS.fd" "$fvdir/OVMF_CODE.fd" > "$EDK2_FIRMWARE_DIR/$out"
+            else
+                warn "未找到 OVMF 统一固件：$fvdir/OVMF.fd（或 OVMF_VARS.fd + OVMF_CODE.fd）"
+                return 1
+            fi
+            ;;
+        *)
+            fvpath="$fvdir/$fv"
+            [ -f "$fvpath" ] || { warn "未找到构建产物：$fvpath"; return 1; }
+            cp -f "$fvpath" "$EDK2_FIRMWARE_DIR/$out"
+            ;;
+    esac
+
+    # x86 的 -bios 兼容性自检：QEMU 的 x86_bios_rom_init() 要求固件大小是
+    # 64KiB 的整数倍，这里显式校验，避免再出现“构建成功、QEMU 却拒绝加载”的回归。
+    sz="$(wc -c < "$EDK2_FIRMWARE_DIR/$out" | tr -d '[:space:]')"
+    case "$arch" in
+        IA32|X64)
+            if [ $((sz % 65536)) -ne 0 ]; then
+                warn "$out 大小为 $sz 字节，不是 64KiB 的整数倍；QEMU -bios 将报 could not load PC BIOS"
+                return 1
+            fi
+            ;;
+    esac
+    msg "部署 $out（$(du -h "$EDK2_FIRMWARE_DIR/$out" 2>/dev/null | cut -f1)，$sz 字节）"
 }
 
 # ---------------------------------------------------------------------------

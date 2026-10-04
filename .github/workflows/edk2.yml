@@ -137,6 +137,10 @@ jobs:
 
       - name: 构建 EDK2 固件（${{ matrix.arch }}）
         working-directory: limbo-app/src/main/jni/edk2
+        # 显式指定固件输出目录，与下方「收集产物」步骤读取的路径保持同一来源，
+        # 避免依赖脚本内部默认值（该默认值曾算错一级，把固件落到 jni/assets/roms）。
+        env:
+          EDK2_FIRMWARE_DIR: ${{ github.workspace }}/limbo-app/src/main/assets/roms
         run: |
           set -o pipefail
           bash make_edk2.sh build "${{ matrix.arch }}" 2>&1 | tee "$LOGDIR/${{ matrix.arch }}.log"

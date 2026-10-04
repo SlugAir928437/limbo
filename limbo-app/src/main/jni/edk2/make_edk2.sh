@@ -105,7 +105,10 @@
 set -euo pipefail
 
 EDK2_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIMBO_MAIN_DIR="$(cd "$EDK2_DIR/.." && pwd)"        # limbo-app/src/main
+# 脚本位于 limbo-app/src/main/jni/edk2，故向上两级（../.. = jni 的父目录）才是
+# 模块主目录 limbo-app/src/main；固件与 assets 位于 limbo-app/src/main/assets/roms。
+# 注意：这里是「上两级」，而下面的 EDK2_PATCH_DIR 用的是「上一级」（jni/patches）。
+LIMBO_MAIN_DIR="$(cd "$EDK2_DIR/../.." && pwd)"     # limbo-app/src/main
 EDK2_FIRMWARE_DIR="${EDK2_FIRMWARE_DIR:-$LIMBO_MAIN_DIR/assets/roms}"
 
 EDK2_GIT_URL="${EDK2_GIT_URL:-https://github.com/tianocore/edk2.git}"

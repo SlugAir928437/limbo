@@ -199,6 +199,10 @@ public class LimboSDLActivity extends SDLActivity
 
     private void removeListeners() {
         MachineController.getInstance().removeOnStatusChangeListener(this);
+        // Also drop the event listener: MachineController is a process-wide
+        // singleton, so leaving this activity registered would pin it (and its
+        // whole view hierarchy) forever.
+        MachineController.getInstance().removeOnEventListener(this);
         mKeyMapManager.setOnSendKeyEventListener(this);
         mKeyMapManager.setOnSendMouseEventListener(this);
         mKeyMapManager.setOnUnhandledTouchEventListener(this);

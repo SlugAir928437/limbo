@@ -132,16 +132,21 @@ public class ArchDefinitions {
         ArrayList<String> values = new ArrayList<>();
         switch (LimboApplication.arch) {
             case x86:
+                // SeaBIOS 256K (QEMU 10.x default), legacy 128K SeaBIOS, and the
+                // microvm machine firmware
+                values.add("bios-256k.bin");
+                values.add("bios.bin");
+                values.add("bios-microvm.bin");
+
+                values.add("edk2-i386-code.fd");
+                break;
             case x86_64:
                 // SeaBIOS 256K (QEMU 10.x default), legacy 128K SeaBIOS, and the
                 // microvm machine firmware
                 values.add("bios-256k.bin");
                 values.add("bios.bin");
                 values.add("bios-microvm.bin");
-                // EDK2 OVMF（UEFI）固件：x86 由 OvmfPkgIa32、x86_64 由 OvmfPkgX64
-                // 构建（见 jni/edk2/make_edk2.sh）。两个名字都列出，实际只会有
-                // 构建当前 APK 时按 BUILD_GUEST 生成的那一个（列表按 assets 过滤）。
-                values.add("edk2-i386-code.fd");
+
                 values.add("edk2-x86_64-code.fd");
                 break;
             case arm:

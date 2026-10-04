@@ -343,4 +343,6 @@
     <string name="arch_arm">ARM (32 位)</string>
     <string name="arch_ia64">IA-64 (安腾)</string>
     <string name="arch_ia64w">IA-64 (安腾, wide)</string>
+    <string name="archNotBundled">（未内置引擎）</string>
+    <string name="archNotBundledMessage">当前安装包未内置 %1$s 的 QEMU 引擎，无法切换。请用 jni/Makefile（INSTALL_QEMU_LIBS）编译该架构的引擎后重新安装即可启用。</string>
 </resources>

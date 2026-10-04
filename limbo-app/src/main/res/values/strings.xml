@@ -355,4 +355,6 @@
     <string name="arch_arm">ARM (32-bit)</string>
     <string name="arch_ia64">IA-64 (Itanium)</string>
     <string name="arch_ia64w">IA-64 (Itanium, wide)</string>
+    <string name="archNotBundled">(engine not bundled)</string>
+    <string name="archNotBundledMessage">This build does not bundle the QEMU engine for %1$s, so it cannot be selected. Build it with jni/Makefile (INSTALL_QEMU_LIBS) and reinstall to enable it.</string>
 </resources>

@@ -33,6 +33,7 @@ import com.limbo.emu.log.Logger;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.List;
@@ -65,18 +66,41 @@ public final class ArchManager {
     /** SharedPreferences key holding the persisted {@link Config.Arch} name. */
     public static final String PREFS_KEY_ARCH = "emulatedArch";
 
+    /** Stable request code for the relaunch {@link PendingIntent}. */
+    private static final int RESTART_REQUEST_CODE = 0x11A64;
+
     /**
      * Engine probe order. Kept identical to the historical auto-detection order
      * in {@code MainActivity#checkQEMULib} so existing installs keep running the
      * same engine they did before this setting existed.
+     *
+     * <p>The legacy {@link Config.Arch#ia64w} value is intentionally absent: it
+     * only exists so already-saved IA-64 machine rows keep their database tag and
+     * no {@code libqemu-system-ia64w.so} engine has ever been shipped.
      */
     private static final Config.Arch[] PROBE_ORDER = {
             Config.Arch.x86_64,
             Config.Arch.x86,
             Config.Arch.arm,
             Config.Arch.arm64,
-            Config.Arch.ia64,
-            Config.Arch.ia64w
+            Config.Arch.ia64
+    };
+
+    /**
+     * The guest architectures offered by the "Switch Architecture" picker.
+     *
+     * <p>These are exactly the engines the native build can produce (see
+     * {@code jni/Makefile}, target {@code INSTALL_QEMU_LIBS}): 32- and 64-bit
+     * x86, 32- and 64-bit ARM, and the IA-64 fork -- five entries in total. The
+     * list is intentionally split per variant instead of per family so the user
+     * can pick the exact guest bitness.
+     */
+    private static final Config.Arch[] SELECTABLE_ARCHS = {
+            Config.Arch.x86,
+            Config.Arch.x86_64,
+            Config.Arch.arm,
+            Config.Arch.arm64,
+            Config.Arch.ia64
     };
 
     private ArchManager() {
@@ -235,6 +259,17 @@ public final class ArchManager {
         return result;
     }
 
+    /**
+     * @return the five guest architectures shown by the "Switch Architecture"
+     * picker, in display order. Entries whose engine is missing from this build
+     * are included as well, so the picker always presents the same split into
+     * five architectures; {@link #isArchAvailable} tells which one can actually
+     * be selected.
+     */
+    public static List<Config.Arch> getSelectableArchs() {
+        return new ArrayList<>(Arrays.asList(SELECTABLE_ARCHS));
+    }
+
     /** @return the persisted architecture, or {@code null} if the user never chose one. */
     public static Config.Arch getSelectedArch(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
@@ -248,7 +283,15 @@ public final class ArchManager {
         }
     }
 
-    /** Persists the architecture chosen by the user. */
+    /**
+     * Persists the architecture chosen by the user.
+     *
+     * <p>Uses {@link SharedPreferences.Editor#commit()} rather than {@code
+     * apply()}: the caller tears this process down immediately afterwards (a JNI
+     * engine cannot be swapped in place), and a SIGKILL would abort the
+     * asynchronous disk write that {@code apply()} schedules -- the choice would
+     * silently be lost and the app would come back up on the old architecture.
+     */
     public static void setSelectedArch(Context context, Config.Arch arch) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         SharedPreferences.Editor edit = prefs.edit();
@@ -256,7 +299,7 @@ public final class ArchManager {
             edit.remove(PREFS_KEY_ARCH);
         else
             edit.putString(PREFS_KEY_ARCH, arch.name());
-        edit.apply();
+        edit.commit();
     }
 
     /**
@@ -360,29 +403,47 @@ public final class ArchManager {
      * Restarts the app so the newly selected QEMU engine is loaded in a fresh
      * process. A JNI library cannot be unloaded, so switching architectures
      * always requires a restart.
+     *
+     * <p>The relaunch is scheduled through {@link AlarmManager} <em>before</em>
+     * the process is torn down, so the system starts the activity from a brand
+     * new process: the new engine is then the first (and only) one loaded.
+     * Starting the activity directly instead would recreate it inside this very
+     * process, where the previous engine is still resident. The direct launch is
+     * kept only as a fallback for OEM builds that refuse the alarm.
      */
     public static void restartApp(Activity activity) {
+        if (activity == null)
+            return;
+
         Intent intent = new Intent(activity, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
 
+        boolean scheduled = false;
         try {
-            PendingIntent pendingIntent = PendingIntent.getActivity(activity, 0, intent,
-                    PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            PendingIntent pendingIntent = PendingIntent.getActivity(activity, RESTART_REQUEST_CODE,
+                    intent, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             AlarmManager alarmManager =
                     (AlarmManager) activity.getSystemService(Context.ALARM_SERVICE);
             if (alarmManager != null) {
                 // Relaunch shortly after we tear this process down.
                 alarmManager.set(AlarmManager.RTC, System.currentTimeMillis() + 200, pendingIntent);
-            } else {
-                activity.startActivity(intent);
+                scheduled = true;
             }
         } catch (Exception e) {
-            Log.w(TAG, "Could not schedule restart, launching directly: " + e.getMessage());
-            activity.startActivity(intent);
+            Log.w(TAG, "Could not schedule restart: " + e.getMessage());
+        }
+
+        if (!scheduled) {
+            try {
+                activity.startActivity(intent);
+            } catch (Exception e) {
+                Log.w(TAG, "Could not launch restart activity: " + e.getMessage());
+            }
         }
 
         activity.finish();
+        // SIGKILL: tear the process down without running any destructors (see
+        // MachineService), so the resident native engine is dropped cleanly.
         android.os.Process.killProcess(android.os.Process.myPid());
-        System.exit(0);
     }
 }

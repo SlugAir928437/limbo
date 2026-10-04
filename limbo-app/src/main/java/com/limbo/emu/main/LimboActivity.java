@@ -1294,6 +1294,13 @@ public class LimboActivity extends AppCompatActivity implements
             loadMachineUI();
             new Handler(Looper.getMainLooper()).postDelayed(this::postLoadMachineUI, 1000);
             setCPUOptions();
+            // java.util.Observable keeps its observers in a Vector and allows the
+            // same Observer to be registered more than once, while deleteObserver()
+            // drops only the first occurrence. Loading machines repeatedly would
+            // therefore leave stale references behind and (because the Machine
+            // model outlives the activity in the singleton controller) leak it.
+            // Unregister first so the activity is registered at most once.
+            getMachine().deleteObserver(LimboActivity.this);
             getMachine().addObserver(LimboActivity.this);
         });
     }
@@ -2001,6 +2008,10 @@ public class LimboActivity extends AppCompatActivity implements
     @Override
     public void onDestroy() {
         MachineController.getInstance().removeOnStatusChangeListener(this);
+        // MachineController is a process-wide singleton. Its listener sets have to
+        // be emptied here, otherwise the destroyed activity (and the whole view
+        // hierarchy it retains) stays reachable through the singleton forever.
+        MachineController.getInstance().removeOnEventListener(this);
         Machine machine = getMachine();
         if (machine != null) {
             machine.deleteObserver(this);
@@ -2177,8 +2188,10 @@ public class LimboActivity extends AppCompatActivity implements
         items.add(getString(R.string.ImportBIOSFile));
         items.add(getString(R.string.Settings));
         items.add(getString(R.string.ViewLog));
-        // Only offer the switch when this build actually bundles another engine.
-        if (ArchManager.getAvailableArchs(this).size() > 1)
+        // The picker always lists the five supported architectures (entries whose
+        // engine is missing are marked and rejected on tap), so it stays reachable
+        // even when only a single engine happens to be bundled.
+        if (ArchManager.getSelectableArchs().size() > 1)
             items.add(getString(R.string.SwitchArchitecture));
         items.add(getString(R.string.Changelog));
         items.add(getString(R.string.License));
@@ -2202,15 +2215,20 @@ public class LimboActivity extends AppCompatActivity implements
     }
 
     /**
-     * Shows the emulated-architecture picker. Each architecture keeps its own
-     * list of virtual machines, so switching changes the machine list as well.
+     * Shows the emulated-architecture picker. The list is the fixed set of five
+     * guest architectures this project can emulate -- 32/64-bit x86, 32/64-bit
+     * ARM and IA-64 -- split per variant so the exact bitness can be picked. An
+     * entry whose QEMU engine is not part of this particular build is still
+     * listed (marked as such) but cannot be selected. Each architecture keeps
+     * its own list of virtual machines, so switching changes the machine list
+     * as well.
      */
     private void promptSwitchArchitecture() {
         if (MachineController.getInstance().isRunning()) {
             ToastUtils.toastShort(this, getString(R.string.VMRunning));
             return;
         }
-        final List<Config.Arch> archs = ArchManager.getAvailableArchs(this);
+        final List<Config.Arch> archs = ArchManager.getSelectableArchs();
         if (archs.size() <= 1) {
             ToastUtils.toastShort(this, getString(R.string.NoAlternativeArch));
             return;
@@ -2219,7 +2237,10 @@ public class LimboActivity extends AppCompatActivity implements
         ArrayList<String> labels = new ArrayList<>();
         for (Config.Arch arch : archs) {
             String name = ArchManager.displayName(this, arch);
-            labels.add(arch == current ? "\u2713 " + name : name);
+            String label = (arch == current ? "\u2713 " : "") + name;
+            if (!ArchManager.isArchAvailable(this, arch))
+                label += " " + getString(R.string.archNotBundled);
+            labels.add(label);
         }
         new AlertDialog.Builder(this)
                 .setTitle(R.string.SwitchArchitecture)
@@ -2227,6 +2248,11 @@ public class LimboActivity extends AppCompatActivity implements
                     Config.Arch picked = archs.get(which);
                     if (picked == current)
                         return;
+                    if (!ArchManager.isArchAvailable(this, picked)) {
+                        ToastUtils.toastLong(this, getString(R.string.archNotBundledMessage,
+                                ArchManager.displayName(this, picked)));
+                        return;
+                    }
                     confirmSwitchArchitecture(picked);
                 })
                 .setNegativeButton(getString(android.R.string.cancel), null)

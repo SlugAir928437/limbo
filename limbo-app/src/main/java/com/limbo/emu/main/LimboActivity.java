@@ -109,6 +109,7 @@ public class LimboActivity extends AppCompatActivity implements
     private static final int DISCARD_VM_STATE = 11;
     private static final int SETTINGS = 13;
     private static final int IMPORT_BIOS_FILE = 15;
+    private static final int SWITCH_ARCH = 16;
 
     // disk mapping
     private final Hashtable<FileType, DiskInfo> diskMapping = new Hashtable<>();
@@ -914,6 +915,9 @@ public class LimboActivity extends AppCompatActivity implements
     }
 
     private void populateAttributesUI() {
+        // Show which architecture is being emulated (each one has its own VM list)
+        uiState.setArchLabel(getString(R.string.arch_current,
+                ArchManager.displayName(this, LimboApplication.arch)));
         populateMachines(null);
         populateMachineType(null);
         populateCPUs(null);
@@ -2126,6 +2130,9 @@ public class LimboActivity extends AppCompatActivity implements
             case VIEWLOG:
                 Logger.viewLimboLog(this);
                 break;
+            case SWITCH_ARCH:
+                promptSwitchArchitecture();
+                break;
             case CHANGELOG:
                 LimboActivityCommon.showChangelog(this);
                 break;
@@ -2148,6 +2155,7 @@ public class LimboActivity extends AppCompatActivity implements
         else if (label.equals(getString(R.string.ImportBIOSFile))) return IMPORT_BIOS_FILE;
         else if (label.equals(getString(R.string.Settings))) return SETTINGS;
         else if (label.equals(getString(R.string.ViewLog))) return VIEWLOG;
+        else if (label.equals(getString(R.string.SwitchArchitecture))) return SWITCH_ARCH;
         else if (label.equals(getString(R.string.Changelog))) return CHANGELOG;
         else if (label.equals(getString(R.string.License))) return LICENSE;
         else if (label.equals(getString(R.string.Exit))) return QUIT;
@@ -2169,6 +2177,9 @@ public class LimboActivity extends AppCompatActivity implements
         items.add(getString(R.string.ImportBIOSFile));
         items.add(getString(R.string.Settings));
         items.add(getString(R.string.ViewLog));
+        // Only offer the switch when this build actually bundles another engine.
+        if (ArchManager.getAvailableArchs(this).size() > 1)
+            items.add(getString(R.string.SwitchArchitecture));
         items.add(getString(R.string.Changelog));
         items.add(getString(R.string.License));
         items.add(getString(R.string.Exit));
@@ -2188,6 +2199,51 @@ public class LimboActivity extends AppCompatActivity implements
     private void showSettings() {
         Intent i = new Intent(this, LimboSettingsManager.class);
         startActivity(i);
+    }
+
+    /**
+     * Shows the emulated-architecture picker. Each architecture keeps its own
+     * list of virtual machines, so switching changes the machine list as well.
+     */
+    private void promptSwitchArchitecture() {
+        if (MachineController.getInstance().isRunning()) {
+            ToastUtils.toastShort(this, getString(R.string.VMRunning));
+            return;
+        }
+        final List<Config.Arch> archs = ArchManager.getAvailableArchs(this);
+        if (archs.size() <= 1) {
+            ToastUtils.toastShort(this, getString(R.string.NoAlternativeArch));
+            return;
+        }
+        final Config.Arch current = LimboApplication.arch;
+        ArrayList<String> labels = new ArrayList<>();
+        for (Config.Arch arch : archs) {
+            String name = ArchManager.displayName(this, arch);
+            labels.add(arch == current ? "\u2713 " + name : name);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.SwitchArchitecture)
+                .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                    Config.Arch picked = archs.get(which);
+                    if (picked == current)
+                        return;
+                    confirmSwitchArchitecture(picked);
+                })
+                .setNegativeButton(getString(android.R.string.cancel), null)
+                .show();
+    }
+
+    private void confirmSwitchArchitecture(final Config.Arch arch) {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.SwitchArchitecture)
+                .setMessage(getString(R.string.switchArchWarning,
+                        ArchManager.displayName(this, arch)))
+                .setPositiveButton(getString(android.R.string.yes), (dialog, which) -> {
+                    ArchManager.setSelectedArch(this, arch);
+                    ArchManager.restartApp(this);
+                })
+                .setNegativeButton(getString(android.R.string.no), null)
+                .show();
     }
 
     public void promptDeleteMachine() {

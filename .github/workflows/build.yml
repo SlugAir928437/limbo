@@ -14,6 +14,14 @@ on:
           - arm64-v8a
           - x86
           - x86_64
+      build_edk2:
+        description: '是否编译 EDK2 客户机 UEFI 固件（默认否）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   build_linux:
@@ -21,11 +29,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    # 五条并行构建路径（matrix，fail-fast: false 使其互不取消），每个客户机架构
-    # 各占一条，全部同时运行：
-    #   x86_64 / i386 / arm / aarch64 -> 官方 QEMU v11.0.0（含 spice / VirGL / EDK2）
-    #   ia64                          -> IA-64 fork（Makefile 会自动跳过
-    #                                    spice / VirGL，并按需跳过 EDK2）
+    # 两条并行构建路径（matrix，fail-fast: false 使其互不取消）：
+    #   official -> 4 个官方 QEMU v11.0.0 客户机架构（x86_64 / i386 / arm /
+    #               aarch64）合并为【一条任务】：QEMU 的 --target-list 支持逗号
+    #               分隔的多目标，因此一次依赖栈构建 + 一次 QEMU 配置构建即可
+    #               同时产出这四个架构，不再像过去那样各自重复编译整条依赖栈。
+    #   ia64     -> IA-64 fork（源码树与官方不同，必须单独一条；Makefile 会自动
+    #               跳过 spice / VirGL）
     # 构建参数集中在这里：每一步都会继承同样的环境，等价于原来单步
     # `make limbo` 里 export 的那些变量。NDK_ROOT / BUILD_THREADS 依赖运行时的
     # runner 环境，无法在 job env 里求值，由下方「准备构建环境」步骤写入
@@ -34,14 +44,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: x86_64
-            guest: x86_64-softmmu
-          - name: i386
-            guest: i386-softmmu
-          - name: arm
-            guest: arm-softmmu
-          - name: aarch64
-            guest: aarch64-softmmu
+          - name: official
+            guest: x86_64-softmmu,i386-softmmu,arm-softmmu,aarch64-softmmu
           - name: ia64
             guest: ia64-softmmu
     env:
@@ -49,6 +53,9 @@ jobs:
       BUILD_HOST: ${{ github.event.inputs.build_host || 'arm64-v8a' }}
       USE_GTK: 'true'
       USE_VIRGL: 'true'
+      # EDK2 客户机 UEFI 固件默认【不编译】；需要时在手动触发时把 build_edk2
+      # 选为 true（Makefile 侧对应 USE_EDK2=true）。
+      USE_EDK2: ${{ github.event.inputs.build_edk2 || 'false' }}
       LOGDIR: ${{ github.workspace }}/ci-logs
     steps:
       - name: 检出代码
@@ -65,7 +72,8 @@ jobs:
       # config-X + X（libffi / glib / pixman / slirp / spice / gtk / virglrenderer，
       # 保持 jni/Makefile 里 config-deps -> deps 的相对次序）-> config-qemu ->
       # qemu -> ncat -> install。
-      # 另有一步独立的 EDK2 客户机 UEFI 固件构建（make edk2），排在 install 之后。
+      # EDK2 客户机 UEFI 固件（make edk2）不再是默认步骤：只有当 USE_EDK2=true
+      # （手动触发时 build_edk2=true）时才会执行，见文末条件步骤。
       # 拆分的目的是让失败点直接定位到具体阶段（Actions 里一眼可见是哪一步、
       # 甚至哪个依赖挂了），每步输出同时 tee 一份完整日志到 ci-logs/，
       # 失败时整体上传为 artifact。
@@ -97,12 +105,17 @@ jobs:
             libtool-bin pkg-config flex bison gettext texinfo rsync patch \
             gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev \
             nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib
-          # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉工具链）。
-          # 32 位 ARM 的软浮点工具链在部分发行版上缺失，故这两个包容错安装：
-          # 真的缺工具链时 make edk2 会在对应架构上给出明确报错，而不是静默编出错误固件。
-          sudo -E apt-get install -y --fix-missing gcc-aarch64-linux-gnu || true
-          sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabi \
-            || sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabihf || true
+          # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉
+          # 工具链）。EDK2 默认不编译，只有 USE_EDK2=true 时才安装这两个包：
+          # 32 位 ARM 的软浮点工具链在部分发行版上缺失，故容错安装；真的缺工具链时
+          # make edk2 会在对应架构上给出明确报错，而不是静默编出错误固件。
+          if [ "$USE_EDK2" = "true" ]; then
+            sudo -E apt-get install -y --fix-missing gcc-aarch64-linux-gnu || true
+            sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabi \
+              || sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabihf || true
+          else
+            echo ">> USE_EDK2=${USE_EDK2}：跳过 EDK2 交叉工具链安装"
+          fi
           # ubuntu-latest 自带的 meson (1.3.2) 太旧: glib 2.89.3 要求 >= 1.4.0
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           # verify the host glib tools are present: the Makefile's glib target
@@ -125,7 +138,7 @@ jobs:
           echo "BUILD_THREADS=$(nproc)" >> "$GITHUB_ENV"
           echo "PATH=$PATH:${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           mkdir -p "$LOGDIR"
-          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL}"
+          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL} USE_EDK2=${USE_EDK2}"
           echo ">> NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
       - name: 1/20 拉取源码并打补丁（make fetch）
@@ -259,11 +272,13 @@ jobs:
           set -o pipefail
           make install 2>&1 | tee "$LOGDIR/20-install.log"
 
-      # EDK2（TianoCore）客户机 UEFI 固件。固件与 host ABI 无关、只与客户机架构
-      # 有关，所以这里按 BUILD_GUEST 只构建对应架构（IA32/X64/ARM/AARCH64），
+      # EDK2（TianoCore）客户机 UEFI 固件。默认【不编译】：只有 USE_EDK2=true
+      # （手动触发时将 build_edk2 选为 true）时才执行。固件与 host ABI 无关、只与
+      # 客户机架构有关，所以按 BUILD_GUEST 只构建对应架构（IA32/X64/ARM/AARCH64），
       # 产物部署到 assets/roms/ 并随 APK 打包（见 jni/Makefile 的 edk2 目标与
       # jni/edk2/make_edk2.sh；主标签固定 edk2-stable202508，不含 IA64）。
       - name: 构建 EDK2 客户机固件（make edk2）
+        if: env.USE_EDK2 == 'true'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail

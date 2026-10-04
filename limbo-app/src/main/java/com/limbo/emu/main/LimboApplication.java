@@ -185,6 +185,12 @@ public class LimboApplication extends Application {
         } catch (Throwable ignore) {
             // ignored
         }
+        // Resolve the emulated architecture *before* the machine database is
+        // opened: the schema migration and every query are scoped to it, and the
+        // per-architecture configuration (machine folder, accelerators, log)
+        // has to be in place before any machine is loaded.
+        arch = ArchManager.resolveStartupArch(this);
+        ArchManager.applyArchConfig(arch);
         MachineOpenHelper.initialize(this);
         FavOpenHelper.initialize(this);
         setupFolders();

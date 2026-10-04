@@ -31,6 +31,7 @@ import com.limbo.emu.R;
 import com.limbo.emu.files.FileUtils;
 import com.limbo.emu.machine.Machine.FileType;
 import com.limbo.emu.main.Config;
+import com.limbo.emu.main.LimboApplication;
 import com.limbo.emu.main.LimboFileManager;
 
 import java.io.BufferedReader;
@@ -228,6 +229,11 @@ public class MachineImporter {
                         }
 
                     }
+                    // Imported VMs always belong to the architecture currently
+                    // being emulated; otherwise they would be invisible in the
+                    // per-architecture machine list.
+                    if (LimboApplication.arch != null)
+                        mach.setArch(LimboApplication.arch.name());
                     Log.d(TAG, "Adding Machine: " + mach.getName());
                     machines.add(mach);
                 }

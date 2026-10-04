@@ -2,85 +2,49 @@ package com.limbo.emu;
 
 import android.os.Bundle;
 
-import com.limbo.emu.log.Logger;
+import com.limbo.emu.main.ArchManager;
 import com.limbo.emu.main.Config;
 import com.limbo.emu.main.LimboActivity;
 import com.limbo.emu.main.LimboApplication;
-import com.tencent.bugly.crashreport.CrashReport;
 
 public class MainActivity extends LimboActivity {
     @Override
     public void onCreate(Bundle bundle) {
-        // 1) 探测并拿到真实可用架构
-        Config.Arch arch = checkQEMULib();
+        // 1) 取用已保存（或自动探测）的模拟架构
+        Config.Arch arch = LimboApplication.arch;
+        if (arch == null)
+            arch = ArchManager.resolveStartupArch(this);
+        if (arch == null)
+            throw new RuntimeException("Libs has not compiled into app");
         LimboApplication.arch = arch;
+
+        // 2) 加载该架构对应的 QEMU 引擎（JNI 层常驻，切换架构必须重启进程）
+        loadQEMULibrary(arch);
+
         Config.clientClass = this.getClass();
 
-        // 2) 公共部分
+        // 3) 公共部分
         Config.enableMTTCG = LimboApplication.isHost64Bit() && Config.enableMTTCG;
 
-        // 3) 按探测出的架构做差异化配置
-        applyArchConfig(arch);
+        // 4) 按架构做差异化配置（机器目录 / 加速器 / 日志）
+        ArchManager.applyArchConfig(arch);
 
         super.onCreate(bundle);
         // TODO: 日志/目录改到用户可访问位置
-    }
-
-    private void applyArchConfig(Config.Arch arch) {
-        switch (arch) {
-            case arm64:
-                Config.enableKVM = true;
-                Config.enableEmulatedFloppy = false;
-                Config.enableEmulatedSDCard = true;
-                Config.machineFolder = Config.machineFolder + "other/arm_machines/";
-                Logger.setupLogFile("/limbo/limbo-arm-log.txt");
-                break;
-
-            case ia64:
-                Config.enableKVM = false;
-                Config.enableEmulatedFloppy = false;
-                Config.enableEmulatedSDCard = true;
-                Config.machineFolder = Config.machineFolder + "other/ia64_machines/";
-                Logger.setupLogFile("/limbo/limbo-ia64-log.txt");
-                break;
-
-            case x86_64:
-            default:
-                Config.enableKVM = true;
-                // 注意：x86 版本不改 machineFolder、不设 floppy/sdcard
-                Logger.setupLogFile("/limbo/limbo-x86-log.txt");
-                break;
-        }
     }
 
     /** 探测成功后加载的库名，供后续使用 */
     private static String loadedLibName = null;
 
     /**
-     * 探测并加载本机可用的 QEMU 库，返回对应架构。
-     * 注意：一旦成功 loadLibrary，JNI 层就常驻了，不能"卸载再换一个"。
+     * 加载架构对应的 QEMU 共享库。
+     * 注意：一旦成功 loadLibrary，JNI 层就常驻了，不能"卸载再换一个"，因此
+     * 切换模拟架构时必须重启应用进程（见 {@link ArchManager#restartApp}）。
      */
-    public static Config.Arch checkQEMULib() throws RuntimeException {
-        // 库名 -> 架构，顺序即优先级
-        String[][] candidates = {
-                {"qemu-system-x86_64",  "x86_64"},
-                {"qemu-system-i386",    "x86"},
-                {"qemu-system-arm",     "arm"},
-                {"qemu-system-aarch64", "arm64"},
-                {"qemu-system-ia64",    "ia64"},
-                {"qemu-system-ia64w",   "ia64w"},
-        };
-
-        for (String[] c : candidates) {
-            try {
-                System.loadLibrary(c[0]);
-                loadedLibName = c[0];
-                return Config.Arch.valueOf(c[1]);
-            } catch (UnsatisfiedLinkError e) {
-                // 该库没编进来 / ABI 不匹配，继续试下一个
-            }
-        }
-        throw new RuntimeException("Libs has not compiled into app");
+    private static void loadQEMULibrary(Config.Arch arch) {
+        String library = ArchManager.libraryName(arch);
+        System.loadLibrary(library);
+        loadedLibName = library;
     }
 
     public static String getLoadedLibName() {

@@ -170,9 +170,14 @@ USE_VIRGL_VENUS ?= true
 # BUILD_GUEST 对应的客户机架构构建：
 #   x86(IA32)/x86_64(X64)/Arm(ARM)/Aarch64(AARCH64) -> edk2-stable202508
 #   ia64(IPF)                                       -> 不构建（上游无 IA64 平台）
-# 设为 false 可整体跳过（更快，但固件下拉框里就没有对应的 EDK2 固件项）。
+#
+# 默认【不启用】：EDK2 固件体积大、编译耗时，且并非所有构建都需要。默认的
+# `make limbo` / `make fetch` 不再编译 EDK2，固件下拉框里也就没有对应的 EDK2
+# 固件项（仍可用 QEMU 自带固件）。
+# 需要时显式打开：     export USE_EDK2=true && make limbo
+# 单独构建固件：       make edk2 USE_EDK2=true
 # 想一次构建全部架构： export EDK2_ARCHS="IA32 X64 ARM AARCH64"
 # 想换标签：           export EDK2_TAG=edk2-stable202505
 # 想换工具链：         export EDK2_TOOLCHAIN=GCC5
 #                      （默认 GCCNOLTO 非 LTO：新版 binutils 下 GCC5 的 -flto 会失败）
-USE_EDK2 ?= true
+USE_EDK2 ?= false

@@ -331,4 +331,16 @@
     <string name="button_restart">重启</string>
 
     <string name="this_version">当前版本更新日志</string>
+
+    <!-- 模拟架构切换 -->
+    <string name="SwitchArchitecture">切换模拟架构</string>
+    <string name="switchArchWarning">确定将模拟架构切换为 %1$s？\n\n应用将自动重启。每个模拟架构各自保存独立的虚拟机，切换后虚拟机列表也会随之变化。请先停止正在运行的虚拟机。</string>
+    <string name="NoAlternativeArch">当前版本未内置其他可用的模拟架构</string>
+    <string name="arch_current">模拟架构：%1$s</string>
+    <string name="arch_x86_64">x86_64 (amd64)</string>
+    <string name="arch_x86">x86 (i386)</string>
+    <string name="arch_arm64">ARM64 (aarch64)</string>
+    <string name="arch_arm">ARM (32 位)</string>
+    <string name="arch_ia64">IA-64 (安腾)</string>
+    <string name="arch_ia64w">IA-64 (安腾, wide)</string>
 </resources>

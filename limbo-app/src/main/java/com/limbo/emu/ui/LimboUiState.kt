@@ -59,6 +59,8 @@ class LimboUiState {
     var machines by mutableStateOf(listOf<String>())
     var machineSel by mutableStateOf(0)
     var machineEnabled by mutableStateOf(true)
+    // localized description of the emulated architecture currently in use
+    var archLabel by mutableStateOf("")
 
     // status
     var statusText by mutableStateOf("")

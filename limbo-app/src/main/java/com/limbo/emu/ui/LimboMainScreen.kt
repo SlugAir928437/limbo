@@ -501,12 +501,22 @@ private fun MachineCard(state: LimboUiState, callbacks: LimboUiCallbacks) {
                 tint = Color.Unspecified
             )
             Spacer(Modifier.width(12.dp))
-            Text(
-                text = stringResource(R.string.machineHeader),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.machineHeader),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                if (state.archLabel.isNotEmpty()) {
+                    Text(
+                        text = state.archLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
             LimboDropdown(
                 options = state.machines,
                 selectedIndex = state.machineSel,

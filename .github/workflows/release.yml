@@ -9,7 +9,8 @@ name: release
 # 每个依赖各自的 config-X + X（libffi / glib / pixman / slirp / spice / gtk /
 # virglrenderer）-> config-qemu -> qemu -> ncat -> install，
 # 失败时能直接看出卡在哪一依赖的哪一环。
-# 另有一步独立的 EDK2 客户机 UEFI 固件构建（make edk2），排在 install 之后。
+# EDK2 客户机 UEFI 固件（make edk2）默认【不编译】，只有 USE_EDK2=true
+# （手动触发时 build_edk2=true）时才会执行。
 on:
   workflow_dispatch:
     inputs:
@@ -21,6 +22,14 @@ on:
         description: 'Bugly AppID（崩溃上报用，发版时手动输入；留空则本次构建不启用 Bugly）'
         required: false
         default: ''
+      build_edk2:
+        description: '是否编译 EDK2 客户机 UEFI 固件（默认否）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 # 机签密钥参数：密钥库随仓库提交（keystore/release.jks），密码与别名与
 # keystore.properties 保持一致，本地与 CI 由此共用同一把发布密钥。
@@ -50,6 +59,9 @@ jobs:
       BUILD_HOST: arm64-v8a
       USE_GTK: 'true'
       USE_VIRGL: 'true'
+      # EDK2 客户机 UEFI 固件默认【不编译】；需要时手动触发时把 build_edk2 选为
+      # true（Makefile 侧对应 USE_EDK2=true）。
+      USE_EDK2: ${{ github.event.inputs.build_edk2 || 'false' }}
       LOGDIR: ${{ github.workspace }}/ci-logs
     steps:
       - name: 检出代码
@@ -83,12 +95,15 @@ jobs:
             libtool-bin pkg-config flex bison gettext texinfo rsync \
             gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev zip \
             nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib
-          # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉工具链）。
-          # 32 位 ARM 的软浮点工具链在部分发行版上缺失，故这两个包容错安装：
-          # 真的缺工具链时 make edk2 会在对应架构上给出明确报错，而不是静默编出错误固件。
-          sudo -E apt-get install -y --fix-missing gcc-aarch64-linux-gnu || true
-          sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabi \
-            || sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabihf || true
+          # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉
+          # 工具链）。EDK2 默认不编译，只有 USE_EDK2=true 时才安装这两个包。
+          if [ "$USE_EDK2" = "true" ]; then
+            sudo -E apt-get install -y --fix-missing gcc-aarch64-linux-gnu || true
+            sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabi \
+              || sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabihf || true
+          else
+            echo ">> USE_EDK2=${USE_EDK2}：跳过 EDK2 交叉工具链安装"
+          fi
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
@@ -105,7 +120,7 @@ jobs:
           echo "BUILD_THREADS=$(nproc)" >> "$GITHUB_ENV"
           echo "PATH=$PATH:${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           mkdir -p "$LOGDIR"
-          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL}"
+          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL} USE_EDK2=${USE_EDK2}"
           echo ">> NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
       - name: 1/20 拉取源码并打补丁（make fetch）
@@ -234,11 +249,13 @@ jobs:
           set -o pipefail
           make install 2>&1 | tee "$LOGDIR/20-install.log"
 
-      # EDK2（TianoCore）客户机 UEFI 固件。按 matrix.guest 只构建对应客户机架构
-      # （x86_64 -> X64，aarch64 -> AARCH64；ia64 客户机没有可用的 EDK2 平台固件，
-      # EDK2_ARCHS 为空、该步骤自动跳过，见 jni/Makefile 的 EDK2_ARCHS 推导），
-      # 产物部署到 assets/roms/ 并随 APK 打包。主标签固定 edk2-stable202508。
+      # EDK2（TianoCore）客户机 UEFI 固件。默认【不编译】：只有 USE_EDK2=true
+      # （手动触发时将 build_edk2 选为 true）时才执行。按 matrix.guest 只构建对应
+      # 客户机架构（x86_64 -> X64，aarch64 -> AARCH64；ia64 客户机没有可用的 EDK2
+      # 平台固件，EDK2_ARCHS 为空、该步骤自动跳过，见 jni/Makefile 的 EDK2_ARCHS
+      # 推导），产物部署到 assets/roms/ 并随 APK 打包。主标签固定 edk2-stable202508。
       - name: 构建 EDK2 客户机固件（make edk2）
+        if: env.USE_EDK2 == 'true'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail

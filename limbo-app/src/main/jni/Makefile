@@ -73,7 +73,20 @@ INSTALL_PIXMAN_LIBS=cp -Lf pixman/build-android-$(APP_ABI)/pixman/libpixman-1.so
         $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
     fi
 
-INSTALL_QEMU_LIBS=for target in x86_64 aarch64 ia64; do \
+# QEMU 引擎库：把 qemu/build/qemu-system-<target> 重命名部署为
+# obj/local/<abi>/libqemu-system-<target>.so，随后由 INSTALL_LIBS 一并复制进
+# src/main/jniLibs（即最终打进 APK 的那份）。
+# 这里必须列出 App 支持的全部客户机架构，漏掉某一项该引擎就不会进包：
+#   x86_64 -> libqemu-system-x86_64.so   （64 位 x86 客户机）
+#   i386   -> libqemu-system-i386.so     （32 位 x86 客户机）
+#   arm    -> libqemu-system-arm.so      （32 位 ARM 客户机）
+#   aarch64-> libqemu-system-aarch64.so  （64 位 ARM 客户机）
+#   ia64   -> libqemu-system-ia64.so     （IA-64 fork）
+# 命名需与 VMExecutor#getQemuLibrary / ArchManager#libName 保持一致；
+# ArchManager 正是通过扫描 APK 内是否存在这些 libqemu-system-*.so 来判断某个
+# 模拟架构在当前安装包中是否可选，因此遗漏会直接导致该架构在“切换模拟架构”
+# 菜单里不可见。
+INSTALL_QEMU_LIBS=for target in x86_64 i386 arm aarch64 ia64; do \
 	if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
 		cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
 			"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \
@@ -103,6 +116,7 @@ NCAT_BUILD_DIR=$(LIMBO_JNI_ROOT)/ncat
 NCAT_OUT_DIR=$(NDK_PROJECT_PATH)/jniLibs
 
 SYNC_LIBS_X86=rsync -av --include='libqemu-system-x86*.so' \
+    --include='libqemu-system-i386*.so' \
     --include='gdbserver' --include='gdb.setup' \
     --include='*/' --exclude='*' \
     ../jniLibs/ $(LIMBO_APP_LIBS)/jniLibs/
@@ -603,6 +617,8 @@ clean-ncat:
 
 # EDK2 客户机固件（详见上方 EDK2 段与 edk2/make_edk2.sh）。
 # 与 QEMU/ncat 不同，固件不依赖 NDK，也不需要先 make ndk。
+# 【默认不编译】：USE_EDK2 默认 false，`make limbo` / `make fetch` 都不会碰它；
+# 单独启用用 `make edk2`（或 export USE_EDK2=true 后走 `make limbo`）。
 #
 # 这里必须用【执行期】的 $(if ...) 而不是解析期 ifeq：EDK2_ARCHS 在文件下方才按
 # BUILD_GUEST 推导，解析到这里时它还没赋值，ifeq 会把它误判为空而永远跳过。
@@ -655,7 +671,8 @@ endif
 	make ncat
 	make install
 # EDK2 客户机固件：与 BUILD_HOST 无关，只为当前 BUILD_GUEST 对应的客户机架构
-# 构建一份 UEFI 固件并部署到 assets/roms/（USE_EDK2=false 可整体跳过）。
+# 构建一份 UEFI 固件并部署到 assets/roms/。【默认不编译】：USE_EDK2 在
+# android-limbo-config.mak 里默认为 false，需要时 export USE_EDK2=true。
 ifeq ($(USE_EDK2),true)
 	make edk2
 endif
@@ -780,8 +797,9 @@ VIRGL_MESON_FLAGS = $(if $(filter true,$(USE_VIRGL)),$(shell if grep -q virglren
 # 与 UDK2018 也没有任何可构建的 IA64 平台（同样详见 edk2/make_edk2.sh 头部说明）。
 # 因此 ia64-softmmu 客户机的 EDK2_ARCHS 为空，edk2 目标整体跳过。
 #
-# 固件与 BUILD_HOST 无关、只与客户机架构有关，因此默认只构建当前 BUILD_GUEST
-# 对应的那一个架构；需要一次构建全部时用 EDK2_ARCHS="IA32 X64 ARM AARCH64"。
+# 固件与 BUILD_HOST 无关、只与客户机架构有关。默认【不编译 EDK2】（USE_EDK2=false，
+# 见 android-limbo-config.mak）；启用后只构建当前 BUILD_GUEST 对应的那一个架构，
+# 需要一次构建全部时用 EDK2_ARCHS="IA32 X64 ARM AARCH64"。
 # ---------------------------------------------------------------------------
 EDK2_DIR          := $(LIMBO_JNI_ROOT)/edk2
 EDK2_SCRIPT       := $(EDK2_DIR)/make_edk2.sh
@@ -1044,5 +1062,6 @@ help:
 	@echo "  optional: make symbols 把所有 .so 构建产物的符号表输出到 obj/symbols/<abi>/"
 	@echo "           （SYMBOLS_KEEP_UNSTRIPPED=false 可只导出符号表文本、不复制 .so）"
 	@echo "  optional: make edk2 构建当前 BUILD_GUEST 对应的 EDK2 UEFI 固件到 assets/roms/"
-	@echo "           （EDK2_ARCHS=\"IA32 X64 ARM AARCH64\" 可一次构建全部；IA64 不在范围内，见 edk2/make_edk2.sh）"
+	@echo "           （默认不编译 EDK2；USE_EDK2=true 时 make limbo 才会带上它。"
+	@echo "            EDK2_ARCHS=\"IA32 X64 ARM AARCH64\" 可一次构建全部；IA64 不在范围内，见 edk2/make_edk2.sh）"
 	@echo " example: export BUILD_GUEST=x86_64-softmmu && export BUILD_HOST=armeabi-v7a && make limbo"

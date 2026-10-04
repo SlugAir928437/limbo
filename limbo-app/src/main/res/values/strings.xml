@@ -343,4 +343,16 @@
     <string name="main_disclaimer">This application is a wrapper around the ncat binary cross-compiled for Android from the Nmap source (https://nmap.org). This is not an official Nmap application. </string>
     <string name="main_examples">EXAMPLES:\nncat 192.168.1.100 9999\nncat -lp 9999\nncat -u 192.168.1.100 9999\nncat -ulp 9999\nncat -lp 9999 -e /system/bin/sh\n\nType \'ncat --help\' for the full list.\nPlease report an issue if you find any bug while trying different flags.</string>
     <string name="main_source">Source code: https://github.com/ruvolof/nc-for-android. Use Github to submit bugs or feature requests.</string>
+
+    <!-- Emulated architecture switching -->
+    <string name="SwitchArchitecture">Switch Architecture</string>
+    <string name="switchArchWarning">Switch the emulated architecture to %1$s?\n\nThe app will restart. Each architecture keeps its own set of virtual machines, so the machine list will change as well. Stop any running VM first.</string>
+    <string name="NoAlternativeArch">This build bundles no other emulated architecture</string>
+    <string name="arch_current">Architecture: %1$s</string>
+    <string name="arch_x86_64">x86_64 (amd64)</string>
+    <string name="arch_x86">x86 (i386)</string>
+    <string name="arch_arm64">ARM64 (aarch64)</string>
+    <string name="arch_arm">ARM (32-bit)</string>
+    <string name="arch_ia64">IA-64 (Itanium)</string>
+    <string name="arch_ia64w">IA-64 (Itanium, wide)</string>
 </resources>

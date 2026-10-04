@@ -1,0 +1,164 @@
+name: edk2
+# ---------------------------------------------------------------------------
+# EDK2（TianoCore）客户机 UEFI 固件专用构建工作流
+#
+# 与 build.yml / release.yml 解耦：主构建默认【不编译 EDK2】（USE_EDK2=false，
+# 见 jni/android-config/android-limbo-config.mak），固件需要时由本工作流单独构建。
+#
+# 特点：
+#   * 仅手动触发（workflow_dispatch）；
+#   * 用户自选要构建的客户机架构（可任意组合）；
+#   * 每个架构一条 matrix 任务【并行】构建（fail-fast: false，互不取消）；
+#   * 每个架构各自上传产物（.fd 固件 + SHA256SUMS.txt）。
+#
+# 构建逻辑复用 jni/edk2/make_edk2.sh，与本地 `make edk2` 完全一致。
+on:
+  workflow_dispatch:
+    inputs:
+      archs:
+        description: '要构建的客户机架构（空格或逗号分隔，可任意组合）：IA32 X64 ARM AARCH64，或填 all'
+        required: true
+        default: 'all'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 解析用户输入 -> matrix（只有被选中的架构才会生成构建任务）
+  # -------------------------------------------------------------------------
+  plan:
+    name: 解析架构选择
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: 归一化并校验架构列表
+        id: plan
+        env:
+          RAW_ARCHS: ${{ github.event.inputs.archs }}
+        run: |
+          set -euo pipefail
+          # 统一大写，逗号/分号视作分隔符
+          norm="$(printf '%s' "$RAW_ARCHS" | tr 'a-z' 'A-Z' | tr ',;' '  ')"
+          archs=()
+          for a in $norm; do
+            case "$a" in
+              ALL)              archs=(IA32 X64 ARM AARCH64); break ;;
+              IA32|X86|I386)    a=IA32 ;;
+              X64|X86_64)       a=X64 ;;
+              ARM|AARCH32)      a=ARM ;;
+              AARCH64|ARM64)    a=AARCH64 ;;
+              *) echo "ERROR: 未知架构 '$a'（可选：IA32 X64 ARM AARCH64，或 all）" >&2; exit 1 ;;
+            esac
+            # 去重
+            seen=0
+            for e in "${archs[@]:-}"; do [ "$e" = "$a" ] && seen=1; done
+            [ "$seen" = 1 ] || archs+=("$a")
+          done
+          [ "${#archs[@]}" -gt 0 ] || { echo "ERROR: 至少选择一个架构（IA32 X64 ARM AARCH64）" >&2; exit 1; }
+
+          json="$(printf '%s\n' "${archs[@]}" \
+            | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')"
+          echo "matrix={\"arch\":$json}" >> "$GITHUB_OUTPUT"
+          echo ">> 计划并行构建架构：${archs[*]}"
+
+  # -------------------------------------------------------------------------
+  # 每架构一条任务，并行构建并各自上传产物
+  # -------------------------------------------------------------------------
+  build:
+    name: EDK2 固件 (${{ matrix.arch }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      LOGDIR: ${{ github.workspace }}/edk2-logs
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      # edk2 源码由 make_edk2.sh 自行克隆（主标签固定 edk2-stable202508，见
+      # jni/Makefile 与 make_edk2.sh 头部说明），这里只装宿主工具链：
+      #   通用       build-essential / git / make / python3 / uuid-dev /
+      #              acpica-tools(iasl) / nasm / device-tree-compiler
+      #   IA32       额外需要 32 位编译支持（gcc-multilib + libc6-dev-i386）
+      #   ARM        额外需要 arm-linux-gnueabi(gcc) 交叉编译器
+      #   AARCH64    额外需要 aarch64-linux-gnu(gcc) 交叉编译器
+      - name: 安装构建依赖
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # runner 预置的 apt 索引可能落后于镜像源，先刷新（失败重试）
+          for i in 1 2 3; do
+            sudo -E apt-get update -y && break
+            echo ">> apt-get update 第 ${i} 次失败，5s 后重试"
+            sleep 5
+          done
+          sudo -E apt-get install -y --fix-missing \
+            build-essential git make python3 python3-pip python3-venv \
+            uuid-dev acpica-tools nasm device-tree-compiler flex bison
+          case "${{ matrix.arch }}" in
+            IA32)
+              sudo -E apt-get install -y --fix-missing gcc-multilib libc6-dev-i386
+              ;;
+            ARM)
+              # edk2 的 ARM 平台按软浮点 ABI 构建，优先 gnueabi，部分发行版只有 gnueabihf
+              sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabi \
+                || sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabihf
+              ;;
+            AARCH64)
+              sudo -E apt-get install -y --fix-missing gcc-aarch64-linux-gnu
+              ;;
+          esac
+
+      - name: 准备构建环境
+        run: |
+          mkdir -p "$LOGDIR"
+          echo "BUILD_THREADS=$(nproc)" >> "$GITHUB_ENV"
+          echo ">> 架构=${{ matrix.arch }} BUILD_THREADS=$(nproc)"
+
+      # 固件文件名固定（见 make_edk2.sh 的 arch_out）：
+      #   IA32 -> edk2-i386-code.fd     X64 -> edk2-x86_64-code.fd
+      #   ARM  -> edk2-arm-code.fd      AARCH64 -> edk2-aarch64-code.fd
+      - name: 解析固件文件名
+        id: fw
+        run: |
+          case "${{ matrix.arch }}" in
+            IA32)    echo "file=edk2-i386-code.fd"    >> "$GITHUB_OUTPUT" ;;
+            X64)     echo "file=edk2-x86_64-code.fd"  >> "$GITHUB_OUTPUT" ;;
+            ARM)     echo "file=edk2-arm-code.fd"     >> "$GITHUB_OUTPUT" ;;
+            AARCH64) echo "file=edk2-aarch64-code.fd" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: 构建 EDK2 固件（${{ matrix.arch }}）
+        working-directory: limbo-app/src/main/jni/edk2
+        run: |
+          set -o pipefail
+          bash make_edk2.sh build "${{ matrix.arch }}" 2>&1 | tee "$LOGDIR/${{ matrix.arch }}.log"
+
+      - name: 收集产物（固件 + 校验和）
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp -f "limbo-app/src/main/assets/roms/${{ steps.fw.outputs.file }}" dist/
+          ( cd dist && sha256sum "${{ steps.fw.outputs.file }}" > SHA256SUMS.txt )
+          ls -lh dist
+
+      - name: 上传失败日志
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: edk2_log-${{ matrix.arch }}
+          path: edk2-logs/
+
+      - name: 上传固件产物
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: edk2-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error

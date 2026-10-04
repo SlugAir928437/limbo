@@ -29,6 +29,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 
 import com.limbo.emu.main.Config;
+import com.limbo.emu.main.LimboApplication;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -42,7 +43,7 @@ import java.util.Observer;
 public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatabase, Observer {
     private static final String TAG = "MachineOpenHelper";
 
-    private static final int DATABASE_VERSION = 24;
+    private static final int DATABASE_VERSION = 25;
     private static final String DATABASE_NAME = "LIMBO";
     private static final String MACHINE_TABLE_NAME = "machines";
 
@@ -247,6 +248,54 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             // enableKVM switch (kvm when set, else tcg), preserving old behavior.
             db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN " + MachineProperty.ACCEL_MODE + " TEXT;");
         }
+
+        if (newVersion >= 25 && oldVersion <= 24) {
+            // Switching the emulated architecture at runtime is now supported,
+            // and each architecture keeps its own set of virtual machines.
+            // Machines are scoped by the ARCH column, which used to hold only the
+            // *family* of the single auto-detected engine ("x86" / "ARM" /
+            // "ia64"), so the 32- and 64-bit variants of a family could not be
+            // told apart.  Re-tag every legacy row with the exact architecture
+            // this process resolved to -- that is the very engine the machine was
+            // created with -- so it stays visible under its architecture.
+            normalizeMachineArch(db);
+        }
+    }
+
+    /** Name of the architecture currently being emulated, used to scope every query. */
+    private static String currentArchName() {
+        return LimboApplication.arch != null ? LimboApplication.arch.name() : "";
+    }
+
+    /**
+     * Rewrites legacy/unknown ARCH values to the exact architecture name of the
+     * engine that is active for this process (see the v25 migration above).
+     */
+    private void normalizeMachineArch(SQLiteDatabase db) {
+        Config.Arch current = LimboApplication.arch;
+        if (current == null)
+            return;
+
+        // Rows without any arch tag belong to the engine that is running now.
+        db.execSQL("UPDATE " + MACHINE_TABLE_NAME + " SET " + MachineProperty.ARCH + "=?"
+                        + " WHERE " + MachineProperty.ARCH + " IS NULL"
+                        + " OR " + MachineProperty.ARCH + "='';",
+                new Object[]{current.name()});
+
+        // Legacy family tags: keep them in the currently active architecture when
+        // it belongs to the same family, otherwise fall back to the family's
+        // 64-bit variant (which was the historical auto-detection preference).
+        remapLegacyArch(db, "x86", Config.Arch.x86, Config.Arch.x86_64, current);
+        remapLegacyArch(db, "ARM", Config.Arch.arm, Config.Arch.arm64, current);
+        remapLegacyArch(db, "ia64", Config.Arch.ia64, Config.Arch.ia64w, current);
+    }
+
+    private void remapLegacyArch(SQLiteDatabase db, String legacyTag,
+                                 Config.Arch low, Config.Arch high, Config.Arch current) {
+        String target = (current == low || current == high) ? current.name() : high.name();
+        db.execSQL("UPDATE " + MACHINE_TABLE_NAME + " SET " + MachineProperty.ARCH + "=?"
+                        + " WHERE " + MachineProperty.ARCH + "=?;",
+                new Object[]{target, legacyTag});
     }
 
     public synchronized int insertMachine(@NonNull Machine machine) {
@@ -343,9 +392,11 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
         stateValues.put(property.name(), value);
         try {
             db.beginTransaction();
+            // Scope the update to the current architecture so a machine that
+            // shares its name with one on another architecture is not touched.
             db.update(MACHINE_TABLE_NAME, stateValues,
-                    MachineProperty.MACHINE_NAME.name() + "=\"" + machine.getName() + "\" ",
-                    null);
+                    MachineProperty.MACHINE_NAME.name() + "=? AND " + MachineProperty.ARCH + "=?",
+                    new String[]{machine.getName(), currentArchName()});
             db.setTransactionSuccessful();
         } catch (Exception e) {
             Log.w(TAG, "Error while Updating value: " + e.getMessage());
@@ -378,11 +429,12 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 + MachineProperty.ACCEL_MODE + " "
                 + " from " + MACHINE_TABLE_NAME
                 + " where " + MachineProperty.STATUS + " in ( " + Config.STATUS_CREATED + " , " + Config.STATUS_PAUSED + " "
-                + " ) " + " and " + MachineProperty.MACHINE_NAME + "=\"" + machine + "\"" + ";";
+                + " ) " + " and " + MachineProperty.MACHINE_NAME + "=?"
+                + " and " + MachineProperty.ARCH + "=?;";
 
         Machine myMachine = null;
 
-        Cursor cur = db.rawQuery(qry, null);
+        Cursor cur = db.rawQuery(qry, new String[]{machine, currentArchName()});
 
         cur.moveToFirst();
         if (!cur.isAfterLast()) {
@@ -469,12 +521,14 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
     }
 
     public ArrayList<String> getMachineNames() {
+        // Only the virtual machines belonging to the architecture that is being
+        // emulated right now are returned: each architecture keeps its own list.
         String qry = "select " + MachineProperty.MACHINE_NAME + " " + " from " + MACHINE_TABLE_NAME
                 + " where " + MachineProperty.STATUS + " in ( " + Config.STATUS_CREATED + " , "
-                + Config.STATUS_PAUSED + " " + " ) order by 1; ";
+                + Config.STATUS_PAUSED + " " + " ) and " + MachineProperty.ARCH + "=? order by 1; ";
 
         ArrayList<String> arrStr = new ArrayList<>();
-        Cursor cur = db.rawQuery(qry, null);
+        Cursor cur = db.rawQuery(qry, new String[]{currentArchName()});
         cur.moveToFirst();
         while (!cur.isAfterLast()) {
             String machinename = cur.getString(0);
@@ -489,7 +543,9 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
     public boolean deleteMachine(Machine machine) {
         int rowsAffected = 0;
         try {
-            rowsAffected = db.delete(MACHINE_TABLE_NAME, MachineProperty.MACHINE_NAME + "=\"" + machine.getName() + "\"", null);
+            rowsAffected = db.delete(MACHINE_TABLE_NAME,
+                    MachineProperty.MACHINE_NAME + "=? AND " + MachineProperty.ARCH + "=?",
+                    new String[]{machine.getName(), currentArchName()});
         } catch (Exception e) {
             Log.w(TAG, "Error while deleting VM: " + e.getMessage());
             if (Config.debug)
@@ -512,11 +568,11 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 + MachineProperty.MOUSE + ", " + MachineProperty.KEYBOARD + ", " + MachineProperty.ENABLE_MTTCG + ", " + MachineProperty.ENABLE_KVM +", "
                 + MachineProperty.HDA_INTERFACE + ", " + MachineProperty.HDB_INTERFACE + ", " + MachineProperty.HDC_INTERFACE + ", " + MachineProperty.HDD_INTERFACE + ", "
                 + MachineProperty.CDROM_INTERFACE + ", " + MachineProperty.BIOS + ", " + MachineProperty.ACCEL_MODE + " "
-                // Table
-                + " from " + MACHINE_TABLE_NAME + " order by 1; ";
+                // Table - only the machines of the architecture in use
+                + " from " + MACHINE_TABLE_NAME + " where " + MachineProperty.ARCH + "=? order by 1; ";
 
         StringBuilder arrStr = new StringBuilder();
-        Cursor cur = db.rawQuery(qry, null);
+        Cursor cur = db.rawQuery(qry, new String[]{currentArchName()});
 
         cur.moveToFirst();
         StringBuilder headerline = new StringBuilder();

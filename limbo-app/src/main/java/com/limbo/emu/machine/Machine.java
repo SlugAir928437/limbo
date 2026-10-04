@@ -840,8 +840,11 @@ public class Machine extends Observable {
     }
 
     void setDefaults() {
+        // Tag the VM with the exact architecture it is created for.  The machine
+        // list is scoped by this value, so each architecture keeps its own set of
+        // virtual machines.
+        arch = LimboApplication.arch != null ? LimboApplication.arch.name() : null;
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64) {
-            arch = "x86";
             // x86/x86_64 default to "Default" so VMExecutor's disableTSC
             // path applies its stable qemu32/qemu64 model.  Forcing a
             // concrete model here (e.g. the old "n270") bypasses that
@@ -853,12 +856,10 @@ public class Machine extends Observable {
             networkCard = "Default";
             disableTSC = 1;
         } else if (LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
-            arch = "ARM";
             machineType = "versatilepb";
             cpu = "Default";
             networkCard = "Default";
         } else if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-            arch = "ia64";
             // ia64-vpc is the alias for itanium2-vpc (Itanium 2 / Montecito
             // profile, EFI 1.10).  This is the correct profile for Windows XP
             // 64-Bit Edition (Version 2003) and Windows Server 2003 IA64.

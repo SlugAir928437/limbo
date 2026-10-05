@@ -3,8 +3,11 @@
 # Modeled on gtk-android-builder (pixiewood) android.cross + glib cross template
 
 [binaries]
-c = '@TOOLCHAIN_CLANG_PREFIX@/@HOST_PREFIX@@GTK_ANDROID_API@-clang'
-cpp = '@TOOLCHAIN_CLANG_PREFIX@/@HOST_PREFIX@@GTK_ANDROID_API@-clang++'
+# TARGET_PREFIX (not HOST_PREFIX) names the NDK clang wrapper: for 32-bit ARM
+# the wrapper is armv7a-linux-androideabiNN-clang, while HOST_PREFIX is the
+# plain arm-linux-androideabi triple (no such binary exists in the NDK).
+c = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@GTK_ANDROID_API@-clang'
+cpp = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@GTK_ANDROID_API@-clang++'
 ar = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ar'
 as = '@TOOLCHAIN_CLANG_PREFIX@/llvm-as'
 ranlib = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ranlib'

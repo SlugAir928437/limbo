@@ -712,6 +712,7 @@ public class LimboActivity extends AppCompatActivity implements
         uiState.setDisableHPETEnabled(flag);
         uiState.setDisableTSCEnabled(flag);
         uiState.setExtraParamsEnabled(flag);
+        uiState.setUsbControllerEnabled(flag);
     }
 
     private void setCPUOptions() {
@@ -932,6 +933,7 @@ public class LimboActivity extends AppCompatActivity implements
         populateUI();
         populateKeyboardLayout();
         populateMouse();
+        populateUsbController();
     }
 
     private void populateDisks() {
@@ -1144,6 +1146,18 @@ public class LimboActivity extends AppCompatActivity implements
         uiState.setSoundSel(0);
     }
 
+    /**
+     * Populates the USB controller dropdown (Advanced section).  The list is
+     * architecture-aware: the IA-64 fork lacks the xHCI devices, so it is
+     * limited to EHCI/UHCI plus the usb-kbd HID device (see
+     * ArchDefinitions#getUsbControllerValues).
+     */
+    private void populateUsbController() {
+        ArrayList<String> usbControllers = ArchDefinitions.getUsbControllerValues(this);
+        uiState.setUsbControllerOptions(usbControllers);
+        uiState.setUsbControllerSel(0);
+    }
+
     private void populateNetDevices(String nic) {
         ArrayList<String> networkCards = ArchDefinitions.getNetworkDevices(this);
         uiState.setNicOptions(networkCards);
@@ -1354,6 +1368,8 @@ public class LimboActivity extends AppCompatActivity implements
                 idx -> uiState.setMouseSel(idx));
         setSpinnerSel(uiState.getKeyboardOptions(), getMachine() != null ? getMachine().getKeyboard() : null,
                 idx -> uiState.setKeyboardSel(idx));
+        setSpinnerSel(uiState.getUsbControllerOptions(), getMachine() != null ? getMachine().getUsbController() : null,
+                idx -> uiState.setUsbControllerSel(idx));
 
         // motherboard settings
         uiState.setDisableACPI(getMachine() != null && getMachine().getDisableAcpi() == 1);
@@ -1540,9 +1556,13 @@ public class LimboActivity extends AppCompatActivity implements
 
     private String buildAdvancedSummary() {
         String text = "";
+        String usbController = getMachine().getUsbController();
+        if (usbController != null && !usbController.isEmpty()
+                && !Machine.USB_CONTROLLER_NONE.equalsIgnoreCase(usbController))
+            text = getString(R.string.label_usb_controller) + ": " + usbController;
         if (getMachine().getExtraParams() != null
                 && !getMachine().getExtraParams().isEmpty())
-            text = getString(R.string.ExtraParams) + ": " + getMachine().getExtraParams();
+            text = appendOption(getString(R.string.ExtraParams) + ": " + getMachine().getExtraParams(), text);
         return text;
     }
 
@@ -3187,6 +3207,16 @@ public class LimboActivity extends AppCompatActivity implements
             return;
         uiState.setSoundSel(index);
         notifyFieldChange(MachineProperty.SOUNDCARD, uiState.getSoundOptions().get(index));
+    }
+
+    @Override
+    public void onUsbControllerSelected(int index) {
+        if (getMachine() == null)
+            return;
+        if (index < 0 || index >= uiState.getUsbControllerOptions().size())
+            return;
+        uiState.setUsbControllerSel(index);
+        notifyFieldChange(MachineProperty.USB_CONTROLLER, uiState.getUsbControllerOptions().get(index));
     }
 
     @Override

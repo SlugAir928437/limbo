@@ -358,12 +358,41 @@ clean-slirp:
 # spice stack for the qxl-vga device (QEMU CONFIG_QXL).  All static:
 #   spice-protocol (headers) -> openssl/libjpeg (spice-server deps) -> spice-server
 # config-spice must run after glib/pixman so spice's pkg-config finds them.
+#
+# The OpenSSL Configure target name is NOT just a label: Configurations/
+# 15-android.conf derives $arch from it (line ~56: `m|[^-]+-([^-]+)$|`), maps
+# that to a compiler triplet (arm => armv7a-linux-androideabi, arm64 =>
+# aarch64-linux-android, ...) and then selects $triarch$api-clang as CC.  So a
+# hardcoded "android-arm64" silently builds AArch64 objects even into the
+# armeabi-v7a prefix, and the stale libssl.a/libcrypto.a then fail to link into
+# the 32-bit ARM binaries ("is incompatible with armelf_linux_eabi").  Mirror
+# APP_ABI here the same way libjpeg does with -DANDROID_ABI=$(APP_ABI).
+ifeq ($(APP_ABI),armeabi-v7a)
+    OPENSSL_TARGET = android-arm
+    # Pin the float ABI as well.  armeabi-v7a means the "softfp" ABI (base
+    # AAPCS, no VFP register arguments); this NDK already defaults to softfp for
+    # the armv7a-linux-androideabi triple (verified: e_flags 0x05000000, no
+    # EF_ARM_ABI_FLOAT_HARD), and this build passes -mfloat-abi=softfp
+    # explicitly everywhere else (ARCH_CFLAGS).  State it here too so the ABI
+    # cannot drift with a compiler default change: a hard-float libssl.a cannot
+    # be linked into the soft-float objects.  Bare -flags are appended to
+    # CFLAGS/CXXFLAGS by Configure (see its argument parsing).
+    OPENSSL_EXTRA_CFLAGS = -mfloat-abi=softfp
+else ifeq ($(APP_ABI),arm64-v8a)
+    OPENSSL_TARGET = android-arm64
+else ifeq ($(APP_ABI),x86)
+    OPENSSL_TARGET = android-x86
+else ifeq ($(APP_ABI),x86_64)
+    OPENSSL_TARGET = android-x86_64
+endif
+
 config-spice: ndk pkg-config-link ffi glib pixman
 	# openssl 3.0.16 (static libcrypto/libssl)
 	cd $(LIMBO_JNI_ROOT)/openssl && make clean >/dev/null 2>&1 || true
 	cd $(LIMBO_JNI_ROOT)/openssl && \
 	ANDROID_NDK_ROOT="$(NDK_ROOT)" ANDROID_NDK_HOME="$(NDK_ROOT)" \
-	./Configure android-arm64 -D__ANDROID_API__=$(NDK_PLATFORM_API) \
+	./Configure $(OPENSSL_TARGET) -D__ANDROID_API__=$(NDK_PLATFORM_API) \
+		$(OPENSSL_EXTRA_CFLAGS) \
 		--prefix="$(OPENSSL_INSTALL_DIR)" --openssldir="$(OPENSSL_INSTALL_DIR)/ssl" \
 		no-shared no-tests no-legacy no-unit-test \
 		no-async no-dso no-engine no-ui-console

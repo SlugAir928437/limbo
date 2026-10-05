@@ -1,0 +1,88 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -324,10 +324,23 @@
+ ##################
+ # Compiler flags #
+ ##################
+ 
+-if (cc.sizeof('void *') < 8) and (have_system or have_user)
+-  error('QEMU emulator requires a 64-bit CPU host architecture. Only tools may be built for 32-bit.')
+-endif
++# Limbo: 32-bit host support.
++# QEMU 11.0 dropped 32-bit host support upstream (docs/about/removed-features.rst)
++# and rejects such hosts right here; the 32-bit host code itself is still present
++# in this tree, so let the emulator configure again.  This is NOT an upstream
++# supported configuration: on a 32-bit host the guest is capped at ~2 GiB of RAM
++# (hw/core/machine.c) and TCG has no native backend left for it, because the
++# 32-bit TCG backends (tcg/arm, tcg/i386) were deleted - the interpreter below
++# takes over.  See patches/qemu-v11.0.0-allow-32bit-host.patch.
++host_is_64bit = cc.sizeof('void *') >= 8
++if not host_is_64bit and (have_system or have_user)
++  warning('Building the QEMU emulator for a 32-bit host: unsupported upstream, guests are limited to ~2 GiB of RAM')
++endif
++
++# Use the TCI interpreter when it was requested explicitly, and also on a 32-bit
++# host, which the upstream removal left without any native TCG backend.
++tcg_interpreter = get_option('tcg_interpreter') or not host_is_64bit
+ 
+ foreach lang : all_languages
+   compiler = meson.get_compiler(lang)
+@@ -917,27 +930,30 @@
+   endif
+ endif
+ 
+ tcg_arch = host_arch
+ if have_tcg
+   if host_arch == 'unknown'
+-    if not get_option('tcg_interpreter')
++    # Limbo: a 32-bit host ends up here, because its cpu_family ('arm', 'x86')
++    # is no longer listed in supported_cpus - tcg_interpreter is already true
++    # for it, so fall through to the TCI backend instead of failing.
++    if not tcg_interpreter
+       error('Unsupported CPU @0@, try --enable-tcg-interpreter'.format(cpu))
+     endif
+   elif host_arch == 'wasm64'
+-    if not get_option('tcg_interpreter')
++    if not tcg_interpreter
+       error('WebAssembly host requires --enable-tcg-interpreter')
+     endif
+-  elif get_option('tcg_interpreter')
++  elif tcg_interpreter
+     warning('Use of the TCG interpreter is not recommended on this host')
+     warning('architecture. There is a native TCG execution backend available')
+     warning('which provides substantially better performance and reliability.')
+     warning('It is strongly recommended to remove the --enable-tcg-interpreter')
+     warning('configuration option on this architecture to use the native')
+     warning('backend.')
+   endif
+-  if get_option('tcg_interpreter')
++  if tcg_interpreter
+     tcg_arch = 'tci'
+   endif
+   add_project_arguments('-iquote', meson.current_source_dir() / 'tcg' / tcg_arch,
+                         language: all_languages)
+ 
+@@ -4875,7 +4891,7 @@
+ endif
+ summary_info += {'TCG support':       config_all_accel.has_key('CONFIG_TCG')}
+ if config_all_accel.has_key('CONFIG_TCG')
+-  if get_option('tcg_interpreter')
++  if tcg_interpreter
+     summary_info += {'TCG backend':   'TCI (TCG with bytecode interpreter, slow)'}
+   else
+     summary_info += {'TCG backend':   'native (@0@)'.format(cpu)}
+diff --git a/tcg/meson.build b/tcg/meson.build
+--- a/tcg/meson.build
++++ b/tcg/meson.build
+@@ -15,7 +15,9 @@
+   'tcg-op-vec.c',
+ ))
+ 
+-if get_option('tcg_interpreter')
++# tcg_interpreter (set in the top level meson.build) is also true on a 32-bit
++# host, which the upstream 32-bit host removal left with no native TCG backend.
++if tcg_interpreter
+   libffi = dependency('libffi', version: '>=3.0', required: true,
+                       method: 'pkg-config')
+   tcg_ss.add(libffi)

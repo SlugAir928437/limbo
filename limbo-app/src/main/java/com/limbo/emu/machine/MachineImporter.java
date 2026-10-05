@@ -207,6 +207,11 @@ public class MachineImporter {
                                 mach.setExtraParams(machineAttr[i].replace("\"", ""));
                                 break;
 
+                            // USB controller (Advanced section)
+                            case "USB_CONTROLLER":
+                                mach.setUsbController(machineAttr[i].replace("\"", ""));
+                                break;
+
                             // Peripherals
                             case "MOUSE":
                                 mach.setMouse(machineAttr[i].replace("\"", ""));

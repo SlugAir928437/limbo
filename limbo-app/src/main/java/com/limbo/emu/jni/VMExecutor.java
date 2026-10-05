@@ -18,6 +18,7 @@
  */
 package com.limbo.emu.jni;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -29,6 +30,7 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.R;
 import com.limbo.emu.files.FileUtils;
 import com.limbo.emu.machine.Machine;
@@ -43,7 +45,6 @@ import com.limbo.emu.main.LimboSettingsManager;
 import com.limbo.emu.qmp.QmpClient;
 import com.limbo.emu.toast.ToastUtils;
 
-import org.jetbrains.annotations.Contract;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -56,40 +57,87 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Class is used to start and stop the qemu process and communicate file descriptions, mouse,
- * and keyboard events.
+ * VMExecutor 是 QEMU 虚拟机执行器。
+ *
+ * <p>它负责：
+ * <ul>
+ *   <li>把用户在界面上配置的 Machine 参数翻译成 QEMU 命令行参数；</li>
+ *   <li>通过 JNI 启动/停止 QEMU 原生进程；</li>
+ *   <li>在 gunyah/gzvm 等需要 root 的加速器场景下，通过 su + app_process
+ *       启动一个独立的 root 子进程来运行 QEMU；</li>
+ *   <li>转发鼠标、键盘、分辨率变化等事件给原生层；</li>
+ *   <li>通过 QMP 与运行中的 QEMU 交互（暂停、继续、保存状态、更换可移动设备等）。</li>
+ * </ul>
  */
 class VMExecutor extends MachineExecutor {
     private static final String TAG = "VMExecutor";
 
+    /** CD-ROM 在 QMP 中的默认设备名（IDE 总线）。 */
     private static final String cdDeviceName = "ide1-cd0";
+    /** 软驱 A 在 QMP 中的设备名。 */
     private static final String fdaDeviceName = "floppy0";
+    /** 软驱 B 在 QMP 中的设备名。 */
     private static final String fdbDeviceName = "floppy1";
+    /** SD 卡在 QMP 中的设备名。 */
     private static final String sdDeviceName = "sd0";
-    // Size of the virtio-gpu-gl host memory window (hostmem=...).  The window is
-    // a real qemu_ram_mmap() reservation (hw/display/virtio-gpu-gl.c), so it has
-    // to stay small enough to succeed on a phone while still holding the usual
-    // Vulkan blob working set.
+
+    // virtio-gpu-gl 的 host memory 窗口大小（hostmem=...）。
+    // 这个窗口是真实的 qemu_ram_mmap() 预留（hw/display/virtio-gpu-gl.c），
+    // 因此必须足够小以便在手机上分配成功，同时又能容纳常见的 Vulkan blob 工作集。
     private static final String GL_HOSTMEM_SIZE = "2G";
-    private static int vm_width;
-    private static int vm_height;
+
+    /** QEMU 2.9.1 版本号，用于区分某些历史参数差异。 */
+    private static final int  QEMU_VERSION_20901   = 20901;
+    /** 读取日志文件时最多读取的字符数。 */
+    private static final int  MAX_READ_CHARS       = 8192;
+    /** prepareParams 中 ArrayList 的初始容量。 */
+    private static final int  PREPARE_PARAMS_CAP   = 64;
+    /** QEMU 正常退出时返回的状态字符串。 */
+    private static final String VM_SHUTDOWN        = "VM shutdown";
+
+    /** 当前 VM 的分辨率（由原生 SDL 扩展回调设置）。 */
+    private static volatile int vm_width;
+    private static volatile int vm_height;
+
     //TODO: make this a proper singleton but the views should not be able to access it
-    private static VMExecutor mInstance;
+    /** 当前进程内的 VMExecutor 实例，供静态回调使用。 */
+    private static volatile VMExecutor mInstance;
 
-    // Root child process bookkeeping.  When the accelerator is gunyah/gzvm the
-    // VM runs in an independently launched root JVM (RootVmLauncher), spawned
-    // through su + app_process, because /dev/gunyah and /dev/gzvm are root-only.
-    private static final String ROOT_VM_SCRIPT = "root_vm.sh";
-    private static final String ROOT_VM_PID = "root_vm.pid";
-    private static final String ROOT_VM_STDERR = "root_vm_stderr.log";
-    private static final long ROOT_VM_START_TIMEOUT_MS = 20000;
-    private static final long ROOT_VM_STOP_TIMEOUT_MS = 8000;
+    // Root 子进程相关簿记。
+    // 当加速器为 gunyah/gzvm 时，VM 会运行在一个独立启动的 root JVM
+    // （RootVmLauncher）中，通过 su + app_process 启动，因为
+    // /dev/gunyah 和 /dev/gzvm 是 root-only 的。
+    /** root VM 启动脚本文件名。 */
+    private static final String ROOT_VM_SCRIPT          = "root_vm.sh";
+    /** root VM 的 PID 文件名。 */
+    private static final String ROOT_VM_PID             = "root_vm.pid";
+    /** root VM 的 stderr 日志文件名。 */
+    private static final String ROOT_VM_STDERR          = "root_vm_stderr.log";
+    /** root VM 启动超时时间（毫秒）。 */
+    private static final long   ROOT_VM_START_TIMEOUT_MS = 20000;
+    /** root VM 停止超时时间（毫秒）。 */
+    private static final long   ROOT_VM_STOP_TIMEOUT_MS  = 8000;
+    /** root VM 轮询间隔（毫秒）。 */
+    private static final long   ROOT_VM_POLL_MS          = 300;
 
-    private Process rootVmProcess;
-    private volatile String rootVmPid;
+    /** su 子进程对象。 */
+    private volatile Process rootVmProcess;
+    /** root VM 的 PID。 */
+    private volatile String  rootVmPid;
+    /** 当前是否处于 root VM 模式。 */
     private volatile boolean rootVmMode;
+    /** KVM root 启动选择的结果：未决定 / 当前进程 / root 子进程。 */
+    private static final int KVM_CHOICE_UNDECIDED = 0;
+    private static final int KVM_CHOICE_NORMAL    = 1;
+    private static final int KVM_CHOICE_ROOT      = 2;
+
+    private final AtomicInteger kvmChoice =
+            new AtomicInteger(KVM_CHOICE_UNDECIDED);
+    private final Object kvmChoiceLock = new Object();
 
     VMExecutor(MachineController machineController) {
         super(machineController);
@@ -97,47 +145,60 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * This function is called when the machine resolution changes. This is called from SDL compat
-     * extensions, see folder jni/compat/sdl-extensions
+     * 当虚拟机分辨率变化时由 SDL 兼容扩展调用（见 jni/compat/sdl-extensions）。
      *
-     * @param width  Width
-     * @param height Height
+     * @param width  宽度
+     * @param height 高度
      */
     @Keep public static void onVMResolutionChanged(int width, int height) {
         vm_width = width;
         vm_height = height;
-        mInstance.onResolutionChanged(vm_width, vm_height);
+        VMExecutor inst = mInstance;
+        if (inst != null) {
+            inst.onResolutionChanged(width, height);
+        }
     }
 
     //JNI Methods
+    /** 启动 QEMU 原生进程。 */
     private native String start(String storage_dir, String base_dir,
                                 String lib_filename, String lib_path,
                                 Object[] params);
 
+    /** 停止 QEMU 原生进程，restart 非 0 时表示重启。 */
     private native String stop(int restart);
 
+    /** 设置默认刷新率。 */
     public native void setSDLRefreshRateDefault(int value);
 
+    /** 设置空闲刷新率。 */
     public native void setSDLRefreshRateIdle(int value);
 
+    /** 获取默认刷新率。 */
     public native int getSDLRefreshRateDefault();
 
+    /** 获取空闲刷新率。 */
     public native int getSDLRefreshRateIdle();
 
+    /** 发送鼠标事件。 */
     public native void nativeMouseEvent(int button, int action, int relative, int x, int y);
 
+    /** 设置鼠标边界，用于绝对指针设备。 */
     public native void nativeMouseBounds(int xmin, int xmax, int ymin, int ymax);
 
+    /** 切换全屏。 */
     public native void nativeFullscreen();
 
+    /** 刷新屏幕。 */
     public native void nativeRefreshScreen(int value);
 
+    /** 启用/禁用 AAudio。 */
     public native void nativeEnableAaudio(int value, String aaudioLibName, String aaudioLibPath);
 
     /**
-     * Prints parameters in qemu format
+     * 以 QEMU 格式打印参数，便于调试。
      *
-     * @param params Parameters to be printed
+     * @param params 参数数组
      */
     public void printParams(@NonNull String[] params) {
         Log.d(TAG, "Params:");
@@ -147,6 +208,9 @@ class VMExecutor extends MachineExecutor {
     }
 
     // Translate to QEMU format
+    /**
+     * 获取声卡设备名。如果 SDL 声音未启用或声卡为 none，则返回 null。
+     */
     private String getSoundCard() {
         if (Config.enableSDLSound && getMachine().getSoundCard() != null
                 && !getMachine().getSoundCard().equalsIgnoreCase("none"))
@@ -154,6 +218,9 @@ class VMExecutor extends MachineExecutor {
         return null;
     }
 
+    /**
+     * 根据当前架构选择对应的 QEMU 系统库文件名。
+     */
     private String getQemuLibrary() {
         switch (LimboApplication.arch) {
             case x86:
@@ -173,14 +240,24 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /**
+     * 获取保存状态文件的完整路径。
+     */
     @NonNull
     private String getSaveStateName() {
         String machineSaveDirectory = MachineController.getInstance().getMachineSaveDir();
         return machineSaveDirectory + "/" + Config.stateFilename;
     }
 
+    /**
+     * 组装完整的 QEMU 参数列表。
+     *
+     * <p>参数按固定顺序添加：UI、CPU/主板、驱动器、启动项、BIOS、显卡、音频、
+     * 网络、通用选项、状态恢复、高级选项、加速器。加速器选项最后添加，
+     * 因为 QEMU 只认第一个同名选项，放在最后可以避免被 extra params 覆盖。
+     */
     private String[] prepareParams(Context context) throws Exception {
-        ArrayList<String> paramsList = new ArrayList<>();
+        ArrayList<String> paramsList = new ArrayList<>(PREPARE_PARAMS_CAP);
         paramsList.add(getQemuLibrary());
         addUIOptions(context, paramsList);
         addCpuBoardOptions(paramsList);
@@ -198,22 +275,24 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * Adds the vm state file description to the qemu parameters for resuming the vm
+     * 如果虚拟机处于暂停状态，添加 -incoming 参数以恢复保存的状态。
      *
-     * @param paramsList Existing parameter list to be passed to qemu
+     * @param paramsList 现有参数列表
      */
     private void addStateOptions(ArrayList<String> paramsList) {
         if (MachineController.getInstance().isPaused() && !getSaveStateName().isEmpty()) {
-            // Use the "file:" scheme for -incoming so QEMU opens and owns the
-            // state file itself. Passing "fd:N" makes QEMU close the fd when
-            // the incoming migration finishes, which trips Android's fdsan
-            // (SIGABRT) because the fd is owned by a ParcelFileDescriptor
-            // opened by FileUtils.get_fd().
+            // 使用 "file:" 方案让 QEMU 自己打开并持有状态文件。
+            // 传 "fd:N" 会让 QEMU 在 incoming migration 完成时关闭 fd，
+            // 这会触发 Android 的 fdsan（SIGABRT），因为该 fd 属于
+            // FileUtils.get_fd() 打开的 ParcelFileDescriptor。
             paramsList.add("-incoming");
             paramsList.add("file:" + getSaveStateName());
         }
     }
 
+    /**
+     * 添加 UI 相关选项：VNC、monitor/serial/parallel 控制台、显示后端、键盘、鼠标。
+     */
     private void addUIOptions(Context context, ArrayList<String> paramsList) {
         String ui = getMachine().getUI();
         boolean gtk = "GTK".equals(ui);
@@ -224,8 +303,7 @@ class VMExecutor extends MachineExecutor {
                 //TODO: Allow connections from External Use with x509 auth and TLS for encryption
                 vncParam += ":1";
             } else {
-                // Allow connections only from localhost using localsocket without
-                // a password
+                // 仅允许 localhost 通过本地 socket 连接，无密码
                 vncParam += Config.defaultVNCHost + ":" + Config.defaultVNCPort;
             }
             if (LimboSettingsManager.getVNCEnablePassword(context))
@@ -233,17 +311,17 @@ class VMExecutor extends MachineExecutor {
 
             paramsList.add(vncParam);
 
-            //Allow monitor console though it's only supported for VNC, SDL for android doesn't support
-            // more than 1 window
+            // 允许 monitor 控制台，虽然它只对 VNC 有支持；
+            // Android 的 SDL 不支持多于一个窗口。
             paramsList.add("-monitor");
             paramsList.add("vc");
 
         } else {
             // gtk 允许多窗口
-            if(!gtk) {
-                // Expose monitor/serial/parallel over TCP (server,nowait) so the nc
-                // module can connect and view the consoles. Raw tcp (not telnet) does
-                // not open an SDL window, avoiding the multi-window SDL limitation.
+            if (!gtk) {
+                // 通过 TCP (server,nowait) 暴露 monitor/serial/parallel，
+                // 这样 nc 模块可以连接查看控制台。使用 raw tcp（非 telnet）
+                // 不会打开 SDL 窗口，避免 SDL 多窗口限制。
                 paramsList.add("-monitor");
                 paramsList.add("tcp:127.0.0.1:" + Config.monitorPort + ",server,nowait");
 
@@ -255,7 +333,7 @@ class VMExecutor extends MachineExecutor {
             }
             paramsList.add("-display");
             if (gtk) {
-                // GTK4 android backend (initialized by LimboGtk on the activity side)
+                // GTK4 Android 后端（由 activity 侧的 LimboGtk 初始化）
                 paramsList.add("gtk" + getDisplayGLOption());
             } else {
                 paramsList.add("sdl" + getDisplayGLOption());
@@ -270,9 +348,9 @@ class VMExecutor extends MachineExecutor {
         if (getMachine().getMouse() != null && !getMachine().getMouse().equals("ps2")) {
             String mouseDevice = getMachine().getMouse();
             if (mouseDevice.startsWith("virtio-")) {
-                // VirtIO input devices live on the virtio bus, so -usb must not be
-                // added. A lone virtio-tablet-pci leaves the guest without a
-                // keyboard, so it is paired with virtio-keyboard-pci.
+                // VirtIO 输入设备位于 virtio 总线上，因此不能添加 -usb。
+                // 单独的 virtio-tablet-pci 会让 guest 没有键盘，
+                // 所以与 virtio-keyboard-pci 配对。
                 paramsList.add("-device");
                 paramsList.add(mouseDevice);
                 if (mouseDevice.startsWith("virtio-tablet-pci")) {
@@ -284,7 +362,7 @@ class VMExecutor extends MachineExecutor {
                 paramsList.add("-device");
                 paramsList.add(mouseDevice);
                 // 对于 ia64 架构的虚拟机，需要添加 usb-kbd 设备以支持键鼠
-                // 在i8042=off的情况下无需添加此设备（在 QEMU 中自动添加）
+                // 在 i8042=off 的情况下无需添加此设备（在 QEMU 中自动添加）
                 // FIXME: 在没有控制台的情况下支持 usb-kbd
 //            if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
 //                paramsList.add("-device");
@@ -295,36 +373,73 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * virtio-gpu-gl-pci only works when the display backend has OpenGL enabled:
-     * QEMU aborts at device realize time with "The display backend does not have
-     * OpenGL support enabled" (hw/display/virtio-gpu-gl.c).  The option therefore
-     * ships together with the display backend instead of being left to the extra
-     * params of the machine.
+     * virtio-gpu-gl-pci 只有在显示后端启用 OpenGL 时才能工作：
+     * 否则 QEMU 在设备 realize 时会中止，报
+     * "The display backend does not have OpenGL support enabled"
+     * (hw/display/virtio-gpu-gl.c)。因此该选项与显示后端一起提供，
+     * 而不是留给机器的 extra params。
      *
-     * @return ",gl=on" when the machine uses a VirGL (GL) virtio-gpu device,
-     * an empty string otherwise
+     * @return 当机器使用 VirGL (GL) virtio-gpu 设备时返回 ",gl=on"，否则返回空字符串
      */
-    private String getDisplayGLOption() {
+    @NonNull private String getDisplayGLOption() {
         String vga = getMachine().getVga();
         return (vga != null && vga.startsWith("virtio-gpu-gl")) ? ",gl=on" : "";
     }
 
+    /**
+     * 添加高级选项：USB 控制器以及用户自定义 extra params。
+     */
     private void addAdvancedOptions(ArrayList<String> paramsList) {
-        if (getMachine().getExtraParams() != null && !getMachine().getExtraParams().trim().isEmpty()) {
-            String[] paramsTmp = getMachine().getExtraParams().split(" ");
+        addUSBController(paramsList);
+        String extra = getMachine().getExtraParams();
+        if (extra != null && !extra.trim().isEmpty()) {
+            String[] paramsTmp = extra.split(" ");
             paramsList.addAll(Arrays.asList(paramsTmp));
         }
     }
 
+    /**
+     * 添加高级设置中选择的 USB 控制器/HID 设备。
+     *
+     * <p>该值是 QEMU 设备名（或 "None" 表示不显式指定控制器）。
+     * 控制器型号直接作为 {@code -device} 传入；UI 只提供目标引擎中
+     * 实际编译进去的型号（见 ArchDefinitions#getUsbControllerValues），
+     * 因此 IA-64 构建（缺少 xHCI 设备）只能选 EHCI/UHCI。
+     *
+     * <p>{@code usb-kbd} 是 USB HID 设备而非控制器，因此必须先有 USB 总线：
+     * 用 {@code -usb} 启用机器默认控制器（与 addUIOptions 对 USB 鼠标的处理一致）。
+     * 仅当 USB 鼠标尚未启用 {@code -usb} 时才添加。
+     */
+    private void addUSBController(ArrayList<String> paramsList) {
+        String usbController = getMachine().getUsbController();
+        if (usbController == null)
+            return;
+        String device = usbController.trim();
+        if (device.isEmpty() || "None".equalsIgnoreCase(device))
+            return;
+
+        if ("usb-kbd".equals(device)) {
+            if (!paramsList.contains("-usb"))
+                paramsList.add("-usb");
+            paramsList.add("-device");
+            paramsList.add("usb-kbd");
+        } else {
+            paramsList.add("-device");
+            paramsList.add(device);
+        }
+    }
+
+    /**
+     * 添加音频设备选项。
+     */
     private void addAudioOptions(ArrayList<String> paramsList) {
         String soundCard = getSoundCard();
         if (soundCard != null) {
-            // virtio-sound exposes one capture and one playback stream by
-            // default, and QEMU splits them into an "out" and an "in" half
-            // (hw/audio/virtio-snd.c).  The input voice makes SDL open an
-            // Android recording device, which always fails because the app does
-            // not request RECORD_AUDIO ("Could not create a backend for voice
-            // 'virtio-sound.in'").  One stream keeps playback only.
+            // virtio-sound 默认暴露一个 capture 和一个 playback 流，
+            // QEMU 会把它们拆成 "out" 和 "in" 两半（hw/audio/virtio-snd.c）。
+            // 输入流会让 SDL 打开 Android 录音设备，而应用没有申请
+            // RECORD_AUDIO 权限，因此总是失败（"Could not create a backend
+            // for voice 'virtio-sound.in'"）。只保留一个流即可只播放。
             if (soundCard.startsWith("virtio-sound")) {
                 soundCard += ",streams=1";
             }
@@ -333,6 +448,9 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /**
+     * 添加通用选项：-L、QMP、trace、tb-size、realtime/overcommit、rtc。
+     */
     private void addGenericOptions(Context context, @NonNull ArrayList<String> paramsList) {
         paramsList.add("-L");
         paramsList.add(LimboApplication.getBasefileDir());
@@ -344,7 +462,7 @@ class VMExecutor extends MachineExecutor {
                 qmpParams += ",server,nowait";
                 paramsList.add(qmpParams);
             } else {
-                //Specify a unix local domain as localhost to limit to local connections only
+                // 使用 Unix 本地域套接字，仅限本地连接
                 String qmpParams = "unix:";
                 qmpParams += LimboApplication.getLocalQMPSocketPath();
                 qmpParams += ",server,nowait";
@@ -352,7 +470,7 @@ class VMExecutor extends MachineExecutor {
             }
         }
 
-        //Enable Tracing log
+        // 启用 tracing 日志
         if (Config.enableTracingLog) {
             paramsList.add("-D");
             paramsList.add(Config.traceLogFile);
@@ -364,10 +482,10 @@ class VMExecutor extends MachineExecutor {
 
         if (Config.overrideTbSize) {
             paramsList.add("-tb-size");
-            paramsList.add(Config.tbSize); //Don't increase it crashes
+            paramsList.add(Config.tbSize); // 不要调大，会崩溃
         }
 
-        if (LimboApplication.getQemuVersion() == 20901) {
+        if (LimboApplication.getQemuVersion() == QEMU_VERSION_20901) {
             paramsList.add("-realtime");
             paramsList.add("mlock=off");
         } else {
@@ -379,31 +497,30 @@ class VMExecutor extends MachineExecutor {
         paramsList.add("base=localtime");
     }
 
+    /**
+     * 添加 CPU 和主板相关选项：-smp、-M、-cpu、-m，以及 ACPI/HPET 禁用。
+     */
     private void addCpuBoardOptions(ArrayList<String> paramsList) {
-        //XXX: SMP is not working correctly for some guest OSes
-        //so we enable multi core only under KVM
-        // anyway regular emulation is not gaining any benefit unless mttcg is enabled but that
-        // doesn't work for x86 guests yet
+        //XXX: SMP 对某些 guest OS 不能正常工作，
+        // 因此只在 KVM 下启用多核；
+        // 普通模拟除非启用 mttcg 否则没有收益，而 mttcg 对 x86 guest 尚不可用。
         if (getMachine().getCpuNum() > 1) {
             paramsList.add("-smp");
             paramsList.add(getMachine().getCpuNum() + "");
         }
         if (getMachineType() != null && !getMachineType().equals("Default")) {
             String machineParams = getMachineType();
-            // IA-64 only: i8042=off is appended when the user disables the
-            // i8042 PS/2 controller, and nvram=<path> when NVRAM is enabled
-            // (the app-managed file is used when no explicit path is set).
-            // Windows XP / Server 2003 IA64 text-mode setup cannot use PS/2,
-            // so i8042=off makes QEMU attach a USB keyboard; without it the
-            // "Press any key to boot from CD" prompt times out and the loader
-            // hangs after "Continuing normal boot."  Other architectures must
-            // not receive these options.
+            // 仅 IA-64：当用户禁用 i8042 PS/2 控制器时追加 i8042=off，
+            // 启用 NVRAM 时追加 nvram=<path>（未显式设置路径时使用应用管理的文件）。
+            // Windows XP / Server 2003 IA64 文本模式安装无法使用 PS/2，
+            // 因此 i8042=off 会让 QEMU 挂载 USB 键盘；没有它，
+            // "Press any key to boot from CD" 提示会超时，加载器在
+            // "Continuing normal boot." 后挂起。其他架构不能收到这些选项。
             if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
-                // "i8042" machine property exists only on the IA-64 VPC machines
-                // (itanium-vpc / ia64-vpc / itanium2-vpc). The HP workstation
-                // models (hp-i2000 / hp-zx2000 / hp-zx6000) have no i8042
-                // controller, so appending i8042=off there makes QEMU reject the
-                // machine and fail to start.
+                // "i8042" 机器属性只存在于 IA-64 VPC 机器上
+                // (itanium-vpc / ia64-vpc / itanium2-vpc)。HP 工作站型号
+                // (hp-i2000 / hp-zx2000 / hp-zx6000) 没有 i8042 控制器，
+                // 因此追加 i8042=off 会让 QEMU 拒绝该机器并启动失败。
                 if (machineParams.contains("vpc") && getMachine().getDisableI8042() == 1) {
                     machineParams += ",i8042=off";
                 }
@@ -419,22 +536,22 @@ class VMExecutor extends MachineExecutor {
             paramsList.add(machineParams);
         }
 
-        //FIXME: something is wrong with quoting that doesn't let sparc qemu find the cpu def
-        // for now we remove the cpu drop downlist items for sparc
+        //FIXME: 引用有问题，导致 sparc qemu 找不到 cpu 定义；
+        // 目前暂时从 sparc 的 cpu 下拉列表中移除相关项。
         String cpu = getMachine().getCpu();
-        if (getMachine().getCpu() != null && getMachine().getCpu().contains(" "))
-            cpu = "'" + getMachine().getCpu() + "'"; // XXX: needed for sparc cpu names
+        if (cpu != null && cpu.contains(" ")) {
+            cpu = "'" + cpu + "'"; // XXX: sparc cpu 名称需要加引号
+        }
 
-        //XXX: we disable tsc feature for x86 since some guests are kernel panicking
-        // if the cpu has not specified by user we use the internal qemu32
+        //XXX: 对 x86 禁用 tsc 特性，因为某些 guest 会内核 panic；
+        // 如果用户没有指定 cpu，则使用内部的 qemu32。
         //
-        // The ",-tsc" suffix clears CPUID.1:EDX.TSC, and only 32-bit guests can
-        // live with that (they fall back to the PIT/PM timer).  A 64-bit Windows
-        // kernel treats a processor that does not advertise the timestamp
-        // counter as unsupported and bugchecks STOP 0x0000005D
-        // (UNSUPPORTED_PROCESSOR) while booting - whatever -cpu model the user
-        // picked, because the suffix is appended to every model.  The workaround
-        // is therefore never applied to the x86_64 target.
+        // ",-tsc" 后缀会清除 CPUID.1:EDX.TSC，只有 32 位 guest 能忍受
+        // （它们会回退到 PIT/PM 定时器）。64 位 Windows 内核会把不提供
+        // 时间戳计数器的处理器视为不支持，并在启动时 bugcheck
+        // STOP 0x0000005D (UNSUPPORTED_PROCESSOR) —— 无论用户选了哪个
+        // -cpu 型号，因为该后缀会追加到每个型号上。因此该 workaround
+        // 绝不应用于 x86_64 目标。
         if (getMachine().getDisableTSC() == 1 && LimboApplication.arch == Config.Arch.x86) {
             if (cpu == null || cpu.equals("Default")) {
                 cpu = "qemu32";
@@ -442,10 +559,9 @@ class VMExecutor extends MachineExecutor {
             cpu += ",-tsc";
         }
 
-        // ACPI/HPET disabling is an x86-only concept. QEMU 9.0 removed the
-        // -no-acpi/-no-hpet switches and turned them into machine properties
-        // (acpi=off / hpet=off); those properties only exist on x86 machines,
-        // so other targets (ia64, arm, ...) must not receive them at all.
+        // ACPI/HPET 禁用是 x86 独有的概念。QEMU 9.0 移除了 -no-acpi/-no-hpet
+        // 开关，改为机器属性（acpi=off / hpet=off）；这些属性只存在于 x86 机器上，
+        // 因此其他目标（ia64、arm 等）完全不能收到它们。
         if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64) {
             if (getMachine().getDisableAcpi() != 0) {
                 if (LimboApplication.getQemuVersion() >= 90000) {
@@ -465,10 +581,10 @@ class VMExecutor extends MachineExecutor {
             }
         }
 
-        // The HP workstation models (hp-i2000 / hp-zx2000 / hp-zx6000) hard-require
-        // their own CPU (merced-800 / mckinley-900 / madison-1500) and reject a
-        // -cpu override, so never pass a user-selected CPU for them; QEMU then
-        // uses the machine default CPU.
+        // HP 工作站型号 (hp-i2000 / hp-zx2000 / hp-zx6000) 硬性要求
+        // 它们自己的 CPU (merced-800 / mckinley-900 / madison-1500)，
+        // 拒绝 -cpu 覆盖，因此对它们绝不要传用户选择的 CPU；
+        // QEMU 会使用机器默认 CPU。
         boolean isHpMachine = getMachineType() != null && getMachineType().startsWith("hp-");
         if (!isHpMachine && cpu != null && !cpu.equals("Default")) {
             paramsList.add("-cpu");
@@ -478,48 +594,49 @@ class VMExecutor extends MachineExecutor {
         paramsList.add("-m");
         paramsList.add(getMachine().getMemory() + "");
 
-        // Gunyah (aarch64) guests must NOT get the ALS reference options
-        // "-M virt,confidential-guest-support=prot0" and
-        // "-object arm-confidential-guest,id=prot0,swiotlb-size=256M".
-        // The QEMU built for this app (v11.0.0 plus
-        // patches/qemu-v11.0.0-gunyah-gzvm-accel.patch) does not implement that
-        // object: its swiotlb buffer is an internal field of the accelerator
-        // state (GUNYAHState.swiotlb_size, filled with the default in
-        // gunyah_init()) and the gunyah code paths are selected by the
-        // accelerator itself (gunyah_enabled()).  QEMU rejects an unknown
-        // "-object" with error_fatal -> exit(1) while qemu_init() runs, which
-        // aborts the VM before it ever starts.
+        // Gunyah (aarch64) guest 不能收到 ALS 参考选项
+        // "-M virt,confidential-guest-support=prot0" 和
+        // "-object arm-confidential-guest,id=prot0,swiotlb-size=256M"。
+        // 本应用构建的 QEMU（v11.0.0 加上
+        // patches/qemu-v11.0.0-gunyah-gzvm-accel.patch）没有实现该对象：
+        // 它的 swiotlb 缓冲区是加速器状态的内部字段
+        // (GUNYAHState.swiotlb_size，在 gunyah_init() 中用默认值填充)，
+        // 而 gunyah 代码路径由加速器自身选择 (gunyah_enabled())。
+        // QEMU 会用 error_fatal 拒绝未知的 "-object" -> 在 qemu_init()
+        // 运行期间 exit(1)，导致 VM 在启动前就中止。
     }
 
 
-    private void addAccelerationOptions(ArrayList<String> paramsList) {
+    /**
+     * 添加加速器选项。
+     *
+     * <p>注意：加速器选项放在 extra params 之后添加，因为 QEMU 只认第一个
+     * 同名选项，这样 extra params 无法覆盖它。
+     */
+    private void addAccelerationOptions(@NonNull ArrayList<String> paramsList) {
 
-        // XXX: we add the acceleration options after the extra params
-        // this is due to QEMU applying the first instance of this option
-        // so the extra params cannot override it.
+        // XXX: 我们在 extra params 之后添加加速器选项，
+        // 因为 QEMU 只应用该选项的第一个实例，
+        // 这样 extra params 无法覆盖它。
         String accelMode = getMachine().getAccelMode();
+        paramsList.add("-accel");
         if (Machine.ACCEL_KVM.equals(accelMode)) {
-            paramsList.add("-accel");
             paramsList.add("kvm");
         } else if (Machine.ACCEL_GUNYAH.equals(accelMode)) {
-            paramsList.add("-accel");
             paramsList.add("gunyah");
         } else if (Machine.ACCEL_GZVM.equals(accelMode)) {
-            paramsList.add("-accel");
             paramsList.add("gzvm");
         } else {
-            // default: TCG, with the MTTCG switch controlling the thread mode
-            paramsList.add("-accel");
-            String tcgParams = "tcg";
-            if (getMachine().getEnableMTTCG() != 0) {
-                tcgParams += ",thread=multi";
-            } else {
-                tcgParams += ",thread=single";
-            }
-            paramsList.add(tcgParams);
+            // 默认：TCG，由 MTTCG 开关控制线程模式
+            paramsList.add(getMachine().getEnableMTTCG() != 0
+                    ? "tcg,thread=multi"
+                    : "tcg,thread=single");
         }
     }
 
+    /**
+     * 获取机器类型。对于 x86/x86_64，如果未设置则默认 "pc"。
+     */
     private String getMachineType() {
         String machineType = getMachine().getMachineType();
         if ((LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64)
@@ -529,6 +646,9 @@ class VMExecutor extends MachineExecutor {
         return machineType;
     }
 
+    /**
+     * 添加网络选项：-net user/tap/none 以及 -net nic。
+     */
     private void addNetworkOptions(ArrayList<String> paramsList) throws Exception {
 
         String network = getNetCfg();
@@ -541,7 +661,7 @@ class VMExecutor extends MachineExecutor {
                     if (hostFwd != null) {
 
                         //hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport{,hostfwd=...}
-                        // example forward ssh from guest port 2222 to guest port 22:
+                        // 示例：将 guest 22 端口转发到 host 2222 端口：
                         // hostfwd=tcp::2222-:22
                         if (hostFwd.startsWith("hostfwd")) {
                             throw new Exception("Invalid format for Host Forward, should be: tcp:hostport1:guestport1,udp:hostport2:questport2,...");
@@ -562,7 +682,7 @@ class VMExecutor extends MachineExecutor {
                     paramsList.add("none");
                     break;
                 default:
-                    //Unknown interface
+                    // 未知接口
                     paramsList.add("none");
                     break;
             }
@@ -572,7 +692,7 @@ class VMExecutor extends MachineExecutor {
         if (networkCard != null) {
             paramsList.add("-net");
             String nicParams = "nic";
-            if (network.equals("tap"))
+            if ("tap".equals(network))
                 nicParams += ",vlan=0";
             if (!networkCard.equals("Default"))
                 nicParams += (",model=" + networkCard);
@@ -580,6 +700,9 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /**
+     * 获取主机端口转发配置，仅在 User 网络模式下有效。
+     */
     private String getHostFwd() {
         if (getMachine().getNetwork().equals("User")) {
             if (getMachine().getHostFwd() != null && !getMachine().getHostFwd().isEmpty())
@@ -588,6 +711,9 @@ class VMExecutor extends MachineExecutor {
         return null;
     }
 
+    /**
+     * 获取网卡型号，网络为 None 时返回 null。
+     */
     private String getNicCard() {
         if (getMachine().getNetwork() == null || getMachine().getNetwork().equals("None")) {
             return null;
@@ -599,6 +725,9 @@ class VMExecutor extends MachineExecutor {
         return null;
     }
 
+    /**
+     * 获取网络配置类型：none/user/tap。
+     */
     private String getNetCfg() {
         if (getMachine().getNetwork() == null || getMachine().getNetwork().equals("None")) {
             return "none";
@@ -610,54 +739,63 @@ class VMExecutor extends MachineExecutor {
         return null;
     }
 
+    /**
+     * 添加显卡选项。
+     *
+     * <p>virtio-gpu 系列使用 -device 挂载，并配合 -vga none 避免与主板默认
+     * VGA 冲突；virtio-gpu-gl 还会追加 blob/hostmem/venus 属性。
+     */
     private void addGraphicsOptions(ArrayList<String> paramsList) {
-        if (getMachine().getVga() != null) {
-            if (getMachine().getVga().equals("Default")) {
-                //do nothing
-            } else if (getMachine().getVga().startsWith("virtio-gpu")) {
-                // virtio-gpu-pci / virtio-gpu-gl-pci are PCI devices, not -vga
-                // bios types, so they are attached with -device.  The board adds
-                // its own default (std) VGA on top of that unless -vga none is
-                // given, which leaves the guest with two adapters and QEMU with
-                // two consoles - the Android display backend can only show one
-                // of them, so the virtio-gpu output would never be visible.
-                String vgaDevice = getMachine().getVga();
-                // Venus (Vulkan over VirGL) is offered by the GL device only:
-                // the "venus" property is declared in
-                // hw/display/virtio-gpu-gl.c, so plain virtio-gpu-pci would
-                // reject it as an unknown property.  venus=on makes QEMU
-                // advertise VIRTIO_GPU_CAPSET_VENUS and ask virglrenderer for
-                // VIRGL_RENDERER_VENUS | VIRGL_RENDERER_RENDER_SERVER, so the
-                // renderer has to be built with venus support too (-Dvenus).
-                //
-                // venus also needs host blobs: hw/display/virtio-gpu.c fails the
-                // realize with "venus requires enabled blob and hostmem options"
-                // unless blob=on and hostmem=<size> are both given, so the two
-                // prerequisites ride along with the venus property here.
-                if (vgaDevice.startsWith("virtio-gpu-gl")) {
-                    if (!vgaDevice.contains(",blob=")) {
-                        vgaDevice += ",blob=on";
-                    }
-                    if (!vgaDevice.contains(",hostmem=")) {
-                        vgaDevice += ",hostmem=" + GL_HOSTMEM_SIZE;
-                    }
-                    if (!vgaDevice.contains(",venus=")) {
-                        vgaDevice += ",venus=on";
-                    }
+        String vga = getMachine().getVga();
+        if (vga == null) {
+            return;
+        }
+        if (vga.equals("Default")) {
+            // 不做任何事
+        } else if (vga.startsWith("virtio-gpu")) {
+            // virtio-gpu-pci / virtio-gpu-gl-pci 是 PCI 设备，不是 -vga
+            // bios 类型，因此用 -device 挂载。除非给出 -vga none，
+            // 否则主板会再添加自己的默认 (std) VGA，导致 guest 有两个
+            // 适配器、QEMU 有两个控制台 —— Android 显示后端只能显示其中
+            // 一个，因此 virtio-gpu 输出永远不可见。
+            String vgaDevice = vga;
+            // Venus（Vulkan over VirGL）只由 GL 设备提供：
+            // "venus" 属性声明在 hw/display/virtio-gpu-gl.c 中，
+            // 因此普通 virtio-gpu-pci 会把它当作未知属性拒绝。
+            // venus=on 让 QEMU 宣告 VIRTIO_GPU_CAPSET_VENUS 并向
+            // virglrenderer 请求 VIRGL_RENDERER_VENUS | VIRGL_RENDERER_RENDER_SERVER，
+            // 因此 renderer 也必须以 venus 支持构建 (-Dvenus)。
+            //
+            // venus 还需要 host blobs：除非同时给出 blob=on 和
+            // hostmem=<size>，否则 hw/display/virtio-gpu.c 的 realize 会失败，
+            // 报 "venus requires enabled blob and hostmem options"，
+            // 因此这两个前提条件随 venus 属性一起带上。
+            if (vgaDevice.startsWith("virtio-gpu-gl")) {
+                if (!vgaDevice.contains(",blob=")) {
+                    vgaDevice += ",blob=on";
                 }
-                paramsList.add("-vga");
-                paramsList.add("none");
-                paramsList.add("-device");
-                paramsList.add(vgaDevice);
-            } else if (getMachine().getVga().equals("nographic")) {
-                paramsList.add("-nographic");
-            } else {
-                paramsList.add("-vga");
-                paramsList.add(getMachine().getVga());
+                if (!vgaDevice.contains(",hostmem=")) {
+                    vgaDevice += ",hostmem=" + GL_HOSTMEM_SIZE;
+                }
+                if (!vgaDevice.contains(",venus=")) {
+                    vgaDevice += ",venus=on";
+                }
             }
+            paramsList.add("-vga");
+            paramsList.add("none");
+            paramsList.add("-device");
+            paramsList.add(vgaDevice);
+        } else if (vga.equals("nographic")) {
+            paramsList.add("-nographic");
+        } else {
+            paramsList.add("-vga");
+            paramsList.add(vga);
         }
     }
 
+    /**
+     * 添加启动选项：-boot、-kernel、-initrd、-append。
+     */
     private void addBootOptions(ArrayList<String> paramsList) {
         if (getBootDevice() != null) {
             paramsList.add("-boot");
@@ -682,7 +820,10 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
-    private String getBootDevice() {
+    /**
+     * 获取 -boot 参数值。ARM/ARM64 不适用，返回 null。
+     */
+    @Nullable private String getBootDevice() {
         if (LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
             return null;
         } else if (getMachine().getBootDevice().equals("Default")) {
@@ -698,20 +839,18 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * Adds the "-bios" option. If the user picked a firmware from the BIOS
-     * dropdown (assets/roms file name stored in the machine), that file is
-     * used; otherwise the SeaBIOS shipped in the app assets is used.
-     * The SeaBIOS fallback is x86 firmware and is therefore restricted to the
-     * x86/x86_64 (and IA-64) machines: on ARM boards "-bios" is either ignored
-     * (the Cortex-M boards microbit, lm3s*, netduino* load their firmware from
-     * "-kernel" only) or consumed as the *first* instruction source loaded at
-     * address 0 (raspi/vexpress/aspeed/cubieboard/orangepi), where an x86 blob
-     * would be executed as firmware.
+     * 添加 "-bios" 选项。如果用户在 BIOS 下拉框选择了固件（存储在 machine 中的
+     * assets/roms 文件名），则使用该文件；否则使用应用 assets 中附带的 SeaBIOS。
+     * SeaBIOS 回退仅适用于 x86/x86_64（以及 IA-64）机器：在 ARM 板上 "-bios"
+     * 要么被忽略（Cortex-M 板 microbit、lm3s*、netduino* 只从 "-kernel" 加载固件），
+     * 要么被当作地址 0 处的第一条指令源加载（raspi/vexpress/aspeed/cubieboard/orangepi），
+     * 此时 x86 blob 会被当作固件执行。
      */
     private void addBIOSOption(ArrayList<String> paramsList) {
-        String bios = getMachine() != null ? getMachine().getBios() : null;
+        Machine machine = getMachine();
+        String bios = machine != null ? machine.getBios() : null;
         if (bios != null && !bios.isEmpty() && !bios.equals("None")) {
-            // user-selected firmware from the BIOS dropdown
+            // 用户从 BIOS 下拉框选择的固件
             File biosFile = new File(bios);
             if (!biosFile.isAbsolute()) {
                 biosFile = new File(LimboApplication.getBasefileDir() + bios);
@@ -724,16 +863,15 @@ class VMExecutor extends MachineExecutor {
             Log.w(TAG, "BIOS file not found: " + biosFile.getPath());
             return;
         }
-        // SeaBIOS is x86 firmware: never fall back to it on ARM. Boards that do
-        // read "-bios" there load it as their reset/boot firmware, and the
-        // Cortex-M boards ignore it altogether - in both cases handing them
-        // bios-256k.bin only hides the fact that no usable firmware was given.
+        // SeaBIOS 是 x86 固件：绝不要在 ARM 上回退到它。那里读取 "-bios" 的板子
+        // 会把它当作 reset/boot 固件加载，而 Cortex-M 板则完全忽略它 ——
+        // 这两种情况下给它们 bios-256k.bin 只会掩盖没有可用固件的事实。
         if (LimboApplication.arch == Config.Arch.arm
                 || LimboApplication.arch == Config.Arch.arm64) {
             return;
         }
-        // QEMU 10.x defaults to bios-256k.bin on PC machines; bios.bin is the
-        // legacy 128K SeaBIOS kept as a fallback.
+        // QEMU 10.x 在 PC 机器上默认使用 bios-256k.bin；bios.bin 是
+        // 作为回退保留的旧版 128K SeaBIOS。
         String[] biosCandidates = {"bios-256k.bin", "bios.bin"};
         for (String biosFile : biosCandidates) {
             File biosF = new File(LimboApplication.getBasefileDir() + biosFile);
@@ -745,14 +883,17 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /** 获取 initrd 路径，并编码 document file path。 */
     private String getInitRd() {
         return FileUtils.encodeDocumentFilePath(getMachine().getInitRd());
     }
 
+    /** 获取 kernel 路径，并编码 document file path。 */
     private String getKernel() {
         return FileUtils.encodeDocumentFilePath(getMachine().getKernel());
     }
 
+    /** 获取驱动器文件路径，None 返回 null，否则编码。 */
     public String getDriveFilePath(String driveFilePath) {
         String imgPath = driveFilePath;
         if (imgPath == null || imgPath.equals("None"))
@@ -761,33 +902,34 @@ class VMExecutor extends MachineExecutor {
         return imgPath;
     }
 
+    /** 判断镜像是否为 raw 格式（.img/.raw）。 */
     private boolean isRawImage(String imagePath) {
         if (imagePath == null)
             return false;
-        String lower = imagePath.toLowerCase();
+        String lower = imagePath.toLowerCase(Locale.US);
         return lower.endsWith(".img") || lower.endsWith(".raw");
     }
 
     /**
-     * Resolves the -drive if= interface. A null/empty value falls back to "ide"
-     * (QEMU's default bus) — same as before per-drive interfaces were exposed.
+     * 解析 -drive if= 接口。null/空 回退到 "ide"（QEMU 默认总线），
+     * 与之前未暴露 per-drive 接口时行为一致。
      */
-    private String resolveDriveInterface(String iface) {
+    @NonNull private String resolveDriveInterface(String iface) {
         if (iface == null || iface.trim().isEmpty())
             return "ide";
         return iface;
     }
 
     /**
-     * Resolves the -drive format=. A null/empty/"auto" value keeps the legacy
-     * behavior: hard disks get "raw" only for raw images (otherwise auto-detect),
-     * CD-ROMs always use "raw". Any concrete format the user set is used as-is.
+     * 解析 -drive format=。null/空/"auto" 保持旧行为：
+     * 硬盘只有 raw 镜像才用 "raw"（否则自动检测），CD-ROM 始终用 "raw"。
+     * 用户设置的任何具体格式都原样使用。
      *
-     * @param explicit      the stored per-drive format (null when unset)
-     * @param path          the image file path (used by the raw detection)
-     * @param isDisk        true for hard disks, false for the CD-ROM
+     * @param explicit 存储的 per-drive 格式（未设置时为 null）
+     * @param path     镜像文件路径（用于 raw 检测）
+     * @param isDisk   true 表示硬盘，false 表示 CD-ROM
      */
-    @Nullable @Contract("null, _, false -> !null")
+    @Nullable
     private String resolveDriveFormat(String explicit, String path, boolean isDisk) {
         if (explicit == null || explicit.trim().isEmpty() || explicit.equals("auto")) {
             return isDisk ? (isRawImage(path) ? "raw" : null) : "raw";
@@ -796,9 +938,8 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * Resolves the -drive cache=. A concrete per-drive value the user set is
-     * used as-is; null/empty falls back to the global cache setting (which is
-     * already null when the user chose "default").
+     * 解析 -drive cache=。用户设置的 per-drive 值原样使用；
+     * null/空 回退到全局 cache 设置（用户选择 "default" 时该值已为 null）。
      */
     private String resolveDriveCache(String explicit, String fallback) {
         if (explicit != null && !explicit.trim().isEmpty()) {
@@ -808,88 +949,75 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * Emits all storage devices (HDA..HDD, CDROM, FDA/FDB, SD card and the
-     * shared folder) as uniform "-drive" parameters.
+     * 以统一的 "-drive" 参数形式输出所有存储设备
+     * （HDA..HDD、CDROM、FDA/FDB、SD 卡以及共享文件夹）。
      */
     public void addDrives(ArrayList<String> paramsList) {
-        // Global fallback cache mode from settings ("default"/empty -> no cache=).
+        // 全局回退 cache 模式，来自设置（"default"/空 -> 不添加 cache=）。
         String globalCache = LimboSettingsManager.getDiskCache(LimboApplication.getInstance());
         if (globalCache == null || globalCache.equals("default"))
             globalCache = null;
 
-        // Hard disks HDA..HDD. if= comes from the machine's per-drive interface
-        // (null/empty -> "ide", QEMU's default). format= comes from the machine's
-        // per-drive format when set, otherwise the legacy auto/raw detection.
-        // cache= comes from the machine's per-drive cache when the user set one,
-        // otherwise falls back to the global disk-cache setting.
-        // The HP workstation models (hp-i2000 / hp-zx2000 / hp-zx6000) wire their
-        // on-board storage through the IFB (82468GX) / CMD649 IDE controller only;
-        // their firmware boots from IDE, and -drive if=scsi would land on a PCI SCSI
-        // HBA (isp12160 / lsi53c895a) the firmware cannot read. Force IDE for
-        // them regardless of the configured per-drive interface (the VPC models
-        // keep riding the LSI on-board SCSI).
-        // NOTE hp-zx2000: its EFI firmware only enumerates the primary IDE channel,
-        // so only index=0/1 media is visible to it - leave HDA/HDB free (or unused)
-        // when booting from CD on that machine.
-        boolean isHp = getMachineType() != null && getMachineType().startsWith("hp-");
-        String ifaceHda = resolveDriveInterface(getMachine().getHdaInterface());
-        String ifaceHdb = resolveDriveInterface(getMachine().getHdbInterface());
-        String ifaceHdc = resolveDriveInterface(getMachine().getHdcInterface());
-        String ifaceHdd = resolveDriveInterface(getMachine().getHddInterface());
-        if (isHp) {
-            ifaceHda = "ide";
-            ifaceHdb = "ide";
-            ifaceHdc = "ide";
-            ifaceHdd = "ide";
-        }
-        String fmtHda = resolveDriveFormat(getMachine().getHdaFormat(),
-                getDriveFilePath(getMachine().getHdaImagePath()), true);
-        String fmtHdb = resolveDriveFormat(getMachine().getHdbFormat(),
-                getDriveFilePath(getMachine().getHdbImagePath()), true);
-        String fmtHdc = resolveDriveFormat(getMachine().getHdcFormat(),
-                getDriveFilePath(getMachine().getHdcImagePath()), true);
-        String fmtHdd = resolveDriveFormat(getMachine().getHddFormat(),
-                getDriveFilePath(getMachine().getHddImagePath()), true);
-        String cacheHda = resolveDriveCache(getMachine().getHdaCache(), globalCache);
-        String cacheHdb = resolveDriveCache(getMachine().getHdbCache(), globalCache);
-        String cacheHdc = resolveDriveCache(getMachine().getHdcCache(), globalCache);
-        String cacheHdd = resolveDriveCache(getMachine().getHddCache(), globalCache);
-        addDrive(paramsList, "0",
-                ifaceHda, "disk", null,
-                getDriveFilePath(getMachine().getHdaImagePath()), fmtHda, cacheHda);
-        addDrive(paramsList, "1",
-                ifaceHdb, "disk", null,
-                getDriveFilePath(getMachine().getHdbImagePath()), fmtHdb, cacheHdb);
-        addDrive(paramsList, "2",
-                ifaceHdc, "disk", null,
-                getDriveFilePath(getMachine().getHdcImagePath()), fmtHdc, cacheHdc);
-        addDrive(paramsList, "3",
-                ifaceHdd, "disk", null,
-                getDriveFilePath(getMachine().getHddImagePath()), fmtHdd, cacheHdd);
+        // 硬盘 HDA..HDD。if= 来自机器的 per-drive 接口
+        //（null/空 -> "ide"，QEMU 默认）。format= 来自机器的 per-drive 格式
+        //（设置时），否则使用旧的 auto/raw 检测。cache= 来自机器的 per-drive
+        // cache（用户设置时），否则回退到全局 disk-cache 设置。
+        // HP 工作站型号 (hp-i2000 / hp-zx2000 / hp-zx6000) 只通过
+        // IFB (82468GX) / CMD649 IDE 控制器连接板载存储；
+        // 其固件从 IDE 启动，-drive if=scsi 会落到固件无法读取的
+        // PCI SCSI HBA (isp12160 / lsi53c895a) 上。因此对它们强制 IDE，
+        // 无论配置的 per-drive 接口是什么（VPC 型号继续使用 LSI 板载 SCSI）。
+        // 注意 hp-zx2000：其 EFI 固件只枚举主 IDE 通道，
+        // 因此只有 index=0/1 的介质对它可见 —— 在该机器上从 CD 启动时，
+        // 请让 HDA/HDB 空闲（或不使用）。
+        final Machine machine = getMachine();
+        final boolean isHp = getMachineType() != null && getMachineType().startsWith("hp-");
 
-        // CDROM getMachine().getCDInterface(). The interface is used as
-        // configured (null/empty falls back to QEMU's default via
-        // resolveDriveInterface), e.g. "scsi" for IA-64 boot media.
-        String cdInterface = resolveDriveInterface(getMachine().getCDInterface());
-        if (isHp) {
-            cdInterface = "ide";
-        }
-        String cdPath = getDriveFilePath(getMachine().getCdImagePath());
+        String ifaceHda = isHp ? "ide" : resolveDriveInterface(machine.getHdaInterface());
+        String ifaceHdb = isHp ? "ide" : resolveDriveInterface(machine.getHdbInterface());
+        String ifaceHdc = isHp ? "ide" : resolveDriveInterface(machine.getHdcInterface());
+        String ifaceHdd = isHp ? "ide" : resolveDriveInterface(machine.getHddInterface());
+
+        String pathHda = getDriveFilePath(machine.getHdaImagePath());
+        String pathHdb = getDriveFilePath(machine.getHdbImagePath());
+        String pathHdc = getDriveFilePath(machine.getHdcImagePath());
+        String pathHdd = getDriveFilePath(machine.getHddImagePath());
+
+        String fmtHda = resolveDriveFormat(machine.getHdaFormat(), pathHda, true);
+        String fmtHdb = resolveDriveFormat(machine.getHdbFormat(), pathHdb, true);
+        String fmtHdc = resolveDriveFormat(machine.getHdcFormat(), pathHdc, true);
+        String fmtHdd = resolveDriveFormat(machine.getHddFormat(), pathHdd, true);
+
+        String cacheHda = resolveDriveCache(machine.getHdaCache(), globalCache);
+        String cacheHdb = resolveDriveCache(machine.getHdbCache(), globalCache);
+        String cacheHdc = resolveDriveCache(machine.getHdcCache(), globalCache);
+        String cacheHdd = resolveDriveCache(machine.getHddCache(), globalCache);
+
+        addDrive(paramsList, "0", ifaceHda, "disk", null, pathHda, fmtHda, cacheHda);
+        addDrive(paramsList, "1", ifaceHdb, "disk", null, pathHdb, fmtHdb, cacheHdb);
+        addDrive(paramsList, "2", ifaceHdc, "disk", null, pathHdc, fmtHdc, cacheHdc);
+        addDrive(paramsList, "3", ifaceHdd, "disk", null, pathHdd, fmtHdd, cacheHdd);
+
+        // CDROM 使用 machine.getCDInterface()。接口按配置使用
+        //（null/空 通过 resolveDriveInterface 回退到 QEMU 默认），
+        // 例如 IA-64 启动介质用 "scsi"。
+        String cdInterface = isHp ? "ide" : resolveDriveInterface(machine.getCDInterface());
+        String cdPath = getDriveFilePath(machine.getCdImagePath());
         addDrive(paramsList, null,
                 cdInterface, "cdrom", null,
-                cdPath, resolveDriveFormat(getMachine().getCDFormat(), cdPath, false), null);
+                cdPath, resolveDriveFormat(machine.getCDFormat(), cdPath, false), null);
 
-        // Floppy drives FDA/FDB
+        // 软驱 FDA/FDB
         if (Config.enableEmulatedFloppy) {
             addDrive(paramsList, "0", "floppy", null, null,
-                    getDriveFilePath(getMachine().getFdaImagePath()), null, null);
+                    getDriveFilePath(machine.getFdaImagePath()), null, null);
             addDrive(paramsList, "1", "floppy", null, null,
-                    getDriveFilePath(getMachine().getFdbImagePath()), null, null);
+                    getDriveFilePath(machine.getFdbImagePath()), null, null);
         }
 
-        // SD card: -drive if=none,id=sd0 paired with the sd-card device
+        // SD 卡：-drive if=none,id=sd0 与 sd-card 设备配对
         if (Config.enableEmulatedSDCard) {
-            String sdImagePath = getDriveFilePath(getMachine().getSdImagePath());
+            String sdImagePath = getDriveFilePath(machine.getSdImagePath());
             if (sdImagePath != null) {
                 paramsList.add("-device");
                 paramsList.add("sd-card,drive=sd0,bus=sd-bus");
@@ -897,9 +1025,9 @@ class VMExecutor extends MachineExecutor {
             }
         }
 
-        // Shared folder mounted as a virtual FAT drive
+        // 共享文件夹作为虚拟 FAT 驱动器挂载
         if (Config.enableSharedFolder) {
-            String sharedFolderPath = getDriveFilePath(getMachine().getSharedFolderPath());
+            String sharedFolderPath = getDriveFilePath(machine.getSharedFolderPath());
             if (sharedFolderPath != null) {
                 addDrive(paramsList, "3", "ide", "disk", null,
                         "fat:rw:" + sharedFolderPath, "raw", null);
@@ -908,25 +1036,25 @@ class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * Appends a single "-drive" parameter to paramsList. All storage devices
-     * go through this helper so the QEMU command line stays uniform.
+     * 向 paramsList 追加单个 "-drive" 参数。所有存储设备都通过该辅助方法，
+     * 以保持 QEMU 命令行统一。
      *
-     * @param index  bus index ("0".."3") or null when if=none (SD card)
-     * @param iface  interface: ide, scsi, virtio, floppy, none, ...
-     * @param media  media type: disk, cdrom or null
-     * @param id     drive id (used for if=none drives such as sd0)
-     * @param file   image file path, or "fat:rw:<dir>" for shared folders
-     * @param format force the format (raw) or null for auto-detection
-     * @param cache  cache mode or null
+     * @param index 总线索引 ("0".."3")，if=none（SD 卡）时为 null
+     * @param iface 接口：ide、scsi、virtio、floppy、none、...
+     * @param media 介质类型：disk、cdrom 或 null
+     * @param id    drive id（用于 if=none 的驱动器，如 sd0）
+     * @param file  镜像文件路径，或共享文件夹的 "fat:rw:<dir>"
+     * @param format 强制格式 (raw)，null 表示自动检测
+     * @param cache  cache 模式或 null
      */
     private void addDrive(ArrayList<String> paramsList, String index, String iface, String media,
                           String id, String file, String format, String cache) {
         if (file == null || file.trim().isEmpty())
             return;
-        StringBuilder param = new StringBuilder();
-        if(index != null)
+        StringBuilder param = new StringBuilder(128);
+        if (index != null)
             appendDriveField(param, "index", index);
-        if(iface != null)
+        if (iface != null)
             appendDriveField(param, "if", iface);
         appendDriveField(param, "media", media);
         appendDriveField(param, "id", id);
@@ -937,6 +1065,7 @@ class VMExecutor extends MachineExecutor {
         paramsList.add(param.toString());
     }
 
+    /** 向 -drive 参数字符串追加一个字段。 */
     private void appendDriveField(StringBuilder param, String field, String value) {
         if (value == null || value.isEmpty())
             return;
@@ -947,10 +1076,10 @@ class VMExecutor extends MachineExecutor {
 
 
     /**
-     * change the vnc password before we connect
-     * The user is also prompted to create a certificate
+     * 在连接前更改 VNC 密码。
+     * 用户也会被提示创建证书。
      *
-     * @param vncPassword The VNC password to be send to QEMU
+     * @param vncPassword 要发送给 QEMU 的 VNC 密码
      */
     protected void vncchangepassword(String vncPassword) throws Exception {
         String res = QmpClient.sendCommand(QmpClient.getChangeVncPasswdCommand(vncPassword));
@@ -968,27 +1097,32 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /** 通过 QMP 更换设备介质。 */
     protected String changedev(String dev, String value) {
         String response = QmpClient.sendCommand(QmpClient.getChangeDeviceCommand(dev, value));
-        String displayDevValue = FileUtils.getFullPathFromDocumentFilePath(value);
-        if (Config.debug)
-            ToastUtils.toastLong(LimboApplication.getInstance(), Gravity.BOTTOM,
-                    LimboApplication.getInstance().getString(R.string.ChangedDevice) + ": "
-                            + dev + ": " + displayDevValue);
+        if (Config.debug) {
+            Context app = LimboApplication.getInstance();
+            String displayDevValue = FileUtils.getFullPathFromDocumentFilePath(value);
+            ToastUtils.toastLong(app, Gravity.BOTTOM,
+                    app.getString(R.string.ChangedDevice) + ": " + dev + ": " + displayDevValue);
+        }
         return response;
     }
 
+    /** 通过 QMP 弹出设备介质。 */
     protected String ejectdev(String dev) {
         String response = QmpClient.sendCommand(QmpClient.getEjectDeviceCommand(dev));
-        if (Config.debug)
-            ToastUtils.toastLong(LimboApplication.getInstance(), Gravity.BOTTOM,
-                    LimboApplication.getInstance().getString(R.string.EjectedDevice) + ": " + dev);
+        if (Config.debug) {
+            Context app = LimboApplication.getInstance();
+            ToastUtils.toastLong(app, Gravity.BOTTOM,
+                    app.getString(R.string.EjectedDevice) + ": " + dev);
+        }
         return response;
     }
 
 
     /**
-     * Starts the service that will later start the qemu process
+     * 启动稍后会启动 qemu 进程的服务。
      */
     public void startService() {
         Intent i = new Intent(Config.ACTION_START, null, LimboApplication.getInstance(),
@@ -996,21 +1130,118 @@ class VMExecutor extends MachineExecutor {
         Bundle b = new Bundle();
         i.putExtras(b);
         Log.d(TAG, "Starting VM service");
-        // API 26+ requires startForegroundService() for services that call
-        // startForeground() (MachineService does). Using startService() there is
-        // subject to background service start restrictions.
+        // API 26+ 对于会调用 startForeground() 的服务（MachineService 会）
+        // 要求使用 startForegroundService()。在那里使用 startService()
+        // 会受后台服务启动限制影响。
+        Context app = LimboApplication.getInstance();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            LimboApplication.getInstance().startForegroundService(i);
+            app.startForegroundService(i);
         } else {
-            LimboApplication.getInstance().startService(i);
+            app.startService(i);
         }
     }
 
     /**
-     * Starts the native process. This should be called from a background thread from a
-     * foreground service in order to prevent the process from being killed
+     * 返回可以用于弹对话框的 Activity。
      *
-     * @return String from the native code vm-executor-jni.cpp
+     * <p>不能用 {@link LimboApplication#getInstance()}（Application Context）弹窗：
+     * 应用主题不是 Theme.AppCompat 后代时 {@code MaterialAlertDialogBuilder} 的构造函数
+     * 会直接抛出 {@code IllegalArgumentException: The style on this component requires
+     * your app theme to be Theme.AppCompat (or a descendant)}；即使主题正确，
+     * Application Context 也没有窗口 token，{@code show()} 依旧会抛
+     * {@code WindowManager$BadTokenException}。
+     *
+     * @return 可用的 Activity，没有则返回 null
+     */
+    @Nullable
+    private Activity getDialogActivity() {
+        Activity activity = LimboApplication.getCurrentActivity();
+        if (activity == null || activity.isFinishing()) {
+            return null;
+        }
+        if (activity.isDestroyed()) {
+            return null;
+        }
+        return activity;
+    }
+
+    /**
+     * 记录 KVM 启动方式的选择，只会生效一次（避免对话框销毁回调覆盖用户的选择）。
+     */
+    private void decideKvmRoot(java.util.concurrent.atomic.AtomicBoolean decided,
+                               int choice,
+                               java.util.concurrent.CountDownLatch latch) {
+        if (decided.compareAndSet(false, true)) {
+            kvmChoice.set(choice);
+            latch.countDown();
+        }
+    }
+
+    /**
+     * 当加速器为 KVM 时询问用户是否以 root 身份启动 VM。
+     *
+     * <p>该方法会阻塞调用线程（后台线程），直到用户在对话框上做出选择。
+     * 对话框本身在主线程弹出。
+     *
+     * @return true 表示用户选择以 root 启动
+     */
+    private boolean askKvmRootChoice() {
+        // 已经问过（例如重启）就直接复用上次结果
+        int cached = kvmChoice.get();
+        if (cached != KVM_CHOICE_UNDECIDED) {
+            return cached == KVM_CHOICE_ROOT;
+        }
+
+        synchronized (kvmChoiceLock) {
+            if (kvmChoice.get() == KVM_CHOICE_UNDECIDED) {
+                final java.util.concurrent.CountDownLatch latch =
+                        new java.util.concurrent.CountDownLatch(1);
+                final java.util.concurrent.atomic.AtomicBoolean decided =
+                        new java.util.concurrent.atomic.AtomicBoolean(false);
+
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    final Activity activity = getDialogActivity();
+                    if (activity == null) {
+                        // 没有 Activity 时无法弹窗，直接按普通方式启动
+                        Log.w(TAG, "No Activity available, skipping KVM root dialog");
+                        decideKvmRoot(decided, KVM_CHOICE_NORMAL, latch);
+                        return;
+                    }
+                    try {
+                        new MaterialAlertDialogBuilder(activity)
+                                .setTitle(R.string.kvm_root_dialog_title)
+                                .setMessage(R.string.kvm_root_dialog_message)
+                                .setCancelable(false)
+                                .setPositiveButton(R.string.kvm_root_dialog_root,
+                                        (d, w) -> decideKvmRoot(decided, KVM_CHOICE_ROOT, latch))
+                                .setNegativeButton(R.string.kvm_root_dialog_normal,
+                                        (d, w) -> decideKvmRoot(decided, KVM_CHOICE_NORMAL, latch))
+                                // 例如 Activity 被销毁导致对话框消失时兜底，
+                                // 否则 VM 启动线程会一直阻塞在 latch 上
+                                .setOnDismissListener(d ->
+                                        decideKvmRoot(decided, KVM_CHOICE_NORMAL, latch))
+                                .show();
+                    } catch (Throwable t) {
+                        // 弹窗失败（如无 Activity）时回退到普通启动
+                        Log.e(TAG, "Failed to show KVM root dialog", t);
+                        decideKvmRoot(decided, KVM_CHOICE_NORMAL, latch);
+                    }
+                });
+
+                try {
+                    latch.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    kvmChoice.set(KVM_CHOICE_NORMAL);
+                }
+            }
+        }
+        return kvmChoice.get() == KVM_CHOICE_ROOT;
+    }
+    /**
+     * 启动原生进程。应从后台线程的前台服务中调用，以防止进程被杀。
+     *
+     * @return 来自原生代码 vm-executor-jni.cpp 的字符串
      */
     public String start() {
         String res = null;
@@ -1018,9 +1249,10 @@ class VMExecutor extends MachineExecutor {
             String[] params = prepareParams(LimboApplication.getInstance());
             printParams(params);
 
-            // gunyah/gzvm open /dev/gunyah or /dev/gzvm, which is root-only on
-            // the target devices: unless this process is already root, run the
-            // VM in a root child process (independent JVM via app_process).
+            // gunyah/gzvm 会打开 /dev/gunyah 或 /dev/gzvm，在目标设备上
+            // 这是 root-only 的：除非当前进程已经是 root，
+            // 否则在 root 子进程中运行 VM（通过 app_process 启动独立 JVM）。
+            // KVM 同样可能因为 /dev/kvm 权限问题需要 root，此时询问用户。
             String accelMode = getMachine().getAccelMode();
             boolean needsRootAccel = Machine.ACCEL_GUNYAH.equals(accelMode)
                     || Machine.ACCEL_GZVM.equals(accelMode);
@@ -1028,23 +1260,36 @@ class VMExecutor extends MachineExecutor {
                 return startRootProcess(params);
             }
 
-            // XXX: for VNC we need to resume manually after a reasonable amount of time
+            // KVM：询问用户是否以 root 启动（仅当当前不是 root 时才有意义）
+            boolean isKvm = Machine.ACCEL_KVM.equals(accelMode);
+            if (isKvm && !RootUtils.isRoot()) {
+                boolean useRoot = askKvmRootChoice();
+                if (useRoot) {
+                    return startRootProcess(params);
+                }
+                // 用户选择普通启动，继续走进程内路径
+            }
+
+            // XXX: 对于 VNC，我们需要在合理时间后手动恢复
             if (getMachine().getPaused() == 1 && MachineController.getInstance().isVNCEnabled()) {
                 continueVM(5000);
             }
 
-            if (MachineController.getInstance().isVNCEnabled() && LimboSettingsManager.getVNCEnablePassword(LimboApplication.getInstance())) {
+            if (MachineController.getInstance().isVNCEnabled()
+                    && LimboSettingsManager.getVNCEnablePassword(LimboApplication.getInstance())) {
                 changeVncPass(LimboApplication.getInstance(), 2000);
             }
 
             QmpClient.setExternal(LimboSettingsManager.getEnableExternalQMP(LimboApplication.getInstance()));
-            // Read at VM start so the setting takes effect for the current run.
+            // 在 VM 启动时读取，使设置对当前运行生效。
             String libFilename = getQemuLibrary();
             res = start(Config.storagedir, LimboApplication.getBasefileDir(),
-                    libFilename, FileUtils.getNativeLibSearchDir(LimboApplication.getInstance()) + "/" + libFilename,
+                    libFilename,
+                    FileUtils.getNativeLibSearchDir(LimboApplication.getInstance()) + "/" + libFilename,
                     params);
         } catch (Exception ex) {
-            ToastUtils.toastLong(LimboApplication.getInstance(), ex.getMessage());
+            Log.e(TAG, "VM start failed", ex);
+            ToastUtils.toastLong(LimboApplication.getInstance(), String.valueOf(ex.getMessage()));
             return res;
         }
         return res;
@@ -1080,162 +1325,188 @@ class VMExecutor extends MachineExecutor {
      * MachineController 的构造过程会创建它自己的 VMExecutor，这里直接取该实例，
      * 避免出现第二个实例。
      */
-    @Nullable
     static VMExecutor obtain() {
         if (mInstance == null) {
-            // noinspection ResultOfMethodCallIgnored
             MachineController.getInstance();
         }
         return mInstance;
     }
 
     /**
-     * Launches the VM in a root child process: su + app_process run an
-     * independent JVM (RootVmLauncher) that loads the qemu library.  Blocks
-     * until the child exits so the MachineService lifecycle stays identical
-     * to the in-process path.
+     * 在 root 子进程中启动 VM：su + app_process 运行独立 JVM
+     * （RootVmLauncher）来加载 qemu 库。阻塞直到子进程退出，
+     * 这样 MachineService 生命周期与进程内路径保持一致。
      */
     private String startRootProcess(String[] params) {
-        if (isRootVmRunning()) {
-            return LimboApplication.getInstance().getString(R.string.root_vm_already_running);
-        }
         final Context ctx = LimboApplication.getInstance();
+        if (isRootVmRunning()) {
+            return ctx.getString(R.string.root_vm_already_running);
+        }
         try {
-            File filesDir = ctx.getFilesDir();
+            File filesDir   = ctx.getFilesDir();
             File scriptFile = new File(filesDir, ROOT_VM_SCRIPT);
-            File pidFile = new File(filesDir, ROOT_VM_PID);
+            File pidFile    = new File(filesDir, ROOT_VM_PID);
             File statusFile = new File(filesDir, RootVmLauncher.STATUS_FILENAME);
-            File errFile = new File(filesDir, ROOT_VM_STDERR);
+            File errFile    = new File(filesDir, ROOT_VM_STDERR);
 
             // 关闭安装时解压时 nativeLibraryDir 为空，getNativeLibSearchDir 会返回
             // APK 内的 lib/<abi> 路径（<apk>!/lib/<abi>），子进程可直接从 APK 加载。
             String nativeLibDir = FileUtils.getNativeLibSearchDir(ctx);
             String apkPath = ctx.getApplicationInfo().sourceDir;
             if (apkPath == null || !new File(apkPath).exists()) {
-                return LimboApplication.getInstance().getString(R.string.root_vm_start_failed)
-                        + ": APK path unavailable: " + apkPath;
+                return startFailed("APK path unavailable: " + apkPath);
             }
             String appProcess = new File("/system/bin/app_process64").exists()
                     ? "/system/bin/app_process64" : "/system/bin/app_process";
             if (!new File(appProcess).exists()) {
-                return LimboApplication.getInstance().getString(R.string.root_vm_start_failed)
-                        + ": app_process not found";
+                return startFailed("app_process not found");
             }
 
             String libFilename = params[0];
-            String libPath = nativeLibDir + "/" + libFilename;
+            String libPath     = nativeLibDir + "/" + libFilename;
             String[] childParams = headlessParams(params);
 
-            StringBuilder sb = new StringBuilder();
-            sb.append("#!/system/bin/sh\n");
-            sb.append("export LD_LIBRARY_PATH=").append(shq(nativeLibDir)).append("\n");
-            sb.append("export CLASSPATH=").append(shq(apkPath)).append("\n");
-            sb.append("echo $$ > ").append(shq(pidFile.getAbsolutePath())).append("\n");
-            // 新版 app_process 只认命令行 vm 选项，不再读取 CLASSPATH 环境变量：
-            // 必须在“父目录”参数之前用 -cp 传类路径，否则子进程 boot classpath 里没有
-            // 应用 dex，FindClass("com/limbo/emu/jni/RootVmLauncher") 返回 null，留下的
-            // pending ClassNotFoundException 会让 startReg() 里的 AssertNoPendingException
-            // 直接 abort。上面的 export CLASSPATH 仅对老版本 app_process 有效，保留无副作用。
-            sb.append("exec ").append(appProcess).append(" -cp ").append(shq(apkPath))
-                    .append(" /system/bin com.limbo.emu.jni.RootVmLauncher");
-            sb.append(' ').append(shq(nativeLibDir));
-            sb.append(' ').append(shq(filesDir.getAbsolutePath()));
-            sb.append(' ').append(shq(libFilename));
-            sb.append(' ').append(shq(libPath));
-            sb.append(' ').append(shq(Config.storagedir));
-            sb.append(' ').append(shq(LimboApplication.getBasefileDir()));
-            for (String p : childParams) {
-                sb.append(' ').append(shq(p));
-            }
-            sb.append('\n');
-
-            FileOutputStream fos = new FileOutputStream(scriptFile, false);
-            try {
-                fos.write(sb.toString().getBytes(StandardCharsets.UTF_8));
-            } finally {
-                fos.close();
-            }
+            writeRootVmScript(scriptFile, nativeLibDir, apkPath, appProcess,
+                    filesDir, pidFile, libFilename, libPath, childParams);
 
             deleteQuietly(pidFile);
             deleteQuietly(statusFile);
             deleteQuietly(errFile);
 
-            ProcessBuilder pb = new ProcessBuilder("su", "-c", "sh " + shq(scriptFile.getAbsolutePath()));
-            pb.redirectErrorStream(true);
-            rootVmProcess = pb.start();
-            drainRootVmLog(rootVmProcess, errFile);
+            launchSuProcess(scriptFile, errFile);
 
-            long deadline = System.currentTimeMillis() + ROOT_VM_START_TIMEOUT_MS;
-            while (System.currentTimeMillis() < deadline && rootVmPid == null) {
-                if (!isProcessAlive(rootVmProcess)) {
-                    return LimboApplication.getInstance().getString(R.string.root_vm_start_failed)
-                            + ": su exited early. " + readTail(errFile);
-                }
-                String pid = readPid(pidFile);
-                if (pid != null) {
-                    rootVmPid = pid;
-                    rootVmMode = true;
-                    break;
-                }
-                try {
-                    Thread.sleep(300);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return LimboApplication.getInstance().getString(R.string.root_vm_start_failed);
-                }
-            }
-            if (rootVmPid == null) {
-                return LimboApplication.getInstance().getString(R.string.root_vm_start_failed)
-                        + ": no pid after " + ROOT_VM_START_TIMEOUT_MS + "ms. " + readTail(errFile);
+            if (!awaitRootVmStart(pidFile, errFile)) {
+                return startFailed(rootVmPid == null
+                        ? "no pid after " + ROOT_VM_START_TIMEOUT_MS + "ms. " + readTail(errFile)
+                        : "su exited early. " + readTail(errFile));
             }
 
             Log.d(TAG, "Root VM running with pid " + rootVmPid);
-            // Block until the root child exits (user stop or guest shutdown),
-            // keeping the MachineService lifecycle identical to in-process.
-            while (isRootVmAlive()) {
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
+            awaitRootVmExit();
             rootVmMode = false;
             rootVmProcess = null;
 
-            String status = readText(statusFile);
-            if (status != null && status.startsWith(RootVmLauncher.STATUS_PREFIX_ERROR)) {
-                return LimboApplication.getInstance().getString(R.string.root_vm_start_failed)
-                        + ": " + status.substring(RootVmLauncher.STATUS_PREFIX_ERROR.length());
-            }
-            if (status != null && status.startsWith(RootVmLauncher.STATUS_PREFIX_STOPPED)) {
-                String res = status.substring(RootVmLauncher.STATUS_PREFIX_STOPPED.length()).trim();
-                if (!res.isEmpty() && !"VM shutdown".equals(res)) {
-                    return res;
-                }
-            }
-            return "VM shutdown";
+            return parseRootVmStatus(statusFile);
         } catch (IOException e) {
             Log.e(TAG, "Failed to launch root VM", e);
             if (!RootUtils.hasSu()) {
-                return LimboApplication.getInstance().getString(R.string.root_vm_no_su);
+                return ctx.getString(R.string.root_vm_no_su);
             }
-            return LimboApplication.getInstance().getString(R.string.root_vm_start_failed) + ": " + e.getMessage();
+            return startFailed(e.getMessage());
         } catch (Exception e) {
             Log.e(TAG, "Failed to launch root VM", e);
-            return LimboApplication.getInstance().getString(R.string.root_vm_start_failed) + ": " + e.getMessage();
+            return startFailed(e.getMessage());
         }
     }
 
-    // SDL/GTK windows exist only in the app process; the root child must run
-    // headless.  VNC (when configured) keeps serving from the child.
-    private static String[] headlessParams(String[] params) {
-        boolean vnc = false;
+    /** 构造 root VM 启动失败时的提示字符串。 */
+    @NonNull private String startFailed(String detail) {
+        return LimboApplication.getInstance().getString(R.string.root_vm_start_failed)
+                + (detail == null || detail.isEmpty() ? "" : ": " + detail);
+    }
+
+    /** 生成 root VM 启动脚本。 */
+    private void writeRootVmScript(File scriptFile, String nativeLibDir, String apkPath,
+                                   String appProcess, @NonNull File filesDir, @NonNull File pidFile,
+                                   String libFilename, String libPath,
+                                   @NonNull String[] childParams) throws IOException {
+        StringBuilder sb = new StringBuilder(512);
+        sb.append("#!/system/bin/sh\n");
+        sb.append("export LD_LIBRARY_PATH=").append(shq(nativeLibDir)).append("\n");
+        sb.append("export CLASSPATH=").append(shq(apkPath)).append("\n");
+        sb.append("echo $$ > ").append(shq(pidFile.getAbsolutePath())).append("\n");
+        // 新版 app_process 只认命令行 vm 选项，不再读取 CLASSPATH 环境变量：
+        // 必须在“父目录”参数之前用 -cp 传类路径，否则子进程 boot classpath 里没有
+        // 应用 dex，FindClass("com/limbo/emu/jni/RootVmLauncher") 返回 null，留下的
+        // pending ClassNotFoundException 会让 startReg() 里的 AssertNoPendingException
+        // 直接 abort。上面的 export CLASSPATH 仅对老版本 app_process 有效，保留无副作用。
+        sb.append("exec ").append(appProcess).append(" -cp ").append(shq(apkPath))
+                .append(" /system/bin com.limbo.emu.jni.RootVmLauncher");
+        sb.append(' ').append(shq(nativeLibDir));
+        sb.append(' ').append(shq(filesDir.getAbsolutePath()));
+        sb.append(' ').append(shq(libFilename));
+        sb.append(' ').append(shq(libPath));
+        sb.append(' ').append(shq(Config.storagedir));
+        sb.append(' ').append(shq(LimboApplication.getBasefileDir()));
+        for (String p : childParams) {
+            sb.append(' ').append(shq(p));
+        }
+        sb.append('\n');
+
+        try (FileOutputStream fos = new FileOutputStream(scriptFile, false)) {
+            fos.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    /** 通过 su 启动脚本进程，并排空其输出到日志文件。 */
+    private void launchSuProcess(@NonNull File scriptFile, File errFile) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(
+                "su", "-c", "sh " + shq(scriptFile.getAbsolutePath()));
+        pb.redirectErrorStream(true);
+        rootVmProcess = pb.start();
+        drainRootVmLog(rootVmProcess, errFile);
+    }
+
+    /** 等待 root VM 启动（pid 文件出现）。 */
+    private boolean awaitRootVmStart(File pidFile, File errFile) {
+        long deadline = System.currentTimeMillis() + ROOT_VM_START_TIMEOUT_MS;
+        while (System.currentTimeMillis() < deadline && rootVmPid == null) {
+            if (!isProcessAlive(rootVmProcess)) {
+                return false;
+            }
+            String pid = readPid(pidFile);
+            if (pid != null) {
+                rootVmPid = pid;
+                rootVmMode = true;
+                return true;
+            }
+            try {
+                Thread.sleep(ROOT_VM_POLL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return rootVmPid != null;
+    }
+
+    /** 阻塞等待 root VM 退出。 */
+    private void awaitRootVmExit() {
+        while (isRootVmAlive()) {
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    /** 解析 root VM 退出状态文件。 */
+    private String parseRootVmStatus(File statusFile) {
+        String status = readText(statusFile);
+        if (status != null && status.startsWith(RootVmLauncher.STATUS_PREFIX_ERROR)) {
+            return startFailed(status.substring(RootVmLauncher.STATUS_PREFIX_ERROR.length()));
+        }
+        if (status != null && status.startsWith(RootVmLauncher.STATUS_PREFIX_STOPPED)) {
+            String res = status.substring(RootVmLauncher.STATUS_PREFIX_STOPPED.length()).trim();
+            if (!res.isEmpty() && !VM_SHUTDOWN.equals(res)) {
+                return res;
+            }
+        }
+        return VM_SHUTDOWN;
+    }
+
+    // SDL/GTK 窗口只存在于 app 进程中；root 子进程必须以 headless 运行。
+    // 当配置了 VNC 时，VNC 仍由子进程提供服务。
+    private static String[] headlessParams(@NonNull String[] params) {
+        boolean hasVnc = false;
         int displayIdx = -1;
         for (int i = 0; i < params.length; i++) {
-            if ("-vnc".equals(params[i])) {
-                vnc = true;
-            } else if ("-display".equals(params[i]) && i + 1 < params.length) {
+            String p = params[i];
+            if ("-vnc".equals(p)) {
+                hasVnc = true;
+            } else if ("-display".equals(p) && i + 1 < params.length) {
                 displayIdx = i;
             }
         }
@@ -1244,19 +1515,21 @@ class VMExecutor extends MachineExecutor {
             out[displayIdx + 1] = "none";
             return out;
         }
-        if (!vnc) {
-            String[] out = Arrays.copyOf(params, params.length + 2);
-            out[params.length] = "-display";
-            out[params.length + 1] = "none";
-            return out;
+        if (hasVnc) {
+            return params;
         }
-        return params;
+        String[] out = Arrays.copyOf(params, params.length + 2);
+        out[params.length]     = "-display";
+        out[params.length + 1] = "none";
+        return out;
     }
 
-    private static String shq(String s) {
+    /** shell 单引号转义。 */
+    @NonNull private static String shq(@NonNull String s) {
         return "'" + s.replace("'", "'\\''") + "'";
     }
 
+    /** 判断 Process 是否存活。 */
     private static boolean isProcessAlive(Process p) {
         if (p == null) {
             return false;
@@ -1269,19 +1542,23 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /** 判断 pid 是否存活。 */
     private static boolean pidAlive(String pid) {
         return pid != null && new File("/proc/" + pid).exists();
     }
 
+    /** 判断 root VM 是否存活。 */
     private boolean isRootVmAlive() {
-        return rootVmPid != null && pidAlive(rootVmPid);
+        return pidAlive(rootVmPid);
     }
 
+    /** 判断 root VM 是否正在运行（通过 pid 文件）。 */
     private boolean isRootVmRunning() {
         return pidAlive(readPid(new File(LimboApplication.getInstance().getFilesDir(), ROOT_VM_PID)));
     }
 
-    private static String readPid(File pidFile) {
+    /** 从 pid 文件读取 pid。 */
+    @Nullable private static String readPid(File pidFile) {
         String pid = readText(pidFile);
         if (pid == null) {
             return null;
@@ -1290,20 +1567,20 @@ class VMExecutor extends MachineExecutor {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    /** 读取文本文件内容。 */
     private static String readText(File f) {
-        try {
-            BufferedReader r = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            try {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    if (sb.length() > 4096) {
-                        break;
-                    }
-                    sb.append(line).append('\n');
+        if (f == null || !f.exists()) {
+            return null;
+        }
+        try (BufferedReader r = new BufferedReader(
+                new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder(256);
+            String line;
+            while ((line = r.readLine()) != null) {
+                sb.append(line).append('\n');
+                if (sb.length() >= MAX_READ_CHARS) {
+                    break;
                 }
-            } finally {
-                r.close();
             }
             return sb.toString().trim();
         } catch (IOException e) {
@@ -1311,6 +1588,7 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /** 读取文件末尾若干行，用于错误提示。 */
     private static String readTail(File f) {
         String text = readText(f);
         if (text == null || text.isEmpty()) {
@@ -1325,6 +1603,7 @@ class VMExecutor extends MachineExecutor {
         return sb.toString().trim();
     }
 
+    /** 静默删除文件。 */
     private static void deleteQuietly(File f) {
         if (f != null && f.exists()) {
             //noinspection ResultOfMethodCallIgnored
@@ -1332,30 +1611,27 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
-    // Forward the child's stdout/stderr into the log file so bootstrap
-    // failures (missing libs, SELinux denials, ...) stay diagnosable.
+    // 将子进程的 stdout/stderr 转发到日志文件，以便启动失败
+    //（缺少库、SELinux 拒绝等）仍然可诊断。
     private void drainRootVmLog(final Process p, final File errFile) {
         Thread t = new Thread(() -> {
-            try {
-                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
-                FileOutputStream out = new FileOutputStream(errFile, true);
-                try {
-                    String line;
-                    while ((line = r.readLine()) != null) {
-                        out.write((line + "\n").getBytes(StandardCharsets.UTF_8));
-                        Log.d(TAG, "[root-vm] " + line);
-                    }
-                } finally {
-                    out.close();
-                    r.close();
+            try (BufferedReader r = new BufferedReader(
+                    new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
+                 FileOutputStream out = new FileOutputStream(errFile, true)) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    out.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+                    Log.d(TAG, "[root-vm] " + line);
                 }
-            } catch (Throwable ignored) {
+            } catch (Throwable th) {
+                Log.w(TAG, "drainRootVmLog stopped", th);
             }
         });
         t.setDaemon(true);
         t.start();
     }
 
+    /** 停止 root 子进程，restart 非 0 时重启。 */
     private void stopRootProcess(int restart) {
         killRootVm("TERM");
         long deadline = System.currentTimeMillis() + ROOT_VM_STOP_TIMEOUT_MS;
@@ -1380,11 +1656,11 @@ class VMExecutor extends MachineExecutor {
         rootVmMode = false;
 
         if (restart != 0) {
-            // Mirror the in-process restart (QMP reset) with a fresh root child.
+            // 与进程内重启（QMP reset）对应，这里用新的 root 子进程重启。
             try {
                 String[] params = prepareParams(LimboApplication.getInstance());
                 String res = startRootProcess(params);
-                if (res != null && !res.equals("VM shutdown")) {
+                if (res != null && !VM_SHUTDOWN.equals(res)) {
                     Log.e(TAG, "Root VM restart failed: " + res);
                 }
             } catch (Exception e) {
@@ -1393,6 +1669,7 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /** 向 root VM 发送信号。 */
     private void killRootVm(String signal) {
         if (rootVmPid == null) {
             return;
@@ -1408,6 +1685,7 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
+    /** 延迟更改 VNC 密码。 */
     private void changeVncPass(final Context context, final long delay) {
         new Thread(new Runnable() {
             @Override
@@ -1415,24 +1693,27 @@ class VMExecutor extends MachineExecutor {
                 try {
                     Thread.sleep(delay);
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    Thread.currentThread().interrupt();
+                    return;
                 }
                 try {
                     vncchangepassword(LimboSettingsManager.getVNCPass(context));
                 } catch (Exception e) {
                     ToastUtils.toastLong(LimboApplication.getInstance(),
                             context.getString(R.string.CouldNotSetVNCPass) + ": " + e.getMessage());
-                    e.printStackTrace();
+                    Log.e(TAG, "Failed to change VNC password", e);
                 }
             }
         }).start();
     }
 
+    /** 延迟继续 VM。 */
     private void continueVM(final int delay) {
         // TODO: We shouldn't have to go through the view dispatcher
         LimboApplication.getViewListener().onAction(MachineAction.CONTINUE_VM, delay);
     }
 
+    /** 停止 VM，restart 非 0 时重启。 */
     public void stopvm(final int restart) {
         new Thread(() -> {
             if (rootVmMode) {
@@ -1451,33 +1732,30 @@ class VMExecutor extends MachineExecutor {
 
     @Override
     public int getSdlRefreshRate(boolean idle) {
-        if (idle)
-            return getSDLRefreshRateIdle();
-        else
-            return getSDLRefreshRateDefault();
+        return idle ? getSDLRefreshRateIdle() : getSDLRefreshRateDefault();
     }
 
     @Override
     public void setSdlRefreshRate(int value, boolean idle) {
-        if (idle)
+        if (idle) {
             setSDLRefreshRateIdle(value);
-        else
+        } else {
             setSDLRefreshRateDefault(value);
+        }
     }
 
     @Override
     public String getDeviceName(@NonNull MachineProperty driveProperty) {
-        // On IA-64 the CD-ROM lives on the LSI SCSI bus (unit 4, see
-        // addDrives()), so its QMP id is "scsi0-cd4" instead of the
-        // legacy "ide1-cd0" used on the other architectures.
+        // 在 IA-64 上，CD-ROM 位于 LSI SCSI 总线（unit 4，见 addDrives()），
+        // 因此它的 QMP id 是 "scsi0-cd4"，而不是其他架构使用的旧式 "ide1-cd0"。
         if (driveProperty == MachineProperty.CDROM) {
             if (LimboApplication.arch == Config.Arch.ia64
                     || LimboApplication.arch == Config.Arch.ia64w) {
-                // The IA-64 VPC models hang the CD-ROM on the on-board LSI SCSI
-                // (unit 4 -> "scsi0-cd4"). The HP workstation models wire storage
-                // through the IFB/CMD649 IDE controller instead, so their CD is a
-                // regular IDE CD device (best-effort name; channel/unit depend on
-                // how many hard disks occupy the 4-unit IDE bus at runtime).
+                // IA-64 VPC 型号把 CD-ROM 挂在板载 LSI SCSI 上
+                //（unit 4 -> "scsi0-cd4"）。HP 工作站型号则通过
+                // IFB/CMD649 IDE 控制器连接存储，因此它们的 CD 是普通
+                // IDE CD 设备（尽力而为的名称；通道/单元取决于运行时
+                // 4 单元 IDE 总线上有多少硬盘）。
                 if (getMachineType() != null && getMachineType().startsWith("hp-")) {
                     return cdDeviceName;
                 }
@@ -1492,8 +1770,9 @@ class VMExecutor extends MachineExecutor {
                 return fdbDeviceName;
             case SD:
                 return sdDeviceName;
+            default:
+                return null;
         }
-        return null;
     }
 
     @Override
@@ -1502,18 +1781,19 @@ class VMExecutor extends MachineExecutor {
             return;
         }
         String mouse = getMachine().getMouse();
-        // If we use absolute pointer devices in the guest os (usb-tablet, virtio-tablet-pci)
-        // we need to prevent
-        // the mouse from going out of bounds. This case happens when we use trackpad and when the
-        // guest display doesn't fit inside the Android Surface which is pretty much all the time.
-        // we could use SurfaceHolder.setFixedSize() to bound the surfaceview but it creates
-        // problems with refreshing the surfaceview plus we would still need this fix for trackpad
-        // NOTE: the persisted value may carry the "(Fixes Mouse)" spinner suffix, hence startsWith()
-        if (mouse != null && (mouse.startsWith("usb-tablet") || mouse.startsWith("virtio-tablet-pci"))
+        // 如果 guest os 使用绝对指针设备（usb-tablet、virtio-tablet-pci），
+        // 我们需要防止鼠标移出边界。当使用触控板且 guest 显示无法
+        // 适配 Android Surface 时就会发生这种情况，而这几乎是常态。
+        // 我们可以用 SurfaceHolder.setFixedSize() 来限制 surfaceview，
+        // 但这会带来刷新 surfaceview 的问题，而且对于触控板我们仍然需要
+        // 这个修复。
+        // 注意：持久化的值可能带有 "(Fixes Mouse)" spinner 后缀，因此用 startsWith()
+        if (mouse != null
+                && (mouse.startsWith("usb-tablet") || mouse.startsWith("virtio-tablet-pci"))
                 && vm_width > 0 && vm_height > 0) {
-            // Compute the letterboxed (aspect-ratio-preserving) display region the
-            // same way the QEMU SDL backend does (scale = MIN(w/vm_w, h/vm_h),
-            // centered), so the mouse bounds always match the on-screen guest image.
+            // 计算带黑边的（保持宽高比的）显示区域，方式与
+            // QEMU SDL 后端相同（scale = MIN(w/vm_w, h/vm_h)，居中），
+            // 这样鼠标边界始终与屏幕上的 guest 图像匹配。
             double scale = Math.min((double) width / vm_width, (double) height / vm_height);
             double dispW = vm_width * scale;
             double dispH = vm_height * scale;
@@ -1528,15 +1808,13 @@ class VMExecutor extends MachineExecutor {
     @Override
     public void setFullscreen() {
         nativeFullscreen();
-        //TODO: sparc doesn't not have vga so we need to
-        // see if we can apply similar call to the cg3
-        if(LimboApplication.arch == Config.Arch.x86
+        //TODO: sparc 没有 vga，因此我们需要看看是否能对 cg3 做类似调用
+        if (LimboApplication.arch == Config.Arch.x86
                 || LimboApplication.arch == Config.Arch.x86_64
                 || LimboApplication.arch == Config.Arch.arm
                 || LimboApplication.arch == Config.Arch.arm64
                 || LimboApplication.arch == Config.Arch.ia64
-                || LimboApplication.arch == Config.Arch.ia64w
-        ) {
+                || LimboApplication.arch == Config.Arch.ia64w) {
             nativeRefreshScreen(1);
         }
     }
@@ -1549,6 +1827,7 @@ class VMExecutor extends MachineExecutor {
     }
 
     //TODO: re-enable getting status from the vm
+    /** 通过 QMP 获取 VM 状态。 */
     public String getVmState() {
         String res = QmpClient.sendCommand(QmpClient.getStateCommand());
         String state = "";
@@ -1559,66 +1838,66 @@ class VMExecutor extends MachineExecutor {
                 JSONObject resInfoObj = new JSONObject(resInfo);
                 state = resInfoObj.getString("status");
             } catch (JSONException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Failed to parse VM state", e);
             }
         }
         return state;
     }
 
     /**
-     * Function sends a command via qmp to change or eject the removable device
+     * 通过 QMP 更换或弹出可移动设备。
      *
-     * @param drive     The device to be changed
-     * @param imagePath If its null it ejects the drive otherwise it uses the disk file at that path
+     * @param drive     要更换的设备
+     * @param imagePath 如果为 null 则弹出驱动器，否则使用该路径的磁盘文件
      */
     public boolean changeRemovableDevice(final MachineProperty drive, final String imagePath) {
-        if (!LimboSettingsManager.getEnableQmp(LimboApplication.getInstance())) {
-            ToastUtils.toastShort(LimboApplication.getInstance(), LimboApplication.getInstance().getString(R.string.EnableQMPForChangingDrives));
+        Context app = LimboApplication.getInstance();
+        if (!LimboSettingsManager.getEnableQmp(app)) {
+            ToastUtils.toastShort(app, app.getString(R.string.EnableQMPForChangingDrives));
             return false;
         }
         String dev = getDeviceName(drive);
 
-        //XXX: first we eject any previous media
-        String response = VMExecutor.this.ejectdev(dev);
+        //XXX: 首先弹出之前的介质
+        ejectdev(dev);
 
-        // if there is no media there is nothing else to do
+        // 如果没有介质，就没有其他事可做
         if (imagePath == null || imagePath.trim().isEmpty()) {
             return true;
         }
 
-        //XXX: we encode some characters from the document file path so it's processed
-        // correctly by qemu
+        //XXX: 我们编码 document file path 中的一些字符，
+        // 以便 qemu 正确处理
         String imagePathConverted = FileUtils.encodeDocumentFilePath(imagePath);
 
         if (!FileUtils.fileValid(imagePathConverted)) {
-            String msg = LimboApplication.getInstance().getString(R.string.CouldNotOpenDocFile) + " "
+            String msg = app.getString(R.string.CouldNotOpenDocFile) + " "
                     + FileUtils.getFullPathFromDocumentFilePath(imagePathConverted)
-                    + "\n" + LimboApplication.getInstance().getString(R.string.PleaseReassingYourDiskFiles);
-            ToastUtils.toastLong(LimboApplication.getInstance(), msg);
+                    + "\n" + app.getString(R.string.PleaseReassingYourDiskFiles);
+            ToastUtils.toastLong(app, msg);
             return false;
         }
-        response = VMExecutor.this.changedev(dev, imagePathConverted);
+        String response = changedev(dev, imagePathConverted);
         return response != null;
     }
 
     /**
-     * Fuction is a pass thru from the c get_fd() function called from native code
-     * This is bridged to the java code because it's the only way to open a file descriptor
-     * from the native code
+     * 该函数是从原生代码调用的 c get_fd() 函数的透传。
+     * 桥接到 Java 代码，因为这是从原生代码打开文件描述符的唯一方式。
      *
-     * @param path File path
-     * @return Return value of FileUtils.get_fd()
+     * @param path 文件路径
+     * @return FileUtils.get_fd() 的返回值
      */
     public int get_fd(String path) {
         return FileUtils.get_fd(path);
     }
 
     /**
-     * Fuction is a pass thru from the c close_fd() function called from native code
-     * This is similar to the above get_fd but perhaps not needed.
+     * 该函数是从原生代码调用的 c close_fd() 函数的透传。
+     * 与上面的 get_fd 类似，但可能不需要。
      *
-     * @param fd File Descriptor to be closed
-     * @return Return value of FileUtils.close_fd()
+     * @param fd 要关闭的文件描述符
+     * @return FileUtils.close_fd() 的返回值
      */
     public int close_fd(int fd) {
         return FileUtils.close_fd(fd);
@@ -1627,7 +1906,7 @@ class VMExecutor extends MachineExecutor {
     @Override
     public String saveVM() {
 
-        // Delete any previous state file
+        // 删除之前的任何状态文件
         File file = new File(getSaveStateName());
         if (file.exists()) {
             if (!file.delete()) {
@@ -1636,16 +1915,15 @@ class VMExecutor extends MachineExecutor {
         }
 
         if (Config.showToast)
-            ToastUtils.toastShort(LimboApplication.getInstance(), LimboApplication.getInstance().getString(R.string.PleaseWaitSavingVMState));
+            ToastUtils.toastShort(LimboApplication.getInstance(),
+                    LimboApplication.getInstance().getString(R.string.PleaseWaitSavingVMState));
 
-        // QEMU 10.x no longer resolves numeric "fd:" migration URIs from the
-        // QMP monitor (monitor_get_fd only finds named fds registered via the
-        // getfd command), so use the "file:" scheme which opens the state file
-        // path directly.
+        // QEMU 10.x 不再从 QMP monitor 解析数字 "fd:" migration URI
+        //（monitor_get_fd 只能找到通过 getfd 命令注册的命名 fd），
+        // 因此使用 "file:" 方案，它直接打开状态文件路径。
         String uri = "file:" + getSaveStateName();
-        String command = QmpClient.getStopVMCommand();
-        QmpClient.sendCommand(command);
-        command = QmpClient.getMigrateCommand(false, false, uri);
+        QmpClient.sendCommand(QmpClient.getStopVMCommand());
+        String command = QmpClient.getMigrateCommand(false, false, uri);
         String msg = QmpClient.sendCommand(command);
         if (msg != null) {
             return processMigrationResponse(msg);
@@ -1655,47 +1933,48 @@ class VMExecutor extends MachineExecutor {
 
     @Override
     public void continueVM() {
-        String command = QmpClient.getContinueVMCommand();
-        QmpClient.sendCommand(command);
+        QmpClient.sendCommand(QmpClient.getContinueVMCommand());
     }
 
     @Override
     public MachineController.MachineStatus getSaveVMStatus() {
         String pauseState = "";
-        String command = QmpClient.getQueryMigrationCommand();
-        String res = QmpClient.sendCommand(command);
+        String res = QmpClient.sendCommand(QmpClient.getQueryMigrationCommand());
 
         if (res != null && !res.isEmpty()) {
             try {
                 JSONObject resObj = new JSONObject(res);
                 String resInfo = resObj.getString("return");
                 JSONObject resInfoObj = new JSONObject(resInfo);
-                // QEMU omits the "status" member when no migration is in
-                // progress (state MIGRATION_STATUS_NONE); don't throw on that,
-                // just leave pauseState empty so the poller can retry.
+                // 没有正在进行的迁移时，QEMU 会省略 "status" 成员
+                //（状态 MIGRATION_STATUS_NONE）；不要因此抛异常，
+                // 让 pauseState 保持空，以便轮询可以重试。
                 if (resInfoObj.has("status"))
                     pauseState = resInfoObj.getString("status");
             } catch (JSONException e) {
                 if (Config.debug)
                     Log.e(TAG, "Error while checking saving vm: " + e.getMessage());
             }
-            if (pauseState.toUpperCase().equals("FAILED")) {
+            if ("FAILED".equals(pauseState.toUpperCase(Locale.US))) {
                 Log.e(TAG, "Error: " + res);
             }
         }
-        if (pauseState.toUpperCase().equals("ACTIVE")
-                || pauseState.toUpperCase().equals("SETUP")) {
-            return MachineController.MachineStatus.Saving;
-        } else if (pauseState.toUpperCase().equals("COMPLETED")) {
-            return MachineController.MachineStatus.SaveCompleted;
-        } else if (pauseState.toUpperCase().equals("FAILED")
-                || pauseState.toUpperCase().equals("CANCELLED")) {
-            return MachineController.MachineStatus.SaveFailed;
+        String state = pauseState.toUpperCase(Locale.US);
+        switch (state) {
+            case "ACTIVE":
+            case "SETUP":
+                return MachineController.MachineStatus.Saving;
+            case "COMPLETED":
+                return MachineController.MachineStatus.SaveCompleted;
+            case "FAILED":
+            case "CANCELLED":
+                return MachineController.MachineStatus.SaveFailed;
         }
         //TODO: proper error handling with user messages
         return MachineController.MachineStatus.Unknown;
     }
 
+    /** 处理迁移响应，提取错误描述。 */
     private String processMigrationResponse(String response) {
         String errorStr = null;
         try {
@@ -1720,8 +1999,9 @@ class VMExecutor extends MachineExecutor {
         return null;
     }
 
+    /** 发送鼠标事件。 */
     public void sendMouseEvent(int button, int action, int relative, float x, float y) {
-        //XXX: Make sure that mouse motion is not triggering crashes in SDL while resizing
+        //XXX: 确保鼠标移动在调整大小时不会触发 SDL 崩溃
         if (LimboSDLActivity.isResizing) {
             return;
         }
@@ -1729,8 +2009,8 @@ class VMExecutor extends MachineExecutor {
         nativeMouseEvent(button, action, relative, (int) x, (int) y);
     }
 
+    /** 是否允许外部 QMP 连接。 */
     public boolean getQMPAllowExternal() {
         return LimboSettingsManager.getEnableExternalQMP(LimboApplication.getInstance());
     }
 }
-

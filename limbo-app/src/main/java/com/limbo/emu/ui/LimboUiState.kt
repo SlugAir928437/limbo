@@ -160,6 +160,9 @@ class LimboUiState {
     // advanced section
     var extraParams by mutableStateOf("")
     var extraParamsEnabled by mutableStateOf(true)
+    var usbControllerOptions by mutableStateOf(listOf<String>())
+    var usbControllerSel by mutableStateOf(0)
+    var usbControllerEnabled by mutableStateOf(true)
 
     // section collapse state
     var uiCollapsed by mutableStateOf(true)

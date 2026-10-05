@@ -38,6 +38,10 @@ public class Machine extends Observable {
     public static final String ACCEL_GUNYAH = "gunyah";
     public static final String ACCEL_GZVM = "gzvm";
 
+    // USB controller selection (Advanced section). "None" adds no USB controller
+    // to the QEMU command line, which is the legacy behavior.
+    public static final String USB_CONTROLLER_NONE = "None";
+
     private String name;
     private String keyboard = Config.defaultKeyboardLayout;
     private String mouse = "ps2";
@@ -109,6 +113,8 @@ public class Machine extends Observable {
     private String soundCard = null;
     //extra qemu params
     private String extraParams;
+    // USB controller (Advanced section): a QEMU device name, or "None"
+    private String usbController = USB_CONTROLLER_NONE;
     private int paused;
     private int sharedFolderMode;
 
@@ -811,6 +817,25 @@ public class Machine extends Observable {
 
     }
 
+    /**
+     * USB controller (or USB HID device such as usb-kbd) selected in the
+     * Advanced section. "None" means no USB controller is added explicitly.
+     * Null/empty values are normalized to "None" so legacy rows behave as before.
+     */
+    public String getUsbController() {
+        return usbController != null ? usbController : USB_CONTROLLER_NONE;
+    }
+
+    void setUsbController(String usbController) {
+        String value = (usbController == null || usbController.trim().isEmpty())
+                ? USB_CONTROLLER_NONE : usbController;
+        if (this.usbController == null || !this.usbController.equals(value)) {
+            this.usbController = value;
+            setChanged();
+            notifyChanged(MachineProperty.USB_CONTROLLER, value);
+        }
+    }
+
     public int getPaused() {
         return paused;
     }
@@ -890,6 +915,8 @@ public class Machine extends Observable {
             hddInterface = "scsi";
             cdInterface = "scsi";
         }
+        // No USB controller by default (preserves the pre-feature behavior)
+        usbController = USB_CONTROLLER_NONE;
     }
 
     public String getSoundCard() {

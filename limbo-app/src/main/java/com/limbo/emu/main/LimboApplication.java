@@ -18,12 +18,14 @@ Copyright (C) Max Kastanas 2012
  */
 package com.limbo.emu.main;
 
+import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
 
@@ -35,6 +37,8 @@ import com.limbo.emu.toast.ToastUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * We use the application context for the initiliazation of some of the Storage and
@@ -52,6 +56,24 @@ public class LimboApplication extends Application {
 
     public static Context getInstance() {
         return sInstance;
+    }
+
+    /**
+     * 最近一个尚未销毁的 Activity（弱引用，避免泄漏）。
+     *
+     * <p>后台线程 / Service 需要弹对话框时必须使用 Activity 作为 Context：
+     * Application Context 没有窗口 token，{@code AlertDialog.show()} 会抛出
+     * BadTokenException；而且只有 Activity 的主题才保证是 Material/AppCompat 后代。
+     */
+    private static final AtomicReference<WeakReference<Activity>> sCurrentActivity =
+            new AtomicReference<>(new WeakReference<>(null));
+
+    /**
+     * @return 最近一个未销毁的 Activity，没有则返回 null
+     */
+    public static Activity getCurrentActivity() {
+        WeakReference<Activity> ref = sCurrentActivity.get();
+        return ref == null ? null : ref.get();
     }
 
     public static void setupEnv(Context context) {
@@ -180,6 +202,40 @@ public class LimboApplication extends Application {
     public void onCreate() {
         super.onCreate();
         sInstance = this;
+        registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
+            @Override
+            public void onActivityResumed(Activity activity) {
+                sCurrentActivity.set(new WeakReference<>(activity));
+            }
+
+            @Override
+            public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
+                sCurrentActivity.set(new WeakReference<>(activity));
+            }
+
+            @Override
+            public void onActivityDestroyed(Activity activity) {
+                if (getCurrentActivity() == activity) {
+                    sCurrentActivity.set(new WeakReference<>(null));
+                }
+            }
+
+            @Override
+            public void onActivityStarted(Activity activity) {
+            }
+
+            @Override
+            public void onActivityPaused(Activity activity) {
+            }
+
+            @Override
+            public void onActivityStopped(Activity activity) {
+            }
+
+            @Override
+            public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
+            }
+        });
         try {
             Class.forName("android.os.AsyncTask");
         } catch (Throwable ignore) {

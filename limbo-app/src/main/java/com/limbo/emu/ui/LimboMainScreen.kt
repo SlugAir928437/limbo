@@ -99,6 +99,7 @@ interface LimboUiCallbacks {
 
     // advanced
     fun onExtraParamsChanged(value: String)
+    fun onUsbControllerSelected(index: Int)
 }
 
 /**
@@ -463,6 +464,15 @@ fun LimboMainScreen(
                     collapsed = state.advancedCollapsed,
                     onToggle = { onToggleSection(Section.ADVANCED) }
                 ) {
+                    SettingRow(label = stringResource(R.string.label_usb_controller), iconRes = R.drawable.advanced) {
+                        LimboDropdown(
+                            options = state.usbControllerOptions,
+                            selectedIndex = state.usbControllerSel,
+                            enabled = state.usbControllerEnabled,
+                            modifier = Modifier.width(170.dp),
+                            onSelected = { callbacks.onUsbControllerSelected(it) }
+                        )
+                    }
                     TextFieldRow(
                         label = stringResource(R.string.label_extra_qemu_params),
                         value = state.extraParams,

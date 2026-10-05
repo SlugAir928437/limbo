@@ -43,7 +43,7 @@ import java.util.Observer;
 public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatabase, Observer {
     private static final String TAG = "MachineOpenHelper";
 
-    private static final int DATABASE_VERSION = 25;
+    private static final int DATABASE_VERSION = 26;
     private static final String DATABASE_NAME = "LIMBO";
     private static final String MACHINE_TABLE_NAME = "machines";
 
@@ -67,7 +67,8 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             + MachineProperty.CDROM_FORMAT.name() + " TEXT, "
             + MachineProperty.HDA_CACHE.name() + " TEXT, " + MachineProperty.HDB_CACHE.name() + " TEXT, "
             + MachineProperty.HDC_CACHE.name() + " TEXT, " + MachineProperty.HDD_CACHE.name() + " TEXT, "
-            + MachineProperty.ACCEL_MODE.name() + " TEXT "
+            + MachineProperty.ACCEL_MODE.name() + " TEXT, "
+            + MachineProperty.USB_CONTROLLER.name() + " TEXT "
             + ");";
 
     private static MachineOpenHelper sInstance;
@@ -260,6 +261,15 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
             // created with -- so it stays visible under its architecture.
             normalizeMachineArch(db);
         }
+
+        if (newVersion >= 26 && oldVersion <= 25) {
+            // Per-machine USB controller selected in the Advanced section
+            // (a QEMU device name, or NULL for "None").  Existing rows keep
+            // NULL, which reads back as "None" (no controller added), so the
+            // pre-feature QEMU command line is preserved.
+            db.execSQL("ALTER TABLE " + MACHINE_TABLE_NAME + " ADD COLUMN "
+                    + MachineProperty.USB_CONTROLLER + " TEXT;");
+        }
     }
 
     /** Name of the architecture currently being emulated, used to scope every query. */
@@ -358,6 +368,7 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
         stateValues.put(MachineProperty.DISABLE_I8042.name(), machine.getDisableI8042());
         stateValues.put(MachineProperty.ENABLE_NVRAM.name(), machine.getEnableNvram());
         stateValues.put(MachineProperty.NVRAM_PATH.name(), machine.getNvramPath());
+        stateValues.put(MachineProperty.USB_CONTROLLER.name(), machine.getUsbController());
 
         @SuppressLint("SimpleDateFormat")
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -426,7 +437,8 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 + MachineProperty.HDD_FORMAT + ", " + MachineProperty.CDROM_FORMAT + ", "
                 + MachineProperty.HDA_CACHE + ", " + MachineProperty.HDB_CACHE + ", "
                 + MachineProperty.HDC_CACHE + ", " + MachineProperty.HDD_CACHE + ", "
-                + MachineProperty.ACCEL_MODE + " "
+                + MachineProperty.ACCEL_MODE + ", "
+                + MachineProperty.USB_CONTROLLER + " "
                 + " from " + MACHINE_TABLE_NAME
                 + " where " + MachineProperty.STATUS + " in ( " + Config.STATUS_CREATED + " , " + Config.STATUS_PAUSED + " "
                 + " ) " + " and " + MachineProperty.MACHINE_NAME + "=?"
@@ -514,6 +526,8 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 accelMode = (myMachine.getEnableKVM() != 0) ? Machine.ACCEL_KVM : Machine.ACCEL_TCG;
             }
             myMachine.setAccelMode(accelMode);
+            // NULL for legacy rows; setUsbController normalizes it to "None"
+            myMachine.setUsbController(cur.getString(59));
         }
         cur.close();
 
@@ -567,7 +581,8 @@ public class MachineOpenHelper extends SQLiteOpenHelper implements IMachineDatab
                 + MachineProperty.HOSTFWD + " , " + MachineProperty.GUESTFWD + " , " + MachineProperty.UI + ", " + MachineProperty.DISABLE_TSC + ", "
                 + MachineProperty.MOUSE + ", " + MachineProperty.KEYBOARD + ", " + MachineProperty.ENABLE_MTTCG + ", " + MachineProperty.ENABLE_KVM +", "
                 + MachineProperty.HDA_INTERFACE + ", " + MachineProperty.HDB_INTERFACE + ", " + MachineProperty.HDC_INTERFACE + ", " + MachineProperty.HDD_INTERFACE + ", "
-                + MachineProperty.CDROM_INTERFACE + ", " + MachineProperty.BIOS + ", " + MachineProperty.ACCEL_MODE + " "
+                + MachineProperty.CDROM_INTERFACE + ", " + MachineProperty.BIOS + ", " + MachineProperty.ACCEL_MODE + ", "
+                + MachineProperty.USB_CONTROLLER + " "
                 // Table - only the machines of the architecture in use
                 + " from " + MACHINE_TABLE_NAME + " where " + MachineProperty.ARCH + "=? order by 1; ";
 

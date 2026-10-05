@@ -199,6 +199,52 @@ public class ArchDefinitions {
         return arrList;
     }
 
+    /**
+     * USB controller models offered in the Advanced section of the machine
+     * editor.  The list is the set of QEMU USB host controllers actually
+     * compiled into the engine for the current architecture (verified against
+     * the shipped libqemu-system-*.so):
+     *
+     * <ul>
+     *   <li>x86 / x86_64 / arm / arm64: qemu-xhci, nec-usb-xhci, ich9-usb-ehci1
+     *       and piix3-usb-uhci.</li>
+     *   <li>ia64 / ia64w: the xHCI devices are not built into the IA-64 fork,
+     *       so only ich9-usb-ehci1 and piix3-usb-uhci are offered.  In
+     *       addition, the IA-64 fork needs a USB keyboard during text-mode
+     *       setup (PS/2 is not operational there), so "usb-kbd" is offered as
+     *       well.</li>
+     * </ul>
+     *
+     * "None" adds no USB controller to the QEMU command line, preserving the
+     * pre-feature behavior.
+     */
+    public static ArrayList<String> getUsbControllerValues(Context context) {
+        ArrayList<String> arrList = new ArrayList<>();
+        arrList.add("None");
+
+        boolean isIa64 = LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w;
+
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
+            // USB 3.0 xHCI controllers
+            arrList.add("qemu-xhci");
+            arrList.add("nec-usb-xhci");
+        }
+
+        // USB 2.0 EHCI (with its companion UHCI ports) and USB 1.1 UHCI
+        arrList.add("ich9-usb-ehci1");
+        arrList.add("piix3-usb-uhci");
+
+        if (isIa64) {
+            // IA-64: USB keyboard required by the XP/Server 2003 IA64 text-mode
+            // installer (see VMExecutor#addUIOptions)
+            arrList.add("usb-kbd");
+        }
+
+        return arrList;
+    }
+
     public static ArrayList<String> getUIValues() {
         ArrayList<String> arrList = new ArrayList<>();
         arrList.add("VNC");

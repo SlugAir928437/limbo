@@ -256,7 +256,11 @@ public class Dispatcher implements ViewListener {
                 getMachine().setPaused(convertInt(property, value));
                 break;
             case EXTRA_PARAMS:
-                getMachine().setExtraParams(convertString(property,value));
+                getMachine().setExtraParams(convertString(property, value));
+                break;
+            case USB_CONTROLLER:
+                getMachine().setUsbController(convertString(property, value));
+                break;
             default:
                 throw new RuntimeException("Umapped UI field: " + property);
         }

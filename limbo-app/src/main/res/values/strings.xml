@@ -311,6 +311,7 @@
     <string name="label_initrd">Initrd: </string>
     <string name="label_append">Append: </string>
     <string name="title_advanced">Advanced</string>
+    <string name="label_usb_controller">USB Controller: </string>
     <string name="label_extra_qemu_params">Extra QEMU Params: </string>
     <string name="title_audio">Audio</string>
     <string name="label_sound_card">Sound Card: </string>
@@ -357,4 +358,9 @@
     <string name="arch_ia64w">IA-64 (Itanium, wide)</string>
     <string name="archNotBundled">(engine not bundled)</string>
     <string name="archNotBundledMessage">This build does not bundle the QEMU engine for %1$s, so it cannot be selected. Build it with jni/Makefile (INSTALL_QEMU_LIBS) and reinstall to enable it.</string>
+
+    <string name="kvm_root_dialog_title">KVM Acceleration</string>
+    <string name="kvm_root_dialog_message">KVM acceleration detected. Start the virtual machine as root?\n\nStarting as root can fix insufficient /dev/kvm permissions on some devices, but requires the device to be rooted.</string>
+    <string name="kvm_root_dialog_root">Start as root</string>
+    <string name="kvm_root_dialog_normal">Normal start</string>
 </resources>

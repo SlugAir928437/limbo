@@ -19,8 +19,8 @@ prefix = '@PIXMAN_INSTALL_DIR@'
 libdir = 'lib'
 buildtype = 'release'
 default_library = 'shared'
-c_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-I@LIMBO_JNI_ROOT@/compat', '-I@LIMBO_JNI_ROOT@/compat/musl', '-I@LIMBO_JNI_ROOT@/compat/musl/include']
-c_link_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-L@NDK_PROJECT_PATH@/obj/local/@APP_ABI@', '-lcompat-musl', '-llog', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+c_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-D__LIMBO__', '-D__ANDROID__', '-DANDROID', '-I@LIMBO_JNI_ROOT@/compat', '-I@LIMBO_JNI_ROOT@/compat/musl', '-I@LIMBO_JNI_ROOT@/compat/musl/include', '-I@NDK_ROOT@/sources/android/cpufeatures']
+c_link_args = ['-target', '@TARGET_TRIPLE@', '--sysroot=@SYSROOT@', '-L@NDK_PROJECT_PATH@/obj/local/@APP_ABI@', '-lcompat-musl', '-lcompat-limbo', '-llog', '-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
 
 [project options]
 tests = 'disabled'

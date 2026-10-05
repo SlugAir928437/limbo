@@ -67,3 +67,20 @@ index 03f84b6..efe97e5 100644
     if (memfd < 0) {
        vkr_log("memfd_create failed (%s)", strerror(errno));
        goto fail;
+diff --git a/src/venus/vkr_instance.c b/src/venus/vkr_instance.c
+--- a/src/venus/vkr_instance.c
++++ b/src/venus/vkr_instance.c
+@@ -55,7 +55,12 @@
+    args->ret = count == ARRAY_SIZE(private_extensions) ? VK_SUCCESS : VK_INCOMPLETE;
+ }
+ 
+-static VkBool32
++/* Match PFN_vkDebugUtilsMessengerCallbackEXT exactly: on Android 32-bit ARM
++ * the Vulkan headers force the aapcs-vfp calling convention on every VKAPI_PTR
++ * callback (see vk_platform.h), so the definition needs VKAPI_ATTR even though
++ * the rest of this library uses the default armeabi-v7a float ABI.
++ */
++static VKAPI_ATTR VkBool32 VKAPI_CALL
+ vkr_validation_callback(UNUSED VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                         UNUSED VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+                         const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,

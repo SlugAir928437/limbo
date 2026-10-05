@@ -175,7 +175,7 @@ new file mode 100644
 index 0000000..b72b0c4f6f90dec77364be1a0e0b4662e2b8e447
 --- /dev/null
 +++ b/accel/gunyah/gunyah-mem.c
-@@ -0,0 +1,463 @@
+@@ -0,0 +1,464 @@
 +/*
 + * Gunyah accelerator support, ported to this tree from
 + * AnyLaySys/qemu-gunyah (https://github.com/AnyLaySys/qemu-gunyah,
@@ -433,7 +433,8 @@ index 0000000..b72b0c4f6f90dec77364be1a0e0b4662e2b8e447
 +static bool split_mem(GUNYAHState *s, MemoryRegion *area,
 +                      MemoryRegionSection *section) {
 +  bool writeable = !area->readonly && !area->rom_device;
-+  if (!s->swiotlb_size || section->size <= s->swiotlb_size) {
++  if (!s->swiotlb_size ||
++      int128_le(section->size, int128_make64(s->swiotlb_size))) {
 +    return false;
 +  }
 +  if (!memory_region_is_ram(area) || !writeable) {
@@ -519,12 +520,12 @@ index 0000000..b72b0c4f6f90dec77364be1a0e0b4662e2b8e447
 +  }
 +  split = split_mem(s, area, &mrs);
 +  if (split) {
-+    mrs.size -= s->swiotlb_size;
++    mrs.size = int128_sub(mrs.size, int128_make64(s->swiotlb_size));
 +    gunyah_add_mem(s, &mrs, true, flags);
 +    lend = false;
-+    mrs.offset_within_region += mrs.size;
-+    mrs.offset_within_address_space += mrs.size;
-+    mrs.size = s->swiotlb_size;
++    mrs.offset_within_region += int128_get64(mrs.size);
++    mrs.offset_within_address_space += int128_get64(mrs.size);
++    mrs.size = int128_make64(s->swiotlb_size);
 +    qatomic_set(&s->preshmem_reserved, true);
 +  }
 +  gunyah_add_mem(s, &mrs, lend, flags);
@@ -547,7 +548,7 @@ index 0000000..b72b0c4f6f90dec77364be1a0e0b4662e2b8e447
 +  GUNYAHState *s = GUNYAH_STATE(current_accel());
 +  struct gh_fn_ioeventfd_arg ioeventfd = {
 +      .datamatch = data,
-+      .addr = int128_get64(section->offset_within_address_space),
++      .addr = section->offset_within_address_space,
 +      .len = int128_get64(section->size),
 +      .fd = event_notifier_get_fd(notifier),
 +      .flags = match_data ? GH_IOEVENTFD_FLAGS_DATAMATCH : 0,

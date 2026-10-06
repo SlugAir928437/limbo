@@ -123,6 +123,10 @@ public class VMExecutor extends MachineExecutor {
     private static final long   ROOT_VM_STOP_TIMEOUT_MS  = 8000;
     /** root VM 轮询间隔（毫秒）。 */
     private static final long   ROOT_VM_POLL_MS          = 300;
+    /** 抓取 root 子进程 logcat 的超时时间（毫秒）。 */
+    private static final long   ROOT_VM_LOGCAT_TIMEOUT_MS = 4000;
+    /** 抓取 root 子进程 logcat 时最多保留的行数（留最近的，崩溃信息在最后）。 */
+    private static final int    ROOT_VM_LOGCAT_LINES      = 200;
 
     /** su 子进程对象。 */
     private volatile Process rootVmProcess;
@@ -1534,12 +1538,19 @@ public class VMExecutor extends MachineExecutor {
      * <p>其余情况（状态文件停留在 {@code starting}，或者根本没有状态文件）都说明
      * root 子进程是被信号杀死或崩溃退出的，必须报错并带上子进程日志末尾；否则会被
      * 当成"用户关机"处理，表现就是"开机即关机"而且没有任何提示。
+     *
+     * <p>这种情况下还要额外抓一次子进程自己的 logcat 和退出码：子进程 uid 0 拿不到
+     * tombstone，它的 logcat 对 App 也不可见（App 只能读自己 uid 的日志），只靠状态
+     * 文件里的 {@code starting} 是查不出原因的。
      */
     private String parseRootVmStatus(File statusFile, File errFile) {
         boolean stopRequested = rootVmStopRequested;
         rootVmStopRequested = false;
         String status = readText(statusFile);
         if (status != null && status.startsWith(RootVmLauncher.STATUS_PREFIX_ERROR)) {
+            // 子进程里的异常（UnsatisfiedLinkError 等）只打在它自己的 logcat 上，
+            // App 看不到，抓回来一起报。
+            collectRootVmLogcat(errFile);
             return startFailed(status.substring(RootVmLauncher.STATUS_PREFIX_ERROR.length()).trim()
                     + tailOf(errFile));
         }
@@ -1554,9 +1565,138 @@ public class VMExecutor extends MachineExecutor {
             // 用户主动关机：状态文件不会更新，属于预期内的正常退出。
             return VM_SHUTDOWN;
         }
-        String detail = status == null ? "no status file" : status;
+        collectRootVmLogcat(errFile);
+        String detail = (status == null ? "no status file" : status) + rootVmExitDetail();
         return LimboApplication.getInstance().getString(R.string.root_vm_exited_unexpectedly)
                 + ": " + detail + tailOf(errFile);
+    }
+
+    /**
+     * 拼出 root 子进程（su）的退出码说明。
+     *
+     * <p>su 的退出码就是子进程的退出状态：0 = 正常结束，1..127 = 自己退出（QEMU
+     * 参数错、加速器初始化失败等都是 {@code exit(1)}），128+n = 被信号 n 杀死
+     * （137 = SIGKILL，139 = SIGSEGV，134 = SIGABRT）。区分"自己退出"和"被信号
+     * 打死"是定位问题的第一步：前者去 logcat 里找 QEMU 打印的原因，后者看崩溃回溯。
+     *
+     * @return 形如 {@code " (exit status 1)"} 的片段，拿不到退出码时为空串
+     */
+    @NonNull private String rootVmExitDetail() {
+        Process p = rootVmProcess;
+        if (p == null) {
+            return "";
+        }
+        int code;
+        try {
+            code = p.exitValue();
+        } catch (IllegalThreadStateException e) {
+            // su 还没退出（拿不到状态）：不加这段说明
+            return "";
+        }
+        if (code > 128) {
+            return " (exit status " + code + ", killed by signal " + (code - 128) + ")";
+        }
+        return " (exit status " + code + ")";
+    }
+
+    /**
+     * 抓取 root 子进程自己的 logcat 并留档。
+     *
+     * <p>为什么非抓不可：子进程 uid 0，系统不为它生成 tombstone；App 的 logcat 又
+     * 只包含本 uid 的日志，而子进程里 QEMU/ART/linker 的输出全部走 logcat（本项目的
+     * limbo_logutils.h 把 printf/fprintf 也改道到 logcat 了），于是子进程崩溃或
+     * {@code exit(1)} 的真正原因在 App 侧完全看不到，只剩状态文件里的 {@code starting}。
+     *
+     * <p>抓到的内容写进 root_vm_stderr.log（{@link #tailOf} 会带进报错里），同时用
+     * {@code Log.e} 打到 App 自己的日志上，这样不连 adb 也能在"Limbo 日志"里看到。
+     */
+    private void collectRootVmLogcat(File errFile) {
+        String pid = rootVmPid;
+        if (pid == null || pid.trim().isEmpty()) {
+            return;
+        }
+        String dump = execAsRoot(
+                "logcat -d -t 600 -v threadtime --pid=" + pid.trim(),
+                ROOT_VM_LOGCAT_TIMEOUT_MS);
+        if (dump == null || dump.trim().isEmpty()) {
+            Log.w(TAG, "No logcat output for root VM pid " + pid);
+            return;
+        }
+        // 只留最后若干行：崩溃/报错信息都在末尾
+        String[] lines = dump.split("\n");
+        int start = Math.max(0, lines.length - ROOT_VM_LOGCAT_LINES);
+        StringBuilder tail = new StringBuilder();
+        for (int i = start; i < lines.length; i++) {
+            if (!lines[i].trim().isEmpty()) {
+                tail.append(lines[i]).append('\n');
+            }
+        }
+        dump = tail.toString();
+        if (dump.isEmpty()) {
+            return;
+        }
+        appendToFile(errFile, "\n----- root vm logcat (uid 0, app cannot read it) -----\n"
+                + dump + "----- end root vm logcat -----\n");
+        for (String line : dump.split("\n")) {
+            Log.e(TAG, "[root-vm] " + line);
+        }
+    }
+
+    /** 以 root 身份执行命令并读回输出（带超时）。超时或失败返回 null。 */
+    @Nullable private static String execAsRoot(@NonNull String cmd, long timeoutMs) {
+        Process p = null;
+        final int maxChars = MAX_READ_CHARS * 4;
+        // StringBuffer：读线程写、调用线程读，需要同步
+        final StringBuffer out = new StringBuffer();
+        try {
+            p = new ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start();
+            final Process proc = p;
+            Thread reader = new Thread(() -> {
+                try (BufferedReader r = new BufferedReader(
+                        new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        out.append(line).append('\n');
+                        // 只留末尾：要的就是最后那段输出
+                        if (out.length() > maxChars) {
+                            out.delete(0, out.length() - maxChars);
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            });
+            reader.setDaemon(true);
+            reader.start();
+
+            long deadline = System.currentTimeMillis() + timeoutMs;
+            while (System.currentTimeMillis() < deadline && isProcessAlive(p)) {
+                Thread.sleep(50);
+            }
+            if (isProcessAlive(p)) {
+                // 卡住了（例如弹授权框）：不再等，能拿到多少算多少
+                p.destroy();
+            }
+            reader.join(500);
+            return out.length() == 0 ? null : out.toString();
+        } catch (Exception e) {
+            Log.w(TAG, "Could not run as root: " + cmd, e);
+            if (p != null) {
+                p.destroy();
+            }
+            return null;
+        }
+    }
+
+    /** 追加文本到文件（失败只记日志）。 */
+    private static void appendToFile(@Nullable File f, @NonNull String text) {
+        if (f == null) {
+            return;
+        }
+        try (FileOutputStream out = new FileOutputStream(f, true)) {
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            Log.w(TAG, "Could not append to " + f, e);
+        }
     }
 
     /** 读取 root 子进程日志末尾，拼成错误提示的一部分。 */

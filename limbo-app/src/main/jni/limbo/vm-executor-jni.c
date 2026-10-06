@@ -182,7 +182,7 @@ JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
 }
 
 /* ---------------------------------------------------------------------------
- * SIGABRT 兜底回溯
+ * 致命信号兜底回溯（崩溃原因的唯一出口）
  *
  * gunyah/gzvm 的 VM 跑在应用进程里，而 KernelSU 的进程内提权会把本进程变成
  * uid 0：这种进程 Android 的 crash_dump/debuggerd 不会转储（logcat 里只剩一行
@@ -190,26 +190,69 @@ JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
  * 而 bionic 的 FORTIFY（"pthread_mutex_lock called on a destroyed mutex
  * (0x...)") 只打印一个地址，看不出是谁在锁这把锁。
  *
- * 这里自己装一个 SIGABRT handler：用 ucontext 里的帧指针走栈 + dladdr 解析，
- * 打完再把 bionic 原来的 handler 装回去并重新触发信号，tombstone/debuggerd 的
- * 行为和以前保持一致。handler 内只做栈读取、snprintf、dladdr 和 log 写入，
- * 不分配内存、不加锁。
+ * root 子进程（RootVmLauncher）更糟：它 uid 0，一样拿不到 tombstone，而 App 的
+ * logcat 又只能读到自己 uid 的日志——子进程里 QEMU/ART/linker 的输出对 App 完全
+ * 不可见。子进程崩溃时来不及写状态文件，父进程就只看到状态停在 "starting"，
+ * 报错自然没有任何下文。
+ *
+ * 所以这里对全部会立刻终结进程的信号装 handler：用 ucontext 里的帧指针走栈 +
+ * dladdr 解析，每条都写两份——logcat（adb 侧）和真正的 fd 2（root 子进程的
+ * stderr 是父进程的管道，父进程会把它落到 root_vm_stderr.log 并显示在报错里，
+ * 这条链路不受 uid 限制）。打完再把原来的 handler 装回去并重新触发信号，
+ * tombstone/debuggerd 的行为和以前保持一致。handler 内只做栈读取、snprintf、
+ * dladdr、write(2) 和 log 写入，不分配内存、不加锁。
  * ------------------------------------------------------------------------- */
 #define LIMBO_BT_MAX_FRAMES   48
 #define LIMBO_BT_STACK_LIMIT  (16 * 1024 * 1024)
 #define LIMBO_BT_SCAN_BYTES   (64 * 1024)
 #define LIMBO_BT_SCAN_MAX     12
+#define LIMBO_BT_LINE_MAX     320
 
-/* 装我们之前保存的原 SIGABRT 处理（通常是 bionic 的 debuggerd handler） */
-static struct sigaction limbo_bt_prev_sigabrt;
+/* 需要兜底回溯的信号：这些都是"进程立刻消失、来不及自己交代"的致命信号。 */
+static const int limbo_bt_signals[] = {
+	SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP,
+};
+#define LIMBO_BT_SIGNAL_COUNT \
+	((int) (sizeof(limbo_bt_signals) / sizeof(limbo_bt_signals[0])))
+
+/* 装我们之前保存的原 handler（通常是 bionic 的 debuggerd handler） */
+static struct sigaction limbo_bt_prev[LIMBO_BT_SIGNAL_COUNT];
 static int limbo_bt_installed;
 
-static void limbo_bt_log_line(const char *line) {
+static const char *limbo_bt_signal_name(int sig) {
+	switch (sig) {
+	case SIGABRT: return "SIGABRT";
+	case SIGSEGV: return "SIGSEGV";
+	case SIGBUS:  return "SIGBUS";
+	case SIGILL:  return "SIGILL";
+	case SIGFPE:  return "SIGFPE";
+	case SIGTRAP: return "SIGTRAP";
+	default:      return "signal";
+	}
+}
+
+/* 一行日志写两份：logcat + 真正的 fd 2。
+ * 必须用 write(2) 而不是 fprintf(stderr)：limbo_logutils.h 把 printf/fprintf 全部
+ * 改道到 logcat 了，用 stdio 写 stderr 反而出不去（qemu 自己的报错就是这样被吞掉的）。 */
+static void limbo_bt_write(const char *line) {
+	char buf[LIMBO_BT_LINE_MAX + 16];
+	int n;
+
 	__android_log_write(ANDROID_LOG_FATAL, "LIMBO-CRASH", line);
+
+	n = snprintf(buf, sizeof(buf), "LIMBO-CRASH: %s\n", line);
+	if (n <= 0)
+		return;
+	if ((size_t) n > sizeof(buf) - 1)
+		n = (int) (sizeof(buf) - 1);
+	/* stderr 可能不存在（App 进程里通常是 /dev/null），失败无所谓 */
+	if (write(STDERR_FILENO, buf, (size_t) n) < 0) {
+		/* ignore */
+	}
 }
 
 static void limbo_bt_dump_frame(int index, uintptr_t pc) {
-	char line[256];
+	char line[LIMBO_BT_LINE_MAX];
 	Dl_info info;
 
 	if (pc == 0)
@@ -232,7 +275,7 @@ static void limbo_bt_dump_frame(int index, uintptr_t pc) {
 		snprintf(line, sizeof(line), "#%02d pc %016" PRIxPTR "  <unknown>",
 				index, pc);
 	}
-	limbo_bt_log_line(line);
+	limbo_bt_write(line);
 }
 
 static int limbo_bt_frame_ok(uintptr_t fp, uintptr_t sp) {
@@ -288,12 +331,11 @@ static void limbo_bt_scan_stack(uintptr_t sp) {
 	}
 }
 
-static void limbo_bt_sigabrt(int sig, siginfo_t *si, void *uctx) {
+static void limbo_bt_fatal(int sig, siginfo_t *si, void *uctx) {
 	uintptr_t pc = 0, fp = 0, sp = 0, lr = 0;
-	char line[160];
-	int frames;
+	char line[LIMBO_BT_LINE_MAX];
+	int frames, i;
 
-	(void) sig;
 	(void) si;
 
 #if defined(__aarch64__)
@@ -316,41 +358,61 @@ static void limbo_bt_sigabrt(int sig, siginfo_t *si, void *uctx) {
 #endif
 
 	snprintf(line, sizeof(line),
-			"===== SIGABRT backtrace (tid %d, pc %p, fp %p, sp %p) =====",
-			(int) gettid(), (void *) pc, (void *) fp, (void *) sp);
-	limbo_bt_log_line(line);
+			"===== %s (%d) backtrace (tid %d, pc %p, fp %p, sp %p) =====",
+			limbo_bt_signal_name(sig), sig, (int) gettid(),
+			(void *) pc, (void *) fp, (void *) sp);
+	limbo_bt_write(line);
 
 	if (pc != 0) {
 		frames = limbo_bt_walk_fp(pc, fp, sp, lr);
 		if (frames < 3) {
-			limbo_bt_log_line("----- stack scan (fallback) -----");
+			limbo_bt_write("----- stack scan (fallback) -----");
 			limbo_bt_scan_stack(sp);
 		}
 	}
-	limbo_bt_log_line("===== end of backtrace =====");
+	/* 收尾再打一行摘要：父进程的错误提示只带日志末尾几行，
+	 * 关键结论（哪个信号、崩在哪）必须落在最后一行。 */
+	snprintf(line, sizeof(line),
+			"===== end of backtrace: %s tid %d pc %p =====",
+			limbo_bt_signal_name(sig), (int) gettid(), (void *) pc);
+	limbo_bt_write(line);
 
 	/* 把信号交还给系统原来的处理（通常是 bionic 的 debuggerd），
 	 * 保证 tombstone/debuggerd 的既有行为不变。 */
-	sigaction(SIGABRT, &limbo_bt_prev_sigabrt, NULL);
-	raise(SIGABRT);
+	for (i = 0; i < LIMBO_BT_SIGNAL_COUNT; i++) {
+		if (limbo_bt_signals[i] != sig)
+			continue;
+		sigaction(sig, &limbo_bt_prev[i], NULL);
+		break;
+	}
+	raise(sig);
 }
 
 static void limbo_install_crash_handler(void) {
 	struct sigaction sa;
+	int i, installed = 0;
 
 	if (limbo_bt_installed)
 		return;
 
 	memset(&sa, 0, sizeof(sa));
-	sa.sa_sigaction = limbo_bt_sigabrt;
+	sa.sa_sigaction = limbo_bt_fatal;
 	sa.sa_flags = SA_SIGINFO | SA_RESTART;
 	sigemptyset(&sa.sa_mask);
-	if (sigaction(SIGABRT, &sa, &limbo_bt_prev_sigabrt) != 0) {
-		LOGE("SIGABRT backtrace handler install failed: %s", strerror(errno));
-		return;
+
+	for (i = 0; i < LIMBO_BT_SIGNAL_COUNT; i++) {
+		if (sigaction(limbo_bt_signals[i], &sa, &limbo_bt_prev[i]) != 0) {
+			LOGE("%s backtrace handler install failed: %s",
+					limbo_bt_signal_name(limbo_bt_signals[i]),
+					strerror(errno));
+			continue;
+		}
+		installed++;
 	}
+	if (installed == 0)
+		return;
 	limbo_bt_installed = 1;
-	LOGI("SIGABRT backtrace handler installed");
+	LOGI("backtrace handlers installed for %d fatal signal(s)", installed);
 }
 
 /* ---------------------------------------------------------------------------
@@ -754,7 +816,9 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
     qemu_main_loop_t qemu_main_loop = NULL;
     qemu_cleanup_t qemu_cleanup = NULL;
 
-	/* 装 SIGABRT 兜底回溯：uid 0 的进程拿不到 tombstone，QEMU 崩了只能靠它出栈 */
+	/* 装致命信号兜底回溯：uid 0 的进程拿不到 tombstone（root 子进程连 logcat
+	 * 都对 App 不可见），QEMU 崩了只能靠它出栈，并顺带写一份到 stderr 让父进程
+	 * 落进 root_vm_stderr.log。 */
 	limbo_install_crash_handler();
 
 	/* big.LITTLE 宿主 + KVM：必须赶在 qemu_init() 之前把本线程收敛到单一

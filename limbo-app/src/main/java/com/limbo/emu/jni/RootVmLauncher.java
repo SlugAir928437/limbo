@@ -45,6 +45,17 @@ public class RootVmLauncher {
     static final String STATUS_PREFIX_ERROR = "error ";
     static final String STATUS_FILENAME = "root_vm.status";
 
+    /**
+     * 启动阶段标记：写在 {@code starting} 之后覆盖同一个状态文件。
+     *
+     * <p>父进程在异常退出时会把状态文件的内容原样带进报错，于是"死在加载哪个
+     * native 库"和"死在 QEMU 里"就能区分开。这一点很关键：子进程 uid 0，既拿不到
+     * tombstone，它的 logcat 也对 App 不可见（App 只能读自己 uid 的日志），状态
+     * 文件是唯一一条不依赖 uid 的线索。
+     */
+    static final String STATUS_STAGE_LIB = "starting: load ";
+    static final String STATUS_STAGE_VM  = "starting: qemu";
+
     // Native counterpart: Java_com_android_limbo_jni_RootVmLauncher_startVm
     // (static), which reuses the shared start_qemu() bootstrap.
     private static native String startVm(String storageDir, String baseDir,
@@ -73,15 +84,16 @@ public class RootVmLauncher {
             // Mirror LimboActivity.setupNativeLibs() load order.  Missing
             // optional libs are tolerated; the linker resolves the rest of
             // the qemu dependencies through LD_LIBRARY_PATH (exported by the
-            // launching script).
-            loadOrIgnore(nativeLibDir, "libcompat-limbo.so", false);
-            loadOrIgnore(nativeLibDir, "libcompat-musl.so", false);
-            loadOrIgnore(nativeLibDir, "libglib-2.0.so", false);
-            loadOrIgnore(nativeLibDir, "libSDL2.so", true);
-            loadOrIgnore(nativeLibDir, "libcompat-SDL2-addons.so", true);
-            loadOrIgnore(nativeLibDir, "libcompat-SDL2-ext.so", true);
-            loadOrIgnore(nativeLibDir, "liblimbo.so", false);
+            // launching script).  每个库加载前先落一次状态，见 STATUS_STAGE_LIB。
+            loadOrIgnore(statusFile, nativeLibDir, "libcompat-limbo.so", false);
+            loadOrIgnore(statusFile, nativeLibDir, "libcompat-musl.so", false);
+            loadOrIgnore(statusFile, nativeLibDir, "libglib-2.0.so", false);
+            loadOrIgnore(statusFile, nativeLibDir, "libSDL2.so", true);
+            loadOrIgnore(statusFile, nativeLibDir, "libcompat-SDL2-addons.so", true);
+            loadOrIgnore(statusFile, nativeLibDir, "libcompat-SDL2-ext.so", true);
+            loadOrIgnore(statusFile, nativeLibDir, "liblimbo.so", false);
 
+            writeStatus(statusFile, STATUS_STAGE_VM);
             String res = startVm(storageDir, baseDir, libFilename, libPath, params);
             Log.i(TAG, "VM exited: " + res);
             writeStatus(statusFile, STATUS_PREFIX_STOPPED + res);
@@ -93,7 +105,12 @@ public class RootVmLauncher {
         }
     }
 
-    private static void loadOrIgnore(String nativeLibDir, String lib, boolean optional) {
+    private static void loadOrIgnore(File statusFile, String nativeLibDir, String lib,
+                                     boolean optional) {
+        // 先记下"正要加载哪个库"：这一步崩掉时状态文件就停在这里，
+        // 父进程报错里会原样显示出来。
+        writeStatus(statusFile, STATUS_STAGE_LIB + lib);
+
         // nativeLibDir 可能是普通目录（安装时解压出 .so），也可能是 APK 内路径
         // （<apk>!/lib/<abi>，关闭安装时解压的情形）。后者无法用 File 判断存在性，
         // 直接交给链接器从 APK 内加载。

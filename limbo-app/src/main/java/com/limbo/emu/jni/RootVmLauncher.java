@@ -111,7 +111,17 @@ public class RootVmLauncher {
             }
             path = f.getAbsolutePath();
         }
-        System.load(path);
+        try {
+            System.load(path);
+        } catch (UnsatisfiedLinkError e) {
+            // APK 内路径（<apk>!/lib/<abi>）没法用 File 探测存在性，只能在
+            // System.load() 时才知道有没有；可选库缺失不应该让整个 root 子进程
+            // 启动失败，必需库则照旧抛出（由 main() 写入 error 状态）。
+            if (!optional) {
+                throw e;
+            }
+            Log.w(TAG, "Optional lib failed to load: " + path, e);
+        }
     }
 
     private static void writeStatus(File statusFile, String status) {

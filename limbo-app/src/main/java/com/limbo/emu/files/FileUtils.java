@@ -73,13 +73,13 @@ public class FileUtils {
      * 返回可以从中查找/加载 native 库的路径。
      *
      * APK 关闭了安装时解压（extractNativeLibs=false / useLegacyPackaging=false）时，
-     * nativeLibraryDir 不会被打包出来（目录为空/不存在）；此时回退到 APK 内部的
-     * lib/&lt;abi&gt; 路径，链接器可直接从 APK 内 mmap 加载，形如
+     * nativeLibraryDir 指向的目录本身还是会被建出来，但里面是空的；此时回退到
+     * APK 内部的 lib/&lt;abi&gt; 路径，链接器可直接从 APK 内 mmap 加载，形如
      * /data/app/.../base.apk!/lib/arm64-v8a 。
      */
     public static String getNativeLibSearchDir(Context context) {
         String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
-        if (nativeLibDir != null && new File(nativeLibDir).isDirectory()) {
+        if (nativeLibDir != null && hasExtractedNativeLibs(nativeLibDir)) {
             return nativeLibDir;
         }
         String abi = null;
@@ -90,7 +90,49 @@ public class FileUtils {
         if (abi == null || abi.isEmpty()) {
             abi = "arm64-v8a";
         }
-        return context.getApplicationInfo().sourceDir + "!/lib/" + abi;
+        String apkLibDir = context.getApplicationInfo().sourceDir + "!/lib/" + abi;
+        Log.d(TAG, "No extracted native libs in " + nativeLibDir + ", using " + apkLibDir);
+        return apkLibDir;
+    }
+
+    /**
+     * 判断 {@code nativeLibraryDir} 里是否真的躺着解压出来的 native 库。
+     *
+     * <p>{@code extractNativeLibs=false}（现代 Android 的默认打包方式）时，
+     * installd 仍然会把 {@code /data/app/.../lib/&lt;abi&gt;} 这个目录建出来，
+     * 只是里面**一个文件都没有** —— 库全部以未压缩、页对齐的形式留在 APK 内。
+     * 所以「目录存在」远不等于「目录里有库」：只看 {@code isDirectory()} 会把
+     * 应用引导到那个空目录上，随后 {@code new File(dir, "libX.so").exists()}
+     * 一律为 false（root 子进程就是这样报
+     * {@code UnsatisfiedLinkError: Missing libcompat-limbo.so} 的）。
+     *
+     * <p>这里用 {@code isFile()} 而不是 {@code exists()}：某些实现会在该目录里放
+     * 指向 APK 内部的悬空符号链接，{@code exists()} 对悬空链接同样返回 false，
+     * 而 {@code isFile()}（跟随符号链接后要求是普通文件）判断更严格。
+     *
+     * @param nativeLibDir {@code ApplicationInfo#nativeLibraryDir}
+     * @return 目录里存在真正的 .so 文件时返回 true
+     */
+    private static boolean hasExtractedNativeLibs(String nativeLibDir) {
+        File dir = new File(nativeLibDir);
+        if (!dir.isDirectory()) {
+            return false;
+        }
+        String[] entries;
+        try {
+            entries = dir.list();
+        } catch (SecurityException e) {
+            return false;
+        }
+        if (entries == null) {
+            return false;
+        }
+        for (String entry : entries) {
+            if (entry != null && entry.endsWith(".so") && new File(dir, entry).isFile()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static String getFullPathFromDocumentFilePath(String filePath) {

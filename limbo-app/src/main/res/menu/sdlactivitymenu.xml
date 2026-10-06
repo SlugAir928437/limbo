@@ -70,7 +70,8 @@
         android:icon="@drawable/help"
         android:title="@string/help" />
 
-    <!--XXXX: Not needed-->
+    <!-- 显示方式（缩放模式），由 LimboSDLActivity 处理：
+         0=拉伸至全屏 1=等比缩放 2=原始 1:1 -->
     <item
         android:id="@+id/itemScaling"
         android:icon="@android:drawable/ic_menu_zoom"
@@ -80,20 +81,14 @@
                 android:id="@+id/groupScaling"
                 android:checkableBehavior="single">
                 <item
-                    android:id="@+id/itemOneToOne"
-                    android:title="@string/one_to_one" />
-                <item
-                    android:id="@+id/itemZoomIn"
-                    android:title="@string/zoom_in" />
-                <item
-                    android:id="@+id/itemZoomOut"
-                    android:title="@string/zoom_out" />
-                <item
                     android:id="@+id/itemFitToScreen"
                     android:title="@string/fit_to_screen" />
                 <item
                     android:id="@+id/itemStretchToScreen"
                     android:title="@string/stretch_to_screen" />
+                <item
+                    android:id="@+id/itemOneToOne"
+                    android:title="@string/one_to_one" />
             </group>
         </menu>
     </item>

@@ -202,6 +202,19 @@ public class LimboSettingsManager extends PreferenceActivity {
         return Integer.parseInt(sizeStr);
     }
 
+    // SDL 显示方式（缩放模式）：0=拉伸至全屏 1=等比缩放（默认）2=原始 1:1
+    public static int getSDLScaleMode(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getInt("sdlScaleMode", Config.SDL_SCALE_ASPECT);
+    }
+
+    public static void setSDLScaleMode(Context context, int value) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor edit = prefs.edit();
+        edit.putInt("sdlScaleMode", value);
+        edit.apply();
+    }
+
     // VNC
     public static boolean getVNCEnablePassword(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);

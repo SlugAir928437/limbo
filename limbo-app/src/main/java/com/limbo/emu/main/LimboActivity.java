@@ -1153,7 +1153,7 @@ public class LimboActivity extends AppCompatActivity implements
      * ArchDefinitions#getUsbControllerValues).
      */
     private void populateUsbController() {
-        ArrayList<String> usbControllers = ArchDefinitions.getUsbControllerValues(this);
+        ArrayList<String> usbControllers = ArchDefinitions.getUsbControllerValues();
         uiState.setUsbControllerOptions(usbControllers);
         uiState.setUsbControllerSel(0);
     }

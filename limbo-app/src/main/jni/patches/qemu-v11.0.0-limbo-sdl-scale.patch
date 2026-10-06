@@ -1,0 +1,293 @@
+diff --git a/ui/sdl2-2d.c b/ui/sdl2-2d.c
+index 7305238..a9ebba5 100644
+--- a/ui/sdl2-2d.c
++++ b/ui/sdl2-2d.c
+@@ -28,6 +28,70 @@
+ #include "ui/input.h"
+ #include "ui/sdl2.h"
+ 
++#ifdef __LIMBO__
++/* 定义在 ui/sdl2.c，0=拉伸至全屏 1=等比缩放 2=1:1，见那里的注释。 */
++extern int limbo_sdl_scale_mode;
++
++/*
++ * 计算把客户机画面（surface 尺寸）画到渲染输出（窗口尺寸）上的目标矩形。
++ * 注意：这里不再使用 SDL_RenderSetLogicalSize()，因为 SDL 的 logical size
++ * 只能做等比缩放；三种模式统一由本函数算出矩形，交给 SDL_RenderCopy()。
++ */
++static void limbo_sdl_scale_dst_rect(struct sdl2_console *scon, SDL_Rect *dst)
++{
++    int sw = surface_width(scon->surface);
++    int sh = surface_height(scon->surface);
++    int ow = 0, oh = 0;
++    int mode = limbo_sdl_scale_mode;
++
++    SDL_GetRendererOutputSize(scon->real_renderer, &ow, &oh);
++    if (ow <= 0 || oh <= 0 || sw <= 0 || sh <= 0) {
++        /* 窗口还没就绪：原样输出，等下一帧再算 */
++        dst->x = 0;
++        dst->y = 0;
++        dst->w = sw > 0 ? sw : ow;
++        dst->h = sh > 0 ? sh : oh;
++        return;
++    }
++
++    if (mode < 0) {
++        mode = 1;
++    }
++
++    dst->x = 0;
++    dst->y = 0;
++    dst->w = ow;
++    dst->h = oh;
++
++    switch (mode) {
++    case 0: /* 拉伸至全屏：忽略宽高比铺满 */
++        break;
++    case 2: { /* 1:1：原始像素居中，放不下就裁剪 */
++        int w = MIN(sw, ow);
++        int h = MIN(sh, oh);
++
++        dst->x = (ow - w) / 2;
++        dst->y = (oh - h) / 2;
++        dst->w = w;
++        dst->h = h;
++        break;
++    }
++    case 1: /* 等比缩放（默认）：取较小比例，居中留黑边 */
++    default: {
++        double scale = MIN((double)ow / sw, (double)oh / sh);
++        int w = (int)(sw * scale + 0.5);
++        int h = (int)(sh * scale + 0.5);
++
++        dst->x = (ow - w) / 2;
++        dst->y = (oh - h) / 2;
++        dst->w = w;
++        dst->h = h;
++        break;
++    }
++    }
++}
++#endif
++
+ void sdl2_2d_update(DisplayChangeListener *dcl,
+                     int x, int y, int w, int h)
+ {
+@@ -51,8 +115,20 @@ void sdl2_2d_update(DisplayChangeListener *dcl,
+     SDL_UpdateTexture(scon->texture, &rect,
+                       surface_data(surf) + surface_data_offset,
+                       surface_stride(surf));
++#ifdef __LIMBO__
++    {
++        SDL_Rect dst;
++
++        limbo_sdl_scale_dst_rect(scon, &dst);
++        /* 先刷黑底，等比缩放 / 1:1 模式下四周留边才是黑的 */
++        SDL_SetRenderDrawColor(scon->real_renderer, 0, 0, 0, 255);
++        SDL_RenderClear(scon->real_renderer);
++        SDL_RenderCopy(scon->real_renderer, scon->texture, NULL, &dst);
++    }
++#else
+     SDL_RenderClear(scon->real_renderer);
+     SDL_RenderCopy(scon->real_renderer, scon->texture, NULL, NULL);
++#endif
+     SDL_RenderPresent(scon->real_renderer);
+ }
+ 
+@@ -85,9 +161,15 @@ void sdl2_2d_switch(DisplayChangeListener *dcl,
+         sdl2_window_resize(scon);
+     }
+ 
++#ifdef __LIMBO__
++    /* 缩放交给 limbo_sdl_scale_dst_rect()：关掉 SDL 的 logical size，
++     * 否则 RenderCopy 的坐标还会被 SDL 再按 logical size 缩放一次。 */
++    SDL_RenderSetLogicalSize(scon->real_renderer, 0, 0);
++#else
+     SDL_RenderSetLogicalSize(scon->real_renderer,
+                              surface_width(new_surface),
+                              surface_height(new_surface));
++#endif
+ 
+     switch (surface_format(scon->surface)) {
+     case PIXMAN_x1r5g5b5:
+@@ -129,6 +211,18 @@ void sdl2_2d_refresh(DisplayChangeListener *dcl)
+     struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+ 
+     assert(!scon->opengl);
++#ifdef __LIMBO__
++    /* 用户在运行中切换缩放模式时，客户机不一定有脏区域，
++     * 这里检测到模式变化就整屏重绘一次。 */
++    {
++        static int limbo_last_scale_mode = -2;
++
++        if (limbo_last_scale_mode != limbo_sdl_scale_mode) {
++            limbo_last_scale_mode = limbo_sdl_scale_mode;
++            sdl2_2d_redraw(scon);
++        }
++    }
++#endif
+     graphic_hw_update(dcl->con);
+     sdl2_poll_events(scon);
+ }
+diff --git a/ui/sdl2-gl.c b/ui/sdl2-gl.c
+index bb066cd..9f86ed3 100644
+--- a/ui/sdl2-gl.c
++++ b/ui/sdl2-gl.c
+@@ -32,6 +32,77 @@
+ #include "ui/input.h"
+ #include "ui/sdl2.h"
+ 
++#ifdef __LIMBO__
++/* 定义在 ui/sdl2.c，0=拉伸至全屏 1=等比缩放 2=1:1，见那里的注释。 */
++extern int limbo_sdl_scale_mode;
++
++/* GL 后端直接控制 glViewport 来实现三种缩放模式。 */
++static void limbo_sdl_gl_apply_viewport(struct sdl2_console *scon, int ww, int wh)
++{
++    int mode = limbo_sdl_scale_mode;
++    int sw = surface_width(scon->surface);
++    int sh = surface_height(scon->surface);
++
++    if (mode < 0) {
++        mode = 1;
++    }
++    if (sw <= 0 || sh <= 0 || ww <= 0 || wh <= 0) {
++        return;
++    }
++
++    switch (mode) {
++    case 0: /* 拉伸至全屏：忽略宽高比铺满 */
++        glViewport(0, 0, ww, wh);
++        break;
++    case 2: { /* 1:1：原始像素居中，放不下就裁剪 */
++        int w = MIN(sw, ww);
++        int h = MIN(sh, wh);
++
++        glViewport((ww - w) / 2, (wh - h) / 2, w, h);
++        break;
++    }
++    case 1: /* 等比缩放（默认）：surface_gl_setup_viewport() 本身就是等比居中 */
++    default:
++        surface_gl_setup_viewport(scon->gls, scon->surface, ww, wh);
++        break;
++    }
++}
++
++/* 扫描输出（dmabuf 直通）路径的目标矩形，交给 egl_fb_blit() 使用。 */
++static void limbo_sdl_gl_scanout_rect(struct sdl2_console *scon,
++                                      int ww, int wh,
++                                      int *x, int *y, int *w, int *h)
++{
++    int mode = limbo_sdl_scale_mode;
++    int gw = scon->guest_fb.width;
++    int gh = scon->guest_fb.height;
++
++    *x = 0;
++    *y = 0;
++    *w = ww;
++    *h = wh;
++
++    if (mode < 0) {
++        mode = 1;
++    }
++    if (gw <= 0 || gh <= 0 || ww <= 0 || wh <= 0) {
++        return;
++    }
++
++    if (mode == 2) {
++        *w = MIN(gw, ww);
++        *h = MIN(gh, wh);
++    } else if (mode != 0) {
++        double scale = MIN((double)ww / gw, (double)wh / gh);
++
++        *w = (int)(gw * scale + 0.5);
++        *h = (int)(gh * scale + 0.5);
++    }
++    *x = (ww - *w) / 2;
++    *y = (wh - *h) / 2;
++}
++#endif
++
+ static void sdl2_set_scanout_mode(struct sdl2_console *scon, bool scanout)
+ {
+     if (scon->scanout_mode == scanout) {
+@@ -55,7 +126,11 @@ static void sdl2_gl_render_surface(struct sdl2_console *scon)
+     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+ 
+     SDL_GetWindowSize(scon->real_window, &ww, &wh);
++#ifdef __LIMBO__
++    limbo_sdl_gl_apply_viewport(scon, ww, wh);
++#else
+     surface_gl_setup_viewport(scon->gls, scon->surface, ww, wh);
++#endif
+ 
+     surface_gl_render_texture(scon->gls, scon->surface);
+     SDL_GL_SwapWindow(scon->real_window);
+@@ -115,6 +190,21 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
+ 
+     assert(scon->opengl);
+ 
++#ifdef __LIMBO__
++    /* 运行中切换缩放模式时强制整屏重绘一次（客户机不一定有脏区域）。 */
++    {
++        static int limbo_last_scale_mode = -2;
++
++        if (limbo_last_scale_mode != limbo_sdl_scale_mode) {
++            limbo_last_scale_mode = limbo_sdl_scale_mode;
++            scon->updates = 1;
++            if (scon->scanout_mode && scon->real_window) {
++                sdl2_gl_redraw(scon);
++            }
++        }
++    }
++#endif
++
+     graphic_hw_update(dcl->con);
+     if (scon->updates && scon->real_window) {
+         scon->updates = 0;
+@@ -247,7 +337,18 @@ void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
+     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+ 
+     SDL_GetWindowSize(scon->real_window, &ww, &wh);
++#ifdef __LIMBO__
++    /* egl_fb_blit() 按 dst 的 x/y/width/height 做 blit，所以这里直接给出
++     * 目标矩形即可实现拉伸 / 等比 / 1:1 三种留边方式。 */
++    {
++        int x, y, w, h;
++
++        limbo_sdl_gl_scanout_rect(scon, ww, wh, &x, &y, &w, &h);
++        egl_fb_setup_default(&scon->win_fb, w, h, x, y);
++    }
++#else
+     egl_fb_setup_default(&scon->win_fb, ww, wh, 0, 0);
++#endif
+     egl_fb_blit(&scon->win_fb, &scon->guest_fb, !scon->y0_top);
+ 
+     SDL_GL_SwapWindow(scon->real_window);
+diff --git a/ui/sdl2.c b/ui/sdl2.c
+index aaaede5..859d537 100644
+--- a/ui/sdl2.c
++++ b/ui/sdl2.c
+@@ -62,6 +62,22 @@ static Notifier mouse_mode_notifier;
+ #define SDL2_MAX_IDLE_COUNT (2 * GUI_REFRESH_INTERVAL_DEFAULT \
+                              / SDL2_REFRESH_INTERVAL_BUSY + 1)
+ 
++#ifdef __LIMBO__
++/*
++ * Limbo：SDL 显示后端的缩放模式，由 Java 侧经
++ * set_qemu_var("limbo_sdl_scale_mode") 下发（jni/limbo/vm-executor-jni.c）。
++ * 取值与 GTK 后端的 limbo_gtk_scale_mode 保持一致：
++ *   0 = 拉伸至全屏（忽略客户机宽高比，铺满窗口）
++ *   1 = 等比缩放（保持客户机宽高比，居中留边，默认）
++ *   2 = 1:1（按客户机原始分辨率居中显示，超出部分裁剪）
++ *  -1 = 尚未下发，按 1（等比缩放）处理。
++ * 必须保持为 dlsym 可见的非 static 符号，供 sdl2-2d.c / sdl2-gl.c 读取；
++ * 显式标 default visibility，保证它一定进 .dynsym（Java 侧用 dlsym 找它）。
++ */
++__attribute__((visibility("default")))
++int limbo_sdl_scale_mode = -1;
++#endif
++
+ /* introduced in SDL 2.0.10 */
+ #ifndef SDL_HINT_RENDER_BATCHING
+ #define SDL_HINT_RENDER_BATCHING "SDL_RENDER_BATCHING"

@@ -17,12 +17,12 @@
     <string name="nc_monitor">QEMU Monitor</string>
     <string name="nc_parallel">Parallel Port</string>
 
-    <string name="stretch_to_screen">Stretch to Screen</string>
-    <string name="fit_to_screen">Fit to Screen</string>
+    <string name="stretch_to_screen">Stretch to Fullscreen</string>
+    <string name="fit_to_screen">Proportional (Fit)</string>
     <string name="zoom_in">Zoom In</string>
     <string name="zoom_out">Zoom Out</string>
-    <string name="one_to_one">Normal (1:1)</string>
-    <string name="scaling">Scaling</string>
+    <string name="one_to_one">Native (1:1)</string>
+    <string name="scaling">Display Mode</string>
     <string name="save_state">Pause VM</string>
     <string name="showkbd_label">Keyboard</string>
     <string name="drives">Drives</string>
@@ -120,6 +120,7 @@
     <string name="TapDeviceFound">TAP Device found</string>
     <string name="tunDeviceWarning">Warning! Make sure device /dev/net/tun has appropriate permissions\nUser ID</string>
     <string name="TAPHelp">TAP Help</string>
+    <string name="copiedToClipboard">Copied to clipboard</string>
     <string name="tapSetupHint">Run the following in a root shell (adb shell, then su) before starting the VM:</string>
     <string name="tapSetupCommand">ip link show tap0 >/dev/null 2&gt;&amp;1 || ip tuntap add dev tap0 mode tap\nip addr flush dev tap0\nip addr add 100.99.99.1/24 dev tap0\nip link set tap0 up\nsysctl -w net.ipv4.ip_forward=1\nwhile ip rule del to 100.99.99.0/24 lookup main 2&gt;&amp;1; do :; done\nip rule add pref 101 to 100.99.99.0/24 lookup main\nwhile iptables -w 5 -D INPUT -i tap0 -j ACCEPT 2&gt;&amp;1; do :; done\nwhile iptables -w 5 -D FORWARD -i tap0 -j ACCEPT 2&gt;&amp;1; do :; done\nwhile iptables -w 5 -D FORWARD -o tap0 -m state --state ESTABLISHED,RELATED -j ACCEPT 2&gt;&amp;1; do :; done\niptables -w 5 -I INPUT 1 -i tap0 -j ACCEPT\niptables -w 5 -I FORWARD 1 -i tap0 -j ACCEPT\niptables -w 5 -I FORWARD 1 -o tap0 -m state --state ESTABLISHED,RELATED -j ACCEPT\nwhile iptables -w 5 -t nat -D POSTROUTING -s 100.99.99.0/24 ! -o tap0 -j MASQUERADE 2&gt;&amp;1; do :; done\niptables -w 5 -t nat -I POSTROUTING 1 -s 100.99.99.0/24 ! -o tap0 -j MASQUERADE</string>
     <string name="LogWarning">Something happened during last run, do you want to see the log?</string>
@@ -301,6 +302,7 @@
     <string name="root_vm_no_su">su not available. Gunyah/Gzvm acceleration requires a rooted device: the VM must run in a root process.</string>
     <string name="root_vm_start_failed">Failed to start the VM in a root process</string>
     <string name="root_vm_already_running">The VM is already running in a root process</string>
+    <string name="root_vm_exited_unexpectedly">The VM running in the root process exited unexpectedly</string>
     <string name="label_disable_hpet">Disable HPET</string>
     <string name="label_disable_tsc">Disable TSC</string>
     <string name="label_disable_acpi">Disable ACPI</string>

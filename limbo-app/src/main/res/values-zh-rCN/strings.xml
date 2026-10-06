@@ -18,12 +18,12 @@
     <string name="nc_monitor">QEMU Monitor</string>
     <string name="nc_parallel">Parallel Port</string>
 
-    <string name="stretch_to_screen">拉伸至屏幕</string>
-    <string name="fit_to_screen">适应屏幕</string>
+    <string name="stretch_to_screen">拉伸至全屏</string>
+    <string name="fit_to_screen">等比缩放</string>
     <string name="zoom_in">放大</string>
     <string name="zoom_out">缩小</string>
-    <string name="one_to_one">正常 (1:1)</string>
-    <string name="scaling">缩放</string>
+    <string name="one_to_one">原始分辨率 (1:1)</string>
+    <string name="scaling">显示方式</string>
     <string name="save_state">暂停虚拟机</string>
     <string name="showkbd_label">键盘</string>
     <string name="drives">驱动器</string>
@@ -119,6 +119,7 @@
     <string name="TapDeviceFound">发现 TAP 设备</string>
     <string name="tunDeviceWarning">警告！请确保设备 /dev/net/tun 具有适当的权限\n用户 ID</string>
     <string name="TAPHelp">TAP 帮助</string>
+    <string name="copiedToClipboard">已复制到剪贴板</string>
     <string name="tapSetupHint">启动虚拟机前，请先在 root 终端（adb shell 后执行 su）中执行以下命令：</string>
     <string name="tapSetupCommand">ip link show tap0 >/dev/null 2&gt;&amp;1 || ip tuntap add dev tap0 mode tap\nip addr flush dev tap0\nip addr add 100.99.99.1/24 dev tap0\nip link set tap0 up\nsysctl -w net.ipv4.ip_forward=1\nwhile ip rule del to 100.99.99.0/24 lookup main 2&gt;&amp;1; do :; done\nip rule add pref 101 to 100.99.99.0/24 lookup main\nwhile iptables -w 5 -D INPUT -i tap0 -j ACCEPT 2&gt;&amp;1; do :; done\nwhile iptables -w 5 -D FORWARD -i tap0 -j ACCEPT 2&gt;&amp;1; do :; done\nwhile iptables -w 5 -D FORWARD -o tap0 -m state --state ESTABLISHED,RELATED -j ACCEPT 2&gt;&amp;1; do :; done\niptables -w 5 -I INPUT 1 -i tap0 -j ACCEPT\niptables -w 5 -I FORWARD 1 -i tap0 -j ACCEPT\niptables -w 5 -I FORWARD 1 -o tap0 -m state --state ESTABLISHED,RELATED -j ACCEPT\nwhile iptables -w 5 -t nat -D POSTROUTING -s 100.99.99.0/24 ! -o tap0 -j MASQUERADE 2&gt;&amp;1; do :; done\niptables -w 5 -t nat -I POSTROUTING 1 -s 100.99.99.0/24 ! -o tap0 -j MASQUERADE</string>
     <string name="LogWarning">上次运行期间发生了问题，是否查看日志？</string>
@@ -299,6 +300,7 @@
     <string name="root_vm_no_su">未检测到 su。Gunyah/Gzvm 加速需要已 root 的设备：虚拟机必须在 root 进程中运行。</string>
     <string name="root_vm_start_failed">以 root 进程启动虚拟机失败</string>
     <string name="root_vm_already_running">虚拟机已在 root 进程中运行</string>
+    <string name="root_vm_exited_unexpectedly">以 root 进程运行的虚拟机异常退出</string>
     <string name="label_disable_hpet">禁用 HPET</string>
     <string name="label_disable_tsc">禁用 TSC</string>
     <string name="label_disable_acpi">禁用 ACPI</string>

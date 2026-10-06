@@ -73,7 +73,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>通过 QMP 与运行中的 QEMU 交互（暂停、继续、保存状态、更换可移动设备等）。</li>
  * </ul>
  */
-class VMExecutor extends MachineExecutor {
+public class VMExecutor extends MachineExecutor {
     private static final String TAG = "VMExecutor";
 
     /** CD-ROM 在 QMP 中的默认设备名（IDE 总线）。 */
@@ -130,6 +130,8 @@ class VMExecutor extends MachineExecutor {
     private volatile String  rootVmPid;
     /** 当前是否处于 root VM 模式。 */
     private volatile boolean rootVmMode;
+    /** 父进程是否已请求停止 root VM，用于区分用户主动关机与子进程异常退出。 */
+    private volatile boolean rootVmStopRequested;
     /** KVM root 启动选择的结果：未决定 / 当前进程 / root 子进程。 */
     private static final int KVM_CHOICE_UNDECIDED = 0;
     private static final int KVM_CHOICE_NORMAL    = 1;
@@ -194,6 +196,28 @@ class VMExecutor extends MachineExecutor {
 
     /** 启用/禁用 AAudio。 */
     public native void nativeEnableAaudio(int value, String aaudioLibName, String aaudioLibPath);
+
+    /**
+     * 设置 SDL 显示方式（缩放模式），对应 QEMU 侧 ui/sdl2.c 的
+     * limbo_sdl_scale_mode：0 = 拉伸至全屏，1 = 等比缩放，2 = 原始分辨率 1:1。
+     *
+     * <p>声明成 static，方便在拿到 VMExecutor 实例之前就设定（例如 Activity
+     * 启动时按用户上次的选择预设）；值会缓存，等 QEMU 库加载后由 start() 下发，
+     * 运行中再次调用则立即生效。
+     */
+    public static native void setSDLScaleMode(int mode);
+
+    /**
+     * setSDLScaleMode() 的带保护版本：native 库还没加载（或构建里没带该符号）时
+     * 只记日志，不抛出 UnsatisfiedLinkError。
+     */
+    public static void setSdlScaleMode(int mode) {
+        try {
+            setSDLScaleMode(mode);
+        } catch (Throwable t) {
+            Log.w(TAG, "setSDLScaleMode(" + mode + ") 失败: " + t);
+        }
+    }
 
     /**
      * 以 QEMU 格式打印参数，便于调试。
@@ -336,7 +360,21 @@ class VMExecutor extends MachineExecutor {
                 // GTK4 Android 后端（由 activity 侧的 LimboGtk 初始化）
                 paramsList.add("gtk" + getDisplayGLOption());
             } else {
-                paramsList.add("sdl" + getDisplayGLOption());
+                // SDL 后端必须加 show-cursor=on：客户机装上真正的 GPU/KMS 驱动后，
+                // 合成器改用 DRM 硬件光标平面，不再把光标画进帧缓冲，
+                // 内核驱动通过 virtio-gpu 的 UPDATE_CURSOR 通知 QEMU，
+                // hw/display/virtio-gpu.c 调用 dpy_cursor_define()，
+                // ui/sdl2.c 的 sdl_mouse_define() 再用 SDL_CreateColorCursor()
+                // 造一个客户机光标；而 Android 的 SDL 视频后端没有实现光标接口
+                // （jni/SDL2/src/video/android 下没有任何 Cursor 实现），
+                // guest_sprite 为空，且 sdl_hide_cursor() 已经把宿主机指针关掉
+                // （SDL_ShowCursor(SDL_DISABLE) + 相对鼠标模式），于是屏幕上
+                // 一个指针都不剩。show-cursor=on 会让 sdl_hide_cursor()/
+                // sdl_show_cursor() 直接 return，QEMU 完全不碰宿主机指针，
+                // Android 自己的指针始终可见（该选项自 QEMU 6.0 起替代已删除的
+                // -show-cursor，见 qemu-options.hx 的 "sdl[,gl=on|core|es|off]"
+                // "[,grab-mod=<mod>][,show-cursor=on|off]"）。
+                paramsList.add("sdl" + getDisplayGLOption() + ",show-cursor=on");
             }
         }
 
@@ -363,13 +401,16 @@ class VMExecutor extends MachineExecutor {
                 paramsList.add(mouseDevice);
                 // 对于 ia64 架构的虚拟机，需要添加 usb-kbd 设备以支持键鼠
                 // 在 i8042=off 的情况下无需添加此设备（在 QEMU 中自动添加）
-                // FIXME: 在没有控制台的情况下支持 usb-kbd
 //            if (LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w) {
 //                paramsList.add("-device");
 //                paramsList.add("usb-kbd");
 //            }
             }
         }
+        // FreshingAir: 在后面的位置加 USB 控制器，
+        // 会被 usb-tablet “忽略”，故而找不到控制器
+        // 挪到前面，让 usb-tablet 识别
+        addUSBController(paramsList);
     }
 
     /**
@@ -390,7 +431,6 @@ class VMExecutor extends MachineExecutor {
      * 添加高级选项：USB 控制器以及用户自定义 extra params。
      */
     private void addAdvancedOptions(ArrayList<String> paramsList) {
-        addUSBController(paramsList);
         String extra = getMachine().getExtraParams();
         if (extra != null && !extra.trim().isEmpty()) {
             String[] paramsTmp = extra.split(" ");
@@ -1386,7 +1426,7 @@ class VMExecutor extends MachineExecutor {
             rootVmMode = false;
             rootVmProcess = null;
 
-            return parseRootVmStatus(statusFile);
+            return parseRootVmStatus(statusFile, errFile);
         } catch (IOException e) {
             Log.e(TAG, "Failed to launch root VM", e);
             if (!RootUtils.hasSu()) {
@@ -1451,14 +1491,16 @@ class VMExecutor extends MachineExecutor {
     private boolean awaitRootVmStart(File pidFile, File errFile) {
         long deadline = System.currentTimeMillis() + ROOT_VM_START_TIMEOUT_MS;
         while (System.currentTimeMillis() < deadline && rootVmPid == null) {
-            if (!isProcessAlive(rootVmProcess)) {
-                return false;
-            }
+            // 先看 pid 文件：部分 su 实现 fork 出命令后自己立刻退出，此时不能
+            // 因为 su 进程结束就判定启动失败。
             String pid = readPid(pidFile);
             if (pid != null) {
                 rootVmPid = pid;
                 rootVmMode = true;
                 return true;
+            }
+            if (!isProcessAlive(rootVmProcess)) {
+                return false;
             }
             try {
                 Thread.sleep(ROOT_VM_POLL_MS);
@@ -1482,19 +1524,45 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
-    /** 解析 root VM 退出状态文件。 */
-    private String parseRootVmStatus(File statusFile) {
+    /**
+     * 解析 root VM 退出状态文件。
+     *
+     * <p>只有两种情况算"正常关机"：子进程自己写了 {@code stopped} 状态（用户关机后
+     * QEMU 正常退出），或者关机是父进程发起的（父进程先杀子进程，子进程被信号终结、
+     * 来不及写状态）。
+     *
+     * <p>其余情况（状态文件停留在 {@code starting}，或者根本没有状态文件）都说明
+     * root 子进程是被信号杀死或崩溃退出的，必须报错并带上子进程日志末尾；否则会被
+     * 当成"用户关机"处理，表现就是"开机即关机"而且没有任何提示。
+     */
+    private String parseRootVmStatus(File statusFile, File errFile) {
+        boolean stopRequested = rootVmStopRequested;
+        rootVmStopRequested = false;
         String status = readText(statusFile);
         if (status != null && status.startsWith(RootVmLauncher.STATUS_PREFIX_ERROR)) {
-            return startFailed(status.substring(RootVmLauncher.STATUS_PREFIX_ERROR.length()));
+            return startFailed(status.substring(RootVmLauncher.STATUS_PREFIX_ERROR.length()).trim()
+                    + tailOf(errFile));
         }
         if (status != null && status.startsWith(RootVmLauncher.STATUS_PREFIX_STOPPED)) {
             String res = status.substring(RootVmLauncher.STATUS_PREFIX_STOPPED.length()).trim();
             if (!res.isEmpty() && !VM_SHUTDOWN.equals(res)) {
                 return res;
             }
+            return VM_SHUTDOWN;
         }
-        return VM_SHUTDOWN;
+        if (stopRequested) {
+            // 用户主动关机：状态文件不会更新，属于预期内的正常退出。
+            return VM_SHUTDOWN;
+        }
+        String detail = status == null ? "no status file" : status;
+        return LimboApplication.getInstance().getString(R.string.root_vm_exited_unexpectedly)
+                + ": " + detail + tailOf(errFile);
+    }
+
+    /** 读取 root 子进程日志末尾，拼成错误提示的一部分。 */
+    @NonNull private static String tailOf(File f) {
+        String tail = readTail(f);
+        return tail.isEmpty() ? "" : "\n" + tail;
     }
 
     // SDL/GTK 窗口只存在于 app 进程中；root 子进程必须以 headless 运行。
@@ -1542,19 +1610,61 @@ class VMExecutor extends MachineExecutor {
         }
     }
 
-    /** 判断 pid 是否存活。 */
-    private static boolean pidAlive(String pid) {
-        return pid != null && new File("/proc/" + pid).exists();
-    }
-
-    /** 判断 root VM 是否存活。 */
+    /**
+     * 判断 root VM 是否存活。
+     *
+     * <p>不能用 {@code /proc/<pid>} 判断：Android 7 起 /proc 以 hidepid=2 挂载，
+     * 应用看不到其它 uid 的进程目录，root 子进程的 /proc 项对 App 不可见。用它判断
+     * 会把"正在运行"当成"已退出"，于是 root VM 刚启动就被当成正常关机、App 立刻退出
+     * （表现就是"开机即关机"）。
+     *
+     * <p>因此以 su 进程为准：su 是 root 子进程的父进程，子 VM 退出后 su 才退出。
+     * 若某些 su 实现 fork 出命令后自己先退出，再用 root 权限的 {@code kill -0} 兜底确认。
+     */
     private boolean isRootVmAlive() {
-        return pidAlive(rootVmPid);
+        if (isProcessAlive(rootVmProcess)) {
+            return true;
+        }
+        return isPidAliveAsRoot(rootVmPid);
     }
 
-    /** 判断 root VM 是否正在运行（通过 pid 文件）。 */
+    /** 用 root 权限确认 pid 是否存活（App 看不到 root 进程的 /proc 项，只能问 root）。 */
+    private static boolean isPidAliveAsRoot(@Nullable String pid) {
+        if (pid == null || pid.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            Process p = new ProcessBuilder("su", "-c", "kill -0 " + pid)
+                    .redirectErrorStream(true).start();
+            long deadline = System.currentTimeMillis() + ROOT_VM_POLL_MS;
+            while (System.currentTimeMillis() < deadline && isProcessAlive(p)) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            if (isProcessAlive(p)) {
+                // su 卡住（例如等待授权弹窗）：保守地当作子进程还活着
+                p.destroy();
+                return true;
+            }
+            return p.exitValue() == 0;
+        } catch (IOException e) {
+            Log.w(TAG, "Could not check root VM pid " + pid, e);
+        }
+        return false;
+    }
+
+    /**
+     * 判断 root VM 是否正在运行。
+     *
+     * <p>以进程内状态为准：App 看不到 root 子进程的 /proc 项，用"pid 文件 + /proc"
+     * 判断永远会得到"没在运行"，也就无法识别重复启动。
+     */
     private boolean isRootVmRunning() {
-        return pidAlive(readPid(new File(LimboApplication.getInstance().getFilesDir(), ROOT_VM_PID)));
+        return rootVmMode && isRootVmAlive();
     }
 
     /** 从 pid 文件读取 pid。 */
@@ -1631,8 +1741,18 @@ class VMExecutor extends MachineExecutor {
         t.start();
     }
 
-    /** 停止 root 子进程，restart 非 0 时重启。 */
+    /** 停止 root 子进程；restart 非 0 时改为复位（与进程内路径一致）。 */
     private void stopRootProcess(int restart) {
+        if (restart != 0) {
+            // 进程内路径用 QMP reset 让 QEMU 原地复位。root 模式下不能"杀掉子进程再起
+            // 一个新的"：那会让仍在等 VM 退出的 start() 直接返回，App 会把复位当成关机
+            // 并结束自己，于是复位一次就等于关机。
+            QmpClient.sendCommand(QmpClient.getResetCommand());
+            return;
+        }
+        // 记下这次退出是父进程主动要求的结果：子进程收到信号就结束了，来不及写
+        // stopped 状态，不能把它当成"异常退出"来报错。
+        rootVmStopRequested = true;
         killRootVm("TERM");
         long deadline = System.currentTimeMillis() + ROOT_VM_STOP_TIMEOUT_MS;
         while (System.currentTimeMillis() < deadline && isRootVmAlive()) {
@@ -1654,19 +1774,6 @@ class VMExecutor extends MachineExecutor {
         }
         rootVmPid = null;
         rootVmMode = false;
-
-        if (restart != 0) {
-            // 与进程内重启（QMP reset）对应，这里用新的 root 子进程重启。
-            try {
-                String[] params = prepareParams(LimboApplication.getInstance());
-                String res = startRootProcess(params);
-                if (res != null && !VM_SHUTDOWN.equals(res)) {
-                    Log.e(TAG, "Root VM restart failed: " + res);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Root VM restart failed", e);
-            }
-        }
     }
 
     /** 向 root VM 发送信号。 */

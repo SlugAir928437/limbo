@@ -42,6 +42,13 @@
 static int started = 0;
 void * handle = 0;
 
+/* Limbo：显示方式（缩放模式），0=拉伸至全屏 1=等比缩放 2=原始 1:1，-1=未设置。
+ * 对应 QEMU 侧 ui/sdl2.c 的 limbo_sdl_scale_mode 和 ui/gtk.c 的
+ * limbo_gtk_scale_mode（见 patches/qemu-v11.0.0-limbo-sdl-scale.patch）。
+ * 允许在 VM 启动前调用（那时 qemu 库还没 dlopen，先缓存，等 start() 加载完
+ * 库再统一下发）；运行中调用则立刻通过 set_qemu_var() 生效。 */
+static int limbo_pending_sdl_scale_mode = -1;
+
 void * loadLib(const char* lib_filename, const char * lib_path_str) {
 
 	char res_msg[MAX_STRING_LEN];
@@ -144,6 +151,25 @@ JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateIdle(
     int res = get_qemu_var(env, thiz, "gui_refresh_interval_idle");
     printf("getting sdl refresh rate idle: %d\n", res);
     return res;
+}
+
+/*
+ * 设置 SDL 显示方式（缩放模式）：
+ *   0 = 拉伸至全屏（拉伸铺满，忽略客户机宽高比）
+ *   1 = 等比缩放（保持客户机宽高比，居中留边，默认）
+ *   2 = 原始分辨率 1:1（居中，超出部分裁剪）
+ * 静态 native（VMExecutor.setSDLScaleMode），因此第二个参数是 jclass。
+ */
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLScaleMode(
+		JNIEnv* env, jclass clazz, jint jmode) {
+    limbo_pending_sdl_scale_mode = (int) jmode;
+
+    if (handle == NULL) {
+        /* qemu 库还没加载（VM 尚未启动）：缓存，等 start() 里再下发 */
+        return;
+    }
+    set_qemu_var(env, NULL, "limbo_sdl_scale_mode", limbo_pending_sdl_scale_mode);
+    set_qemu_var(env, NULL, "limbo_gtk_scale_mode", limbo_pending_sdl_scale_mode);
 }
 
 
@@ -707,12 +733,15 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
 	if (thiz != NULL) {
 		setup_jni(env, thiz, storage_dir, base_dir);
 	}
-    /* Same mode value drives both the SDL and the GTK display backends:
-     * 0 = stretch, 1 = keep aspect ratio, 2 = 1:1 pixels.  Symbols that are
-     * not exported by the loaded qemu library (e.g. VNC-only builds) are
-     * simply ignored by set_qemu_var(). */
-    // set_qemu_var(env, thiz, "limbo_sdl_scale_mode", sdl_scale_mode);
-    // set_qemu_var(env, thiz, "limbo_gtk_scale_mode", sdl_scale_mode);
+    /* 把 Java 侧选择的显示方式（缩放模式）下发给 QEMU 显示后端，SDL 和 GTK
+     * 共用同一个取值：0 = 拉伸至全屏，1 = 等比缩放，2 = 1:1 原始像素。
+     * 符号由 patches/qemu-v11.0.0-limbo-sdl-scale.patch 与 GTK 补丁在
+     * ui/sdl2.c / ui/gtk.c 里导出；VNC-only 或没打补丁的构建没有这些符号，
+     * set_qemu_var() 会打条日志后忽略，不影响启动。 */
+    if (limbo_pending_sdl_scale_mode >= 0) {
+        set_qemu_var(env, thiz, "limbo_sdl_scale_mode", limbo_pending_sdl_scale_mode);
+        set_qemu_var(env, thiz, "limbo_gtk_scale_mode", limbo_pending_sdl_scale_mode);
+    }
 
 	// Use correct function signatures to avoid undefined behavior on ARM64
 	typedef void (*qemu_init_t)(int argc, char **argv);

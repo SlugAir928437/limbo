@@ -729,6 +729,13 @@ ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.
 EGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-android-egl.patch
 EGL_APPLY           := yes
 
+# SDL 显示方式（缩放模式）补丁：给 ui/sdl2-2d.c / ui/sdl2-gl.c 加上
+# limbo_sdl_scale_mode（0=拉伸至全屏 1=等比缩放 2=1:1），由 Java 侧经
+# set_qemu_var() 下发，取值与 GTK 后端的 limbo_gtk_scale_mode 一致。
+# 只改 sdl2*，不依赖主补丁的上下文，因此单独成一个补丁文件。
+SDL_SCALE_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-scale.patch
+SDL_SCALE_APPLY     := yes
+
 # 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
 #  export BUILD_ACCEL=gunyah / gzvm / both / none 覆盖）
 # 映射成 config-qemu 里传给 ./configure 的 -Dgunyah/-Dgzvm meson 特性
@@ -1036,6 +1043,7 @@ fetch-qemu:
 	fi
 	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
 	$(if $(EGL_APPLY),@if [ -f "$(EGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(EGL_PATCH)" 2>/dev/null; then echo ">> 应用 Android EGL 初始化补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(EGL_PATCH)"; fi;)
+	$(if $(SDL_SCALE_APPLY),@if [ -f "$(SDL_SCALE_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(SDL_SCALE_PATCH)" 2>/dev/null; then echo ">> 应用 SDL 显示方式（缩放模式）补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(SDL_SCALE_PATCH)"; fi;)
 
 fetch-gtk4android:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \

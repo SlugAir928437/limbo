@@ -31,6 +31,15 @@ public class Config {
     public static final int SDL_MOUSE_LEFT = 1;
     public static final int SDL_MOUSE_MIDDLE = 2;
     public static final int SDL_MOUSE_RIGHT = 3;
+
+    // SDL 显示方式（缩放模式），取值与 QEMU 侧 limbo_sdl_scale_mode /
+    // limbo_gtk_scale_mode 一致（见 patches/qemu-v11.0.0-limbo-sdl-scale.patch）
+    /** 拉伸至全屏：铺满窗口，忽略客户机画面的宽高比 */
+    public static final int SDL_SCALE_STRETCH = 0;
+    /** 等比缩放：保持客户机画面的宽高比，居中留黑边（默认） */
+    public static final int SDL_SCALE_ASPECT = 1;
+    /** 原始分辨率 1:1：按客户机原始像素居中显示，放不下就裁剪 */
+    public static final int SDL_SCALE_NATIVE = 2;
     public static final int SETTINGS_RETURN_CODE = 1000;
 
     public static final int SDL_REQUEST_CODE = 1007;

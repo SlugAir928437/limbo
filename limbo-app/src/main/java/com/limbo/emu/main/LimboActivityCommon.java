@@ -20,6 +20,9 @@ package com.limbo.emu.main;
 
 import android.app.Activity;
 import androidx.appcompat.app.AlertDialog;
+
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -265,13 +268,29 @@ public class LimboActivityCommon {
             public void run() {
                 // tap0 需要 root 预先配置好（创建网卡 + 转发 + NAT），这里只提示
                 // 用户去执行，App 不会自己执行。
+                final String setupCommand = activity.getString(R.string.tapSetupCommand);
                 DialogUtils.UIAlert(activity,
                         activity.getString(R.string.TapDeviceFound),
                         activity.getString(R.string.tunDeviceWarning) + ": " + userid + "\n\n"
                                 + activity.getString(R.string.tapSetupHint) + "\n\n"
-                                + activity.getString(R.string.tapSetupCommand),
-                        14, false, activity.getString(android.R.string.ok), okListener,
-                        null, null, null, null);
+                                + setupCommand,
+                        14, false,
+                        activity.getString(android.R.string.ok), okListener,
+                        null, null,
+                        activity.getString(android.R.string.copy),
+                        (dialogInterface, i) -> {
+                            try{
+                                ClipboardManager clipboard = (ClipboardManager)
+                                        activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                                    clipboard.setPrimaryClip(ClipData.newPlainText(
+                                            activity.getString(R.string.tapSetupHint), setupCommand));
+                                    ToastUtils.toastShort(activity,
+                                            activity.getString(R.string.copiedToClipboard));
+                            } catch (Exception e){
+                                ToastUtils.toastLong(activity,
+                                        "Fail: " + e.getMessage());
+                            }
+                        });
             }
         });
     }

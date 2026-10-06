@@ -218,7 +218,7 @@ public class ArchDefinitions {
      * "None" adds no USB controller to the QEMU command line, preserving the
      * pre-feature behavior.
      */
-    public static ArrayList<String> getUsbControllerValues(Context context) {
+    public static ArrayList<String> getUsbControllerValues() {
         ArrayList<String> arrList = new ArrayList<>();
         arrList.add("None");
 

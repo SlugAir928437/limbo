@@ -24,7 +24,9 @@ public class MainActivity extends LimboActivity {
         Config.clientClass = this.getClass();
 
         // 3) 公共部分
-        Config.enableMTTCG = LimboApplication.isHost64Bit() && Config.enableMTTCG;
+        Config.enableMTTCG = ( LimboApplication.isHostArm() || LimboApplication.isHostArmv8()
+                || LimboApplication.isHostX86() || LimboApplication.isHostX86_64() )
+            && Config.enableMTTCG;
 
         // 4) 按架构做差异化配置（机器目录 / 加速器 / 日志）
         ArchManager.applyArchConfig(arch);

@@ -111,10 +111,6 @@ public class LimboApplication extends Application {
         return userid;
     }
 
-    public static boolean isHost64Bit() {
-        return Build.SUPPORTED_64_BIT_ABIS != null && Build.SUPPORTED_64_BIT_ABIS.length > 0;
-    }
-
     // Legacy
     public static boolean isHostX86_64() {
         if (Build.SUPPORTED_64_BIT_ABIS != null) {

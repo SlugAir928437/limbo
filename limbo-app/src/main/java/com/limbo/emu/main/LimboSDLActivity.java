@@ -60,6 +60,7 @@ import androidx.appcompat.widget.Toolbar;
 
 import com.limbo.emu.R;
 import com.limbo.emu.files.FileUtils;
+import com.limbo.emu.jni.VMExecutor;
 import com.limbo.emu.keyboard.KeyboardUtils;
 import com.limbo.emu.keymapper.KeyMapManager;
 import com.limbo.emu.log.Logger;
@@ -86,6 +87,9 @@ public class LimboSDLActivity extends SDLActivity
         implements KeyMapManager.OnSendKeyEventListener, KeyMapManager.OnSendMouseEventListener,
         KeyMapManager.OnUnhandledTouchEventListener, MachineController.OnMachineStatusChangeListener,
         MachineController.OnEventListener {
+    static {
+        System.loadLibrary("SDL2");
+    }
     public static final int KEYBOARD = 10000;
     private static final String TAG = "LimboSDLActivity";
 
@@ -110,7 +114,6 @@ public class LimboSDLActivity extends SDLActivity
     private boolean quit = false;
     private View mGap;
     private boolean resettingLayout;
-    private NetcatSession netcatSession;
 
     public void showHints() {
         ToastUtils.toastShortTop(this, getString(R.string.PressVolumeDownForRightClick));
@@ -257,10 +260,41 @@ public class LimboSDLActivity extends SDLActivity
             toggleKeyMapper();
         } else if (item.getItemId() == R.id.itemSendText) {
             promptSendText();
+        } else if (item.getItemId() == R.id.itemStretchToScreen) {
+            applyScaleMode(Config.SDL_SCALE_STRETCH);
+        } else if (item.getItemId() == R.id.itemFitToScreen) {
+            applyScaleMode(Config.SDL_SCALE_ASPECT);
+        } else if (item.getItemId() == R.id.itemOneToOne) {
+            applyScaleMode(Config.SDL_SCALE_NATIVE);
         }
 
         invalidateOptionsMenu();
         return true;
+    }
+
+    /**
+     * 同步「显示方式」子菜单的选中项，对应当前生效的缩放模式。
+     */
+    private void syncScaleModeMenu(Menu menu) {
+        int mode = LimboSettingsManager.getSDLScaleMode(this);
+        int[] ids = {R.id.itemStretchToScreen, R.id.itemFitToScreen, R.id.itemOneToOne};
+        int[] modes = {Config.SDL_SCALE_STRETCH, Config.SDL_SCALE_ASPECT, Config.SDL_SCALE_NATIVE};
+
+        for (int i = 0; i < ids.length; i++) {
+            MenuItem menuItem = menu.findItem(ids[i]);
+            if (menuItem != null) {
+                menuItem.setChecked(modes[i] == mode);
+            }
+        }
+    }
+
+    /**
+     * 应用显示方式（缩放模式）：记住用户的选择，并下发给 QEMU 的 SDL/GTK 显示后端。
+     * 运行中切换会由 native 侧整屏重绘一次，立刻生效。
+     */
+    private void applyScaleMode(int mode) {
+        LimboSettingsManager.setSDLScaleMode(this, mode);
+        VMExecutor.setSdlScaleMode(mode);
     }
 
     private void promptSendText() {
@@ -281,11 +315,9 @@ public class LimboSDLActivity extends SDLActivity
                 text.setText(clipData.getItemAt(0).getText());
         }
 
-        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, getString(R.string.Send), new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                String textStr = text.getText().toString();
-                sendText(textStr);
-            }
+        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, getString(R.string.Send), (dialog, which) -> {
+            String textStr = text.getText().toString();
+            sendText(textStr);
         });
         alertDialog.show();
     }
@@ -312,7 +344,7 @@ public class LimboSDLActivity extends SDLActivity
     private void openNcConsole(String cmd) {
         // 以 MaterialAlertDialog 弹出 ncat 控制台。
         // 需由本 Activity 持有强引用，防止 NetcatWorker 的 WeakReference 使其被回收。
-        netcatSession = new NetcatSession(this);
+        NetcatSession netcatSession = new NetcatSession(this);
         netcatSession.show(cmd);
     }
 
@@ -325,22 +357,19 @@ public class LimboSDLActivity extends SDLActivity
         };
         final AlertDialog.Builder mBuilder = new AlertDialog.Builder(this);
         mBuilder.setTitle(R.string.Mouse);
-        mBuilder.setSingleChoiceItems(items, -1, new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int i) {
-                switch (i) {
-                    case 0:
-                        setTrackpadMode();
-                        break;
-                    case 1:
-                    case 2:
-                        promptAbsoluteDevice(i == 2);
-                        break;
-                    default:
-                        break;
-                }
-                dialog.dismiss();
+        mBuilder.setSingleChoiceItems(items, -1, (dialog, i) -> {
+            switch (i) {
+                case 0:
+                    setTrackpadMode();
+                    break;
+                case 1:
+                case 2:
+                    promptAbsoluteDevice(i == 2);
+                    break;
+                default:
+                    break;
             }
+            dialog.dismiss();
         });
         final AlertDialog alertDialog = mBuilder.create();
         alertDialog.show();
@@ -376,19 +405,13 @@ public class LimboSDLActivity extends SDLActivity
         textView.setText(instructions);
         mLayout.addView(textView);
         alertDialog.setView(mLayout);
-        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, getString(R.string.Ok), new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                // we handle external mouse at all times
-                if (!externalMouse)
-                    setTouchScreenMode();
-                alertDialog.dismiss();
-            }
+        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, getString(R.string.Ok), (dialog, which) -> {
+            // we handle external mouse at all times
+            if (!externalMouse)
+                setTouchScreenMode();
+            alertDialog.dismiss();
         });
-        alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, getString(R.string.Cancel), new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {
-                alertDialog.dismiss();
-            }
-        });
+        alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, getString(R.string.Cancel), (dialog, which) -> alertDialog.dismiss());
         alertDialog.show();
 
     }
@@ -424,8 +447,8 @@ public class LimboSDLActivity extends SDLActivity
         // android supports only 1
         menu.removeItem(menu.findItem(R.id.itemMonitor).getItemId());
 
-        // Remove scaling for now
-        menu.removeItem(menu.findItem(R.id.itemScaling).getItemId());
+        // 显示方式（缩放模式）子菜单：同步当前选中项
+        syncScaleModeMenu(menu);
 
         // Remove external mouse for now
         menu.removeItem(menu.findItem(R.id.itemExternalMouse).getItemId());
@@ -445,13 +468,11 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     private void showMonitor() {
-        new Thread(new Runnable() {
-            public void run() {
-                monitorMode = true;
-                //TODO: enable qemu monitor if and when libSDL for Android allows
-                // multiple windows
-                sendCtrlAlt(KeyEvent.KEYCODE_2);
-            }
+        new Thread(() -> {
+            monitorMode = true;
+            //TODO: enable qemu monitor if and when libSDL for Android allows
+            // multiple windows
+            sendCtrlAlt(KeyEvent.KEYCODE_2);
         }).start();
 
     }
@@ -522,6 +543,9 @@ public class LimboSDLActivity extends SDLActivity
     private void setupUserInterface() {
         Config.keyDelay = LimboSettingsManager.getKeyPressDelay(this);
         Config.mouseButtonDelay = LimboSettingsManager.getMouseButtonDelay(this);
+        // 恢复上次选择的显示方式（缩放模式）。native 侧会先缓存，
+        // 等 QEMU 库加载完成（start()）再下发给显示后端。
+        VMExecutor.setSdlScaleMode(LimboSettingsManager.getSDLScaleMode(this));
     }
 
     private void setupScreen() {
@@ -636,7 +660,7 @@ public class LimboSDLActivity extends SDLActivity
         volume = getCurrentVolume();
         vol.setProgress(volume);
         vol.setLayoutParams(volparams);
-        ((SeekBar) vol).setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+        vol.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar s, int progress, boolean touch) {
                 setVolume(progress);
             }
@@ -656,11 +680,6 @@ public class LimboSDLActivity extends SDLActivity
             notifyAction(MachineAction.UPDATE_NOTIFICATION,
                     getString(R.string.VMRunning));
         super.onResume();
-    }
-
-    public void loadLibraries() {
-        //XXX: Do not remove we need this to prevent loading libraries from SDL so
-        // we handle libraries for specific architectures later
     }
 
     @Override
@@ -728,7 +747,7 @@ public class LimboSDLActivity extends SDLActivity
         }, 5000);
     }
 
-    @SuppressLint("MissingSuperCall")
+    @SuppressLint({"MissingSuperCall", "GestureBackNavigation"})
     public void onBackPressed() {
         if (mKeyMapManager != null && mKeyMapManager.isEditMode()) {
             toggleKeyMapper();
@@ -767,13 +786,13 @@ public class LimboSDLActivity extends SDLActivity
         getMenuInflater().inflate(R.menu.sdlactivitymenu, menu);
         // Mirror onPrepareOptionsMenu() so the popup carries the same items.
         menu.removeItem(R.id.itemMonitor);
-        menu.removeItem(R.id.itemScaling);
         menu.removeItem(R.id.itemExternalMouse);
         menu.removeItem(R.id.itemCtrlAltDel);
         menu.removeItem(R.id.itemCtrlC);
         if (MachineController.getInstance().getMachine().getSoundCard() == null) {
             menu.removeItem(R.id.itemVolume);
         }
+        syncScaleModeMenu(menu);
         popup.setOnMenuItemClickListener(this::onOptionsItemSelected);
         popup.show();
     }

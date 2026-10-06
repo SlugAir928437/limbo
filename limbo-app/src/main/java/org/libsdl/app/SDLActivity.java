@@ -73,57 +73,28 @@ public class SDLActivity
     protected static ViewGroup mLayout;
     protected static SDLClipboardHandler mClipboardHandler;
 
+    protected static String errorMsgBrokenLib = "";
 
     // This is what SDL runs in. It invokes SDL_main(), eventually
     protected static Thread mSDLThread;
 
-    /**
-     * This method returns the name of the shared object with the application entry point
-     * It can be overridden by derived classes.
-     */
-    protected String getMainSharedObject() {
-        String library;
-        String[] libraries = SDLActivity.mSingleton.getLibraries();
-        if (libraries.length > 0) {
-            library = "lib" + libraries[libraries.length - 1] + ".so";
-        } else {
-            library = "libmain.so";
+    static {
+        // Load shared libraries
+        try {
+            System.loadLibrary("SDL2");
+        } catch(UnsatisfiedLinkError | Exception e) {
+            e.printStackTrace();
+            mBrokenLibraries = true;
+            errorMsgBrokenLib = e.getMessage();
         }
-        return library;
-    }
 
+    }
     /**
      * This method returns the name of the application entry point
      * It can be overridden by derived classes.
      */
     protected String getMainFunction() {
         return "SDL_main";
-    }
-
-    /**
-     * This method is called by SDL before loading the native shared libraries.
-     * It can be overridden to provide names of shared libraries to be loaded.
-     * The default implementation returns the defaults. It never returns null.
-     * An array returned by a new implementation must at least contain "SDL2".
-     * Also keep in mind that the order the libraries are loaded may matter.
-     * @return names of shared libraries to be loaded (e.g. "SDL2", "main").
-     */
-    protected String[] getLibraries() {
-        return new String[] {
-                "SDL2",
-                // "SDL2_image",
-                // "SDL2_mixer",
-                // "SDL2_net",
-                // "SDL2_ttf",
-                 "main"
-        };
-    }
-
-    // Load the .so
-    public void loadLibraries() {
-        for (String lib : getLibraries()) {
-            System.loadLibrary(lib);
-        }
     }
 
     /**
@@ -162,22 +133,7 @@ public class SDLActivity
         Log.v(TAG, "onCreate()");
         super.onCreate(savedInstanceState);
 
-        // Load shared libraries
-        String errorMsgBrokenLib = "";
-        try {
-            loadLibraries();
-        } catch(UnsatisfiedLinkError e) {
-            System.err.println(e.getMessage());
-            mBrokenLibraries = true;
-            errorMsgBrokenLib = e.getMessage();
-        } catch(Exception e) {
-            System.err.println(e.getMessage());
-            mBrokenLibraries = true;
-            errorMsgBrokenLib = e.getMessage();
-        }
-
-        if (mBrokenLibraries)
-        {
+        if (mBrokenLibraries) {
             mSingleton = this;
             AlertDialog.Builder dlgAlert  = new AlertDialog.Builder(this);
             dlgAlert.setMessage("An error occurred while trying to start the application. Please try again and/or reinstall."
@@ -454,7 +410,7 @@ public class SDLActivity
      */
     protected static class SDLCommandHandler extends Handler {
         @Override
-        public void handleMessage(Message msg) {
+        public void handleMessage(@NonNull Message msg) {
             Context context = SDL.getContext();
             if (context == null) {
                 Log.e(TAG, "error handling message, getContext() returned null");
@@ -469,11 +425,7 @@ public class SDLActivity
                     }
                     break;
                 case COMMAND_CHANGE_WINDOW_STYLE:
-                    if (Build.VERSION.SDK_INT < 19) {
-                        // This version of Android doesn't support the immersive fullscreen mode
-                        break;
-                    }
-/* This needs more testing, per bug 4096 - Enabling fullscreen on Android causes the app to toggle fullscreen mode continuously in a loop
+                    /* This needs more testing, per bug 4096 - Enabling fullscreen on Android causes the app to toggle fullscreen mode continuously in a loop
  ***
                 if (context instanceof Activity) {
                     Window window = ((Activity) context).getWindow();
@@ -1118,12 +1070,6 @@ public class SDLActivity
 class SDLMain implements Runnable {
     @Override
     public void run() {
-        // Runs SDL_main()
-        String library = SDLActivity.mSingleton.getMainSharedObject();
-        String function = SDLActivity.mSingleton.getMainFunction();
-        String[] arguments = SDLActivity.mSingleton.getArguments();
-
-        Log.v("SDL", "Running main function " + function + " from library " + library);
         //LIMBO: we override
         //SDLActivity.nativeRunMain(library, function, arguments);
         SDLActivity.mSingleton.runSDLMain();

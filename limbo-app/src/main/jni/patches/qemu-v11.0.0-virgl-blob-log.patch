@@ -1,0 +1,20 @@
+diff --git a/hw/display/virtio-gpu-virgl.c b/hw/display/virtio-gpu-virgl.c
+index b7a2d16..509a3c6 100644
+--- a/hw/display/virtio-gpu-virgl.c
++++ b/hw/display/virtio-gpu-virgl.c
+@@ -853,6 +853,15 @@ static void virgl_cmd_resource_create_blob(VirtIOGPU *g,
+         }
+     }
+ 
++    /* LIMBO DEBUG（诊断用，可整段删除）: 打印 blob 请求的全部参数，
++     * 用来判断宿主拒绝 create_blob 时到底是哪个字段不被接受。 */
++    fprintf(stderr,
++            "%s: blob req res=0x%x ctx_id=0x%x blob_mem=0x%x blob_flags=0x%x"
++            " blob_id=0x%" PRIx64 " size=%" PRIu64 " nr_entries=%u iov_cnt=%u\n",
++            __func__, cblob.resource_id, cblob.hdr.ctx_id, cblob.blob_mem,
++            cblob.blob_flags, cblob.blob_id, cblob.size, cblob.nr_entries,
++            res->base.iov_cnt);
++
+     virgl_args.res_handle = cblob.resource_id;
+     virgl_args.ctx_id = cblob.hdr.ctx_id;
+     virgl_args.blob_mem = cblob.blob_mem;

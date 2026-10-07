@@ -736,6 +736,17 @@ EGL_APPLY           := yes
 SDL_SCALE_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-scale.patch
 SDL_SCALE_APPLY     := yes
 
+# venus（Vulkan over VirGL）诊断补丁：在 hw/display/virtio-gpu-virgl.c 的
+# virgl_cmd_resource_create_blob() 里无条件打印一行 create_blob 的请求参数
+# （res / ctx_id / blob_mem / blob_flags / blob_id / size / nr_entries）。
+# 用途：客户机里 "venus 起不来"（vkmark/vkcube 报 vkCreateInstance failed
+# with ERROR_OUT_OF_HOST_MEMORY）时，QEMU 只会打印
+# "virgl blob create error: <errno>"，看不到它到底收到了什么参数；有这一行
+# 就能直接判断是哪个字段不被 virglrenderer 接受。
+# 只加日志、不改行为；定位完把 VIRGL_BLOB_LOG_APPLY 置空（或删掉本补丁）即可停用。
+VIRGL_BLOB_LOG_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-virgl-blob-log.patch
+VIRGL_BLOB_LOG_APPLY := yes
+
 # 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
 #  export BUILD_ACCEL=gunyah / gzvm / both / none 覆盖）
 # 映射成 config-qemu 里传给 ./configure 的 -Dgunyah/-Dgzvm meson 特性
@@ -796,13 +807,14 @@ else
 QEMU_USE_OFFICIAL := no
 endif
 
-# gzvm / gunyah 加速器与 Android EGL 初始化补丁仅适用于官方 QEMU 11.0.0 树：
-# IA-64 fork 无对应 meson 选项，传入 -Dgunyah/-Dgzvm 会导致
+# gzvm / gunyah 加速器、Android EGL 初始化、venus blob 诊断补丁仅适用于官方
+# QEMU 11.0.0 树：IA-64 fork 无对应 meson 选项，传入 -Dgunyah/-Dgzvm 会导致
 # "Unknown option" 配置失败，补丁也不应打到 fork 树上。
 ifneq ($(QEMU_USE_OFFICIAL), yes)
 ACCEL_MESON_FLAGS    :=
 ACCEL_APPLY          :=
 EGL_APPLY            :=
+VIRGL_BLOB_LOG_APPLY :=
 endif
 
 # VirtIO GPU GL (virtio-gpu-gl-pci): hw/display/meson.build only builds
@@ -1044,6 +1056,7 @@ fetch-qemu:
 	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
 	$(if $(EGL_APPLY),@if [ -f "$(EGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(EGL_PATCH)" 2>/dev/null; then echo ">> 应用 Android EGL 初始化补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(EGL_PATCH)"; fi;)
 	$(if $(SDL_SCALE_APPLY),@if [ -f "$(SDL_SCALE_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(SDL_SCALE_PATCH)" 2>/dev/null; then echo ">> 应用 SDL 显示方式（缩放模式）补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(SDL_SCALE_PATCH)"; fi;)
+	$(if $(VIRGL_BLOB_LOG_APPLY),@if [ -f "$(VIRGL_BLOB_LOG_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(VIRGL_BLOB_LOG_PATCH)" 2>/dev/null; then echo ">> 应用 venus blob 请求诊断日志补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(VIRGL_BLOB_LOG_PATCH)"; fi;)
 
 fetch-gtk4android:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \

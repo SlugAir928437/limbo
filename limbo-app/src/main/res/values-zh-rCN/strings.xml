@@ -247,6 +247,7 @@
     <string name="title_storage_device_editor">存储设备</string>
     <string name="label_storage_type">类型</string>
     <string name="label_storage_size">容量</string>
+    <string name="label_storage_size_unit">容量单位</string>
     <string name="label_storage_image">镜像</string>
     <string name="label_new_image_name">镜像名称</string>
     <string name="new_image">新建</string>

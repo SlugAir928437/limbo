@@ -7,14 +7,29 @@
          任何用 Application Context 构造的 Material 组件（如 MaterialAlertDialogBuilder）
          都会抛出 IllegalArgumentException: The style on this component requires your app
          theme to be Theme.AppCompat (or a descendant)。
-         各 Activity 在清单里另有自己的主题，不受影响。 -->
+         各 Activity 在清单里另有自己的主题，不受影响。
+         配色统一改为 Miuix（小米 HyperOS）色板，与 Compose 端的 MiuixTheme 保持一致。 -->
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/miuix_window_background</item>
+        <item name="colorPrimary">@color/miuix_primary</item>
+        <item name="colorPrimaryVariant">@color/miuix_primary_variant</item>
+        <item name="colorOnPrimary">@color/miuix_on_primary</item>
+        <item name="colorSecondary">@color/miuix_secondary</item>
+        <item name="colorOnSecondary">@color/miuix_on_secondary</item>
+        <item name="android:colorAccent">@color/miuix_primary</item>
     </style>
 
-    <!-- NoActionBar variant for emulator activities (Material 3, matched with Compose theme) -->
+    <!-- NoActionBar variant for emulator activities (Miuix / HyperOS colors, matched with the Compose theme) -->
     <style name="AppTheme.NoActionBar" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/miuix_window_background</item>
+        <item name="colorPrimary">@color/miuix_primary</item>
+        <item name="colorPrimaryVariant">@color/miuix_primary_variant</item>
+        <item name="colorOnPrimary">@color/miuix_on_primary</item>
+        <item name="colorSecondary">@color/miuix_secondary</item>
+        <item name="colorOnSecondary">@color/miuix_on_secondary</item>
+        <item name="android:colorAccent">@color/miuix_primary</item>
     </style>
 
     <!-- Shape Appearances -->
@@ -36,9 +51,9 @@
      Using a MaterialComponents (M2) dialog theme inside a Material3 activity
      left the dialog content blank; keep the dialog on Material3. -->
     <style name="Theme.NetcatSession.Dialog" parent="Theme.Material3.DayNight.Dialog">
-        <item name="colorPrimary">#6750A4</item>
-        <item name="colorPrimaryVariant">#4F378B</item>
-        <item name="colorSecondary">#6750A4</item>
+        <item name="colorPrimary">@color/miuix_primary</item>
+        <item name="colorPrimaryVariant">@color/miuix_primary_variant</item>
+        <item name="colorSecondary">@color/miuix_primary</item>
         <item name="android:windowMinWidthMajor">80%</item>
         <item name="android:windowMinWidthMinor">90%</item>
     </style>

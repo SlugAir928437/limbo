@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Miuix / HyperOS 主题色（浅色），取自 Miuix 默认配色方案。
+         Compose 侧由 MiuixTheme 提供，这里供 XML 主题（非 Compose 的 Activity）使用。 -->
+    <color name="miuix_primary">#FF3482FF</color>
+    <color name="miuix_primary_variant">#FF5D9BFF</color>
+    <color name="miuix_on_primary">#FFFFFFFF</color>
+    <color name="miuix_secondary">#FFE6E6E6</color>
+    <color name="miuix_on_secondary">#FF303030</color>
+    <color name="miuix_surface">#FFFFFFFF</color>
+    <color name="miuix_window_background">#FFF7F7F7</color>
+</resources>

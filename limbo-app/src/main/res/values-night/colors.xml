@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Miuix / HyperOS 主题色（深色），取自 Miuix 默认配色方案。 -->
+    <color name="miuix_primary">#FF277AF7</color>
+    <color name="miuix_primary_variant">#FF0073DD</color>
+    <color name="miuix_on_primary">#FFFFFFFF</color>
+    <color name="miuix_secondary">#FF505050</color>
+    <color name="miuix_on_secondary">#FFFFFFFF</color>
+    <color name="miuix_surface">#FF242424</color>
+    <color name="miuix_window_background">#FF242424</color>
+</resources>

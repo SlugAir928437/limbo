@@ -1,6 +1,5 @@
 package com.limbo.emu.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,19 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,13 +23,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.limbo.emu.R
+import com.limbo.emu.ui.components.LabeledTextFieldRow
 import com.limbo.emu.ui.components.LimboDropdown
 import com.limbo.emu.ui.components.SectionCard
-import com.limbo.emu.ui.components.SettingRow
 import com.limbo.emu.ui.components.StatusDot
 import com.limbo.emu.ui.components.SwitchRow
-import com.limbo.emu.ui.components.TextFieldRow
 import com.limbo.emu.ui.theme.StatusStopped
 
 /**
@@ -103,9 +97,8 @@ interface LimboUiCallbacks {
 }
 
 /**
- * Main configuration screen for Limbo, rendered with Jetpack Compose + Material 3.
+ * Main configuration screen for Limbo, rendered with Miuix (Xiaomi HyperOS design system).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LimboMainScreen(
     state: LimboUiState,
@@ -115,8 +108,8 @@ fun LimboMainScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.app_name), fontWeight = FontWeight.Bold) },
+            SmallTopAppBar(
+                title = stringResource(R.string.app_name),
                 navigationIcon = {
                     Icon(
                         painter = painterResource(R.drawable.limbo),
@@ -127,13 +120,9 @@ fun LimboMainScreen(
                 },
                 actions = {
                     IconButton(onClick = { callbacks.onOpenMenu() }) {
-                        Text("⋮", style = MaterialTheme.typography.titleLarge)
+                        Text("⋮", style = MiuixTheme.textStyles.title3)
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+                }
             )
         }
     ) { padding ->
@@ -141,7 +130,7 @@ fun LimboMainScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+            contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
         ) {
             item { MachineCard(state = state, callbacks = callbacks) }
             item { StatusCard(state = state, statusColor = statusColor) }
@@ -156,33 +145,30 @@ fun LimboMainScreen(
                     collapsed = state.uiCollapsed,
                     onToggle = { onToggleSection(Section.UI) }
                 ) {
-                    SettingRow(label = stringResource(R.string.label_display), iconRes = R.drawable.ui) {
-                        LimboDropdown(
-                            options = state.uiOptions,
-                            selectedIndex = state.uiSel,
-                            enabled = state.uiEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onUiSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.title_keyboard), iconRes = R.drawable.keyboard) {
-                        LimboDropdown(
-                            options = state.keyboardOptions,
-                            selectedIndex = state.keyboardSel,
-                            enabled = state.keyboardEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onKeyboardSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.title_mouse), iconRes = R.drawable.mouse) {
-                        LimboDropdown(
-                            options = state.mouseOptions,
-                            selectedIndex = state.mouseSel,
-                            enabled = state.mouseEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onMouseSelected(it) }
-                        )
-                    }
+                    LimboDropdown(
+                        title = stringResource(R.string.label_display),
+                        iconRes = R.drawable.ui,
+                        options = state.uiOptions,
+                        selectedIndex = state.uiSel,
+                        enabled = state.uiEnabled,
+                        onSelected = { callbacks.onUiSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.title_keyboard),
+                        iconRes = R.drawable.keyboard,
+                        options = state.keyboardOptions,
+                        selectedIndex = state.keyboardSel,
+                        enabled = state.keyboardEnabled,
+                        onSelected = { callbacks.onKeyboardSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.title_mouse),
+                        iconRes = R.drawable.mouse,
+                        options = state.mouseOptions,
+                        selectedIndex = state.mouseSel,
+                        enabled = state.mouseEnabled,
+                        onSelected = { callbacks.onMouseSelected(it) }
+                    )
                 }
             }
 
@@ -195,39 +181,36 @@ fun LimboMainScreen(
                     collapsed = state.boardCollapsed,
                     onToggle = { onToggleSection(Section.BOARD) }
                 ) {
-                    SettingRow(label = stringResource(R.string.label_machine_type), iconRes = R.drawable.machinetype) {
-                        LimboDropdown(
-                            options = state.machineTypeOptions,
-                            selectedIndex = state.machineTypeSel,
-                            enabled = state.machineTypeEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onMachineTypeSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.label_cpu_model), iconRes = R.drawable.cpu) {
-                        LimboDropdown(
-                            options = state.cpuOptions,
-                            selectedIndex = state.cpuSel,
-                            enabled = state.cpuEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onCpuSelected(it) }
-                        )
-                    }
-                    TextFieldRow(
+                    LimboDropdown(
+                        title = stringResource(R.string.label_machine_type),
+                        iconRes = R.drawable.machinetype,
+                        options = state.machineTypeOptions,
+                        selectedIndex = state.machineTypeSel,
+                        enabled = state.machineTypeEnabled,
+                        onSelected = { callbacks.onMachineTypeSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.label_cpu_model),
+                        iconRes = R.drawable.cpu,
+                        options = state.cpuOptions,
+                        selectedIndex = state.cpuSel,
+                        enabled = state.cpuEnabled,
+                        onSelected = { callbacks.onCpuSelected(it) }
+                    )
+                    LabeledTextFieldRow(
                         label = stringResource(R.string.label_cpu_cores),
                         value = state.cpuNumValue,
                         enabled = state.cpuNumEnabled,
                         keyboardType = KeyboardType.Number,
                         onValueChange = { callbacks.onCpuNumChanged(it) }
                     )
-                    TextFieldRow(
+                    LabeledTextFieldRow(
                         label = stringResource(R.string.label_ram_memory_mb),
                         value = state.ramValue,
                         enabled = state.ramEnabled,
                         keyboardType = KeyboardType.Number,
                         onValueChange = { callbacks.onRamChanged(it) }
                     )
-                    Spacer(Modifier.height(4.dp))
                     SwitchRow(
                         label = stringResource(R.string.label_disable_i8042),
                         checked = state.disableI8042,
@@ -240,24 +223,22 @@ fun LimboMainScreen(
                         enabled = state.enableNvramEnabled,
                         onCheckedChange = { callbacks.onEnableNvramChanged(it) }
                     )
-                    SettingRow(label = stringResource(R.string.label_nvram_file), iconRes = R.drawable.sysfile) {
-                        LimboDropdown(
-                            options = state.nvramOptions,
-                            selectedIndex = state.nvramSel,
-                            enabled = state.enableNvram && state.nvramEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onNvramSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.label_accel), iconRes = R.drawable.cpu) {
-                        LimboDropdown(
-                            options = state.accelOptions,
-                            selectedIndex = state.accelSel,
-                            enabled = state.accelEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onAccelSelected(it) }
-                        )
-                    }
+                    LimboDropdown(
+                        title = stringResource(R.string.label_nvram_file),
+                        iconRes = R.drawable.sysfile,
+                        options = state.nvramOptions,
+                        selectedIndex = state.nvramSel,
+                        enabled = state.enableNvram && state.nvramEnabled,
+                        onSelected = { callbacks.onNvramSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.label_accel),
+                        iconRes = R.drawable.cpu,
+                        options = state.accelOptions,
+                        selectedIndex = state.accelSel,
+                        enabled = state.accelEnabled,
+                        onSelected = { callbacks.onAccelSelected(it) }
+                    )
                     if (state.showMTTCGSwitch) {
                         SwitchRow(
                             label = stringResource(R.string.label_enable_mttcg),
@@ -302,14 +283,19 @@ fun LimboMainScreen(
                             onClick = { callbacks.onStorageDeviceClicked(device.tag) }
                         )
                     }
-                    Button(
-                        onClick = { callbacks.onAddStorageDevice() },
-                        enabled = state.addDeviceEnabled,
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        Text(stringResource(R.string.add_storage_device))
+                        Button(
+                            onClick = { callbacks.onAddStorageDevice() },
+                            enabled = state.addDeviceEnabled,
+                            colors = ButtonDefaults.buttonColorsPrimary(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.add_storage_device))
+                        }
                     }
                 }
             }
@@ -323,43 +309,39 @@ fun LimboMainScreen(
                     collapsed = state.bootCollapsed,
                     onToggle = { onToggleSection(Section.BOOT) }
                 ) {
-                    SettingRow(label = stringResource(R.string.label_boot_from_device), iconRes = R.drawable.drives) {
-                        LimboDropdown(
-                            options = state.bootOptions,
-                            selectedIndex = state.bootSel,
-                            enabled = state.bootEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onBootSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.label_bios), iconRes = R.drawable.sysfile) {
-                        LimboDropdown(
-                            options = state.biosOptions,
-                            selectedIndex = state.biosSel,
-                            enabled = state.biosEnabled,
-                            modifier = Modifier.width(180.dp),
-                            onSelected = { callbacks.onBiosSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.label_kernel), iconRes = R.drawable.sysfile) {
-                        LimboDropdown(
-                            options = state.kernelOptions,
-                            selectedIndex = state.kernelSel,
-                            enabled = state.kernelEnabled,
-                            modifier = Modifier.width(180.dp),
-                            onSelected = { callbacks.onKernelSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.label_initrd), iconRes = R.drawable.sysfile) {
-                        LimboDropdown(
-                            options = state.initrdOptions,
-                            selectedIndex = state.initrdSel,
-                            enabled = state.initrdEnabled,
-                            modifier = Modifier.width(180.dp),
-                            onSelected = { callbacks.onInitrdSelected(it) }
-                        )
-                    }
-                    TextFieldRow(
+                    LimboDropdown(
+                        title = stringResource(R.string.label_boot_from_device),
+                        iconRes = R.drawable.drives,
+                        options = state.bootOptions,
+                        selectedIndex = state.bootSel,
+                        enabled = state.bootEnabled,
+                        onSelected = { callbacks.onBootSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.label_bios),
+                        iconRes = R.drawable.sysfile,
+                        options = state.biosOptions,
+                        selectedIndex = state.biosSel,
+                        enabled = state.biosEnabled,
+                        onSelected = { callbacks.onBiosSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.label_kernel),
+                        iconRes = R.drawable.sysfile,
+                        options = state.kernelOptions,
+                        selectedIndex = state.kernelSel,
+                        enabled = state.kernelEnabled,
+                        onSelected = { callbacks.onKernelSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.label_initrd),
+                        iconRes = R.drawable.sysfile,
+                        options = state.initrdOptions,
+                        selectedIndex = state.initrdSel,
+                        enabled = state.initrdEnabled,
+                        onSelected = { callbacks.onInitrdSelected(it) }
+                    )
+                    LabeledTextFieldRow(
                         label = stringResource(R.string.label_append),
                         value = state.append,
                         enabled = state.appendEnabled,
@@ -378,15 +360,14 @@ fun LimboMainScreen(
                     collapsed = state.graphicsCollapsed,
                     onToggle = { onToggleSection(Section.GRAPHICS) }
                 ) {
-                    SettingRow(label = stringResource(R.string.label_video_display), iconRes = R.drawable.screen) {
-                        LimboDropdown(
-                            options = state.vgaOptions,
-                            selectedIndex = state.vgaSel,
-                            enabled = state.vgaEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onVgaSelected(it) }
-                        )
-                    }
+                    LimboDropdown(
+                        title = stringResource(R.string.label_video_display),
+                        iconRes = R.drawable.screen,
+                        options = state.vgaOptions,
+                        selectedIndex = state.vgaSel,
+                        enabled = state.vgaEnabled,
+                        onSelected = { callbacks.onVgaSelected(it) }
+                    )
                 }
             }
 
@@ -399,15 +380,14 @@ fun LimboMainScreen(
                     collapsed = state.audioCollapsed,
                     onToggle = { onToggleSection(Section.AUDIO) }
                 ) {
-                    SettingRow(label = stringResource(R.string.label_sound_card), iconRes = R.drawable.audiocard) {
-                        LimboDropdown(
-                            options = state.soundOptions,
-                            selectedIndex = state.soundSel,
-                            enabled = state.soundEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onSoundSelected(it) }
-                        )
-                    }
+                    LimboDropdown(
+                        title = stringResource(R.string.label_sound_card),
+                        iconRes = R.drawable.audiocard,
+                        options = state.soundOptions,
+                        selectedIndex = state.soundSel,
+                        enabled = state.soundEnabled,
+                        onSelected = { callbacks.onSoundSelected(it) }
+                    )
                 }
             }
 
@@ -420,32 +400,30 @@ fun LimboMainScreen(
                     collapsed = state.networkCollapsed,
                     onToggle = { onToggleSection(Section.NETWORK) }
                 ) {
-                    SettingRow(label = stringResource(R.string.label_network), iconRes = R.drawable.network) {
-                        LimboDropdown(
-                            options = state.netOptions,
-                            selectedIndex = state.netSel,
-                            enabled = state.netEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onNetSelected(it) }
-                        )
-                    }
-                    SettingRow(label = stringResource(R.string.label_network_card), iconRes = R.drawable.networkcard) {
-                        LimboDropdown(
-                            options = state.nicOptions,
-                            selectedIndex = state.nicSel,
-                            enabled = state.nicEnabled,
-                            modifier = Modifier.width(150.dp),
-                            onSelected = { callbacks.onNicSelected(it) }
-                        )
-                    }
-                    TextFieldRow(
+                    LimboDropdown(
+                        title = stringResource(R.string.label_network),
+                        iconRes = R.drawable.network,
+                        options = state.netOptions,
+                        selectedIndex = state.netSel,
+                        enabled = state.netEnabled,
+                        onSelected = { callbacks.onNetSelected(it) }
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.label_network_card),
+                        iconRes = R.drawable.networkcard,
+                        options = state.nicOptions,
+                        selectedIndex = state.nicSel,
+                        enabled = state.nicEnabled,
+                        onSelected = { callbacks.onNicSelected(it) }
+                    )
+                    LabeledTextFieldRow(
                         label = stringResource(R.string.label_dns_server),
                         value = state.dns,
                         enabled = state.dnsEnabled,
                         placeholder = "8.8.8.8",
                         onValueChange = { callbacks.onDnsChanged(it) }
                     )
-                    TextFieldRow(
+                    LabeledTextFieldRow(
                         label = stringResource(R.string.label_host_forward),
                         value = state.hostFwd,
                         enabled = state.hostFwdEnabled,
@@ -464,16 +442,15 @@ fun LimboMainScreen(
                     collapsed = state.advancedCollapsed,
                     onToggle = { onToggleSection(Section.ADVANCED) }
                 ) {
-                    SettingRow(label = stringResource(R.string.label_usb_controller), iconRes = R.drawable.advanced) {
-                        LimboDropdown(
-                            options = state.usbControllerOptions,
-                            selectedIndex = state.usbControllerSel,
-                            enabled = state.usbControllerEnabled,
-                            modifier = Modifier.width(170.dp),
-                            onSelected = { callbacks.onUsbControllerSelected(it) }
-                        )
-                    }
-                    TextFieldRow(
+                    LimboDropdown(
+                        title = stringResource(R.string.label_usb_controller),
+                        iconRes = R.drawable.advanced,
+                        options = state.usbControllerOptions,
+                        selectedIndex = state.usbControllerSel,
+                        enabled = state.usbControllerEnabled,
+                        onSelected = { callbacks.onUsbControllerSelected(it) }
+                    )
+                    LabeledTextFieldRow(
                         label = stringResource(R.string.label_extra_qemu_params),
                         value = state.extraParams,
                         enabled = state.extraParamsEnabled,
@@ -494,47 +471,19 @@ private fun MachineCard(state: LimboUiState, callbacks: LimboUiCallbacks) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp)
             .padding(bottom = 12.dp),
-        shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        cornerRadius = 16.dp
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.limbo),
-                contentDescription = null,
-                modifier = Modifier.size(40.dp),
-                tint = Color.Unspecified
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.machineHeader),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                if (state.archLabel.isNotEmpty()) {
-                    Text(
-                        text = state.archLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            LimboDropdown(
-                options = state.machines,
-                selectedIndex = state.machineSel,
-                enabled = state.machineEnabled,
-                modifier = Modifier.width(160.dp),
-                onSelected = { callbacks.onMachineSelected(it) }
-            )
-        }
+        LimboDropdown(
+            title = stringResource(R.string.machineHeader),
+            summary = state.archLabel.ifEmpty { null },
+            iconRes = R.drawable.limbo,
+            options = state.machines,
+            selectedIndex = state.machineSel,
+            enabled = state.machineEnabled,
+            onSelected = { callbacks.onMachineSelected(it) }
+        )
     }
 }
 
@@ -546,12 +495,9 @@ private fun StatusCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp)
             .padding(bottom = 12.dp),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        cornerRadius = 16.dp
     ) {
         Row(
             modifier = Modifier
@@ -564,7 +510,7 @@ private fun StatusCard(
             Spacer(Modifier.width(12.dp))
             Text(
                 text = state.statusText.ifEmpty { stringResource(R.string.Stopped) },
-                style = MaterialTheme.typography.titleLarge,
+                style = MiuixTheme.textStyles.title3,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -576,14 +522,15 @@ private fun ControlButtons(state: LimboUiState, callbacks: LimboUiCallbacks) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 12.dp)
             .padding(bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
     ) {
         IconButton(
             onClick = { callbacks.onStartVm() },
-            modifier = Modifier
-                .size(64.dp)
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+            modifier = Modifier.size(64.dp),
+            backgroundColor = MiuixTheme.colorScheme.primaryContainer,
+            cornerRadius = 32.dp
         ) {
             Icon(
                 painter = painterResource(R.drawable.play),
@@ -594,41 +541,41 @@ private fun ControlButtons(state: LimboUiState, callbacks: LimboUiCallbacks) {
         }
         IconButton(
             onClick = { callbacks.onPauseVm() },
-            modifier = Modifier
-                .size(64.dp)
-                .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
+            modifier = Modifier.size(64.dp),
+            backgroundColor = MiuixTheme.colorScheme.secondaryContainer,
+            cornerRadius = 32.dp
         ) {
             Icon(
                 painter = painterResource(R.drawable.pause),
                 contentDescription = stringResource(R.string.button_pause),
                 modifier = Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                tint = Color.Unspecified
             )
         }
         IconButton(
             onClick = { callbacks.onStopVm() },
-            modifier = Modifier
-                .size(64.dp)
-                .background(MaterialTheme.colorScheme.errorContainer, CircleShape)
+            modifier = Modifier.size(64.dp),
+            backgroundColor = MiuixTheme.colorScheme.errorContainer,
+            cornerRadius = 32.dp
         ) {
             Icon(
                 painter = painterResource(R.drawable.stop),
                 contentDescription = stringResource(R.string.button_stop),
                 modifier = Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.onErrorContainer
+                tint = Color.Unspecified
             )
         }
         IconButton(
             onClick = { callbacks.onRestartVm() },
-            modifier = Modifier
-                .size(64.dp)
-                .background(MaterialTheme.colorScheme.tertiaryContainer, CircleShape)
+            modifier = Modifier.size(64.dp),
+            backgroundColor = MiuixTheme.colorScheme.tertiaryContainer,
+            cornerRadius = 32.dp
         ) {
             Icon(
                 painter = painterResource(R.drawable.reset),
                 contentDescription = stringResource(R.string.button_restart),
                 modifier = Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.onTertiaryContainer
+                tint = Color.Unspecified
             )
         }
     }
@@ -642,50 +589,41 @@ private fun StorageDeviceSummaryRow(
     val typeLabel = device.typeOptions.getOrNull(device.typeSel) ?: "?"
     val imageValue = device.imageOptions.getOrNull(device.imageSel) ?: "None"
     val value = if (imageValue.isNullOrEmpty() || imageValue.equals("None", ignoreCase = true)) "" else imageValue
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.harddisk),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = Color.Unspecified
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = typeLabel,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                if (value.isNotEmpty()) {
-                    Text(
-                        text = value,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+        Icon(
+            painter = painterResource(R.drawable.harddisk),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = Color.Unspecified
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
             Text(
-                text = "›",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = typeLabel,
+                style = MiuixTheme.textStyles.main,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
+            if (value.isNotEmpty()) {
+                Text(
+                    text = value,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
+        Text(
+            text = "›",
+            style = MiuixTheme.textStyles.title4,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+        )
     }
 }

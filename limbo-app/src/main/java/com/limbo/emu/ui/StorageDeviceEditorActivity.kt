@@ -4,26 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -31,9 +18,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import com.limbo.emu.R
 import com.limbo.emu.files.FileUtils
 import com.limbo.emu.machine.Machine
@@ -41,6 +33,7 @@ import com.limbo.emu.machine.MachineFilePaths
 import com.limbo.emu.main.Config
 import com.limbo.emu.main.LimboFileManager
 import com.limbo.emu.main.LimboSettingsManager
+import com.limbo.emu.ui.components.LabeledTextFieldRow
 import com.limbo.emu.ui.components.LimboDropdown
 import com.limbo.emu.ui.theme.LimboTheme
 import com.limbo.emu.toast.ToastUtils
@@ -374,7 +367,6 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         return value * multiplier
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun EditorScreen(
         isNew: Boolean,
@@ -409,14 +401,14 @@ class StorageDeviceEditorActivity : ComponentActivity() {
         val showNewImageField = createImage && selectedImage == stringResource(R.string.new_image)
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(stringResource(R.string.title_storage_device_editor), fontWeight = FontWeight.Bold)
-                    },
+                SmallTopAppBar(
+                    title = stringResource(R.string.title_storage_device_editor),
                     navigationIcon = {
-                        TextButton(onClick = { finish() }) { Text(stringResource(R.string.Cancel)) }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors()
+                        TextButton(
+                            text = stringResource(R.string.Cancel),
+                            onClick = { finish() }
+                        )
+                    }
                 )
             }
         ) { padding ->
@@ -425,113 +417,82 @@ class StorageDeviceEditorActivity : ComponentActivity() {
                     .padding(padding)
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
+                    .padding(bottom = 24.dp)
             ) {
-                Text(stringResource(R.string.label_storage_type), style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.width(0.dp))
                 LimboDropdown(
+                    title = stringResource(R.string.label_storage_type),
                     options = typeLabels,
                     selectedIndex = typeSel,
-                    modifier = Modifier.fillMaxWidth(),
                     onSelected = onTypeSelected
                 )
-                Spacer(Modifier.width(0.dp))
 
                 if (canConfigIf) {
-                    Spacer(Modifier.padding(top = 12.dp))
-                    Text(stringResource(R.string.label_storage_interface), style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.width(0.dp))
                     LimboDropdown(
+                        title = stringResource(R.string.label_storage_interface),
                         options = ifLabels,
                         selectedIndex = ifSel,
-                        modifier = Modifier.fillMaxWidth(),
                         onSelected = onIfSelected
                     )
-                    Spacer(Modifier.padding(top = 12.dp))
-                    Text(stringResource(R.string.label_storage_format), style = MaterialTheme.typography.titleSmall)
-                    Spacer(Modifier.width(0.dp))
                     LimboDropdown(
+                        title = stringResource(R.string.label_storage_format),
                         options = formatLabels,
                         selectedIndex = formatSel,
-                        modifier = Modifier.fillMaxWidth(),
                         onSelected = onFormatSelected
                     )
                 }
 
                 if (canConfigCache) {
-                    Spacer(Modifier.padding(top = 12.dp))
-                    Text(stringResource(R.string.label_storage_cache), style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(
+                    LabeledTextFieldRow(
+                        label = stringResource(R.string.label_storage_cache),
                         value = cacheValue,
-                        onValueChange = onCacheChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text(stringResource(R.string.hint_storage_cache)) },
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                        placeholder = stringResource(R.string.hint_storage_cache),
+                        onValueChange = onCacheChange
                     )
                 }
 
                 // 仅在选择"创建(新镜像)"时才显示大小和名称选项
                 if (showNewImageField) {
-                    Spacer(Modifier.padding(top = 12.dp))
-                    Text(stringResource(R.string.label_storage_size), style = MaterialTheme.typography.titleSmall)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = sizeValue,
-                            onValueChange = onSizeChange,
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
-                            textStyle = MaterialTheme.typography.bodyLarge,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
-                        )
-                        LimboDropdown(
-                            options = sizeUnitOptions,
-                            selectedIndex = sizeUnitSel,
-                            modifier = Modifier.width(120.dp),
-                            onSelected = onSizeUnitSelected
-                        )
-                    }
-                    Spacer(Modifier.padding(top = 12.dp))
-                    Text(stringResource(R.string.label_new_image_name), style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(
+                    LabeledTextFieldRow(
+                        label = stringResource(R.string.label_storage_size),
+                        value = sizeValue,
+                        keyboardType = KeyboardType.Number,
+                        onValueChange = onSizeChange
+                    )
+                    LimboDropdown(
+                        title = stringResource(R.string.label_storage_size_unit),
+                        options = sizeUnitOptions,
+                        selectedIndex = sizeUnitSel,
+                        onSelected = onSizeUnitSelected
+                    )
+                    LabeledTextFieldRow(
+                        label = stringResource(R.string.label_new_image_name),
                         value = newImageName,
-                        onValueChange = onNewImageNameChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                        onValueChange = onNewImageNameChange
                     )
                 }
 
-                Spacer(Modifier.padding(top = 12.dp))
-                Text(stringResource(R.string.label_storage_image), style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.width(0.dp))
                 LimboDropdown(
+                    title = stringResource(R.string.label_storage_image),
                     options = imageOptions,
                     selectedIndex = imageSel,
-                    modifier = Modifier.fillMaxWidth(),
                     displayTransform = { it },
                     onSelected = onImageSelected
                 )
 
                 Spacer(Modifier.padding(top = 24.dp))
                 if (!isNew) {
-                    OutlinedButton(
+                    TextButton(
+                        text = stringResource(R.string.remove_storage_device),
                         onClick = onRemove,
                         modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(stringResource(R.string.remove_storage_device))
-                    }
+                    )
                 }
                 Button(
                     onClick = onSave,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                         .padding(top = 8.dp)
                 ) {
                     Text(stringResource(R.string.Ok))

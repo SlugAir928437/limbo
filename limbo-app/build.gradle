@@ -169,14 +169,17 @@ dependencies {
     implementation libs.androidx.appcompat
     implementation libs.material
 
-    // Compose (Jetpack Compose + Material Design 3)
+    // Compose (Jetpack Compose) —— 主题与组件由 Miuix 提供，不再依赖 Compose Material 3
     implementation platform(libs.compose.bom)
     implementation libs.compose.ui
     implementation libs.compose.ui.graphics
     implementation libs.compose.ui.tooling.preview
-    implementation libs.compose.material3
     implementation libs.androidx.activity.compose
     debugImplementation libs.compose.ui.tooling
+
+    // Miuix：小米 HyperOS / MIUI 设计系统（Compose），承载应用主题与 UI 组件
+    implementation libs.miuix.ui
+    implementation libs.miuix.preference
 
     // 注解
     implementation libs.annotations

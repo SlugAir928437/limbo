@@ -6,6 +6,7 @@ crashreport = "4.1.9.3"
 glide = "5.0.9"
 leakcanaryAndroid = "2.14"
 markwon-core = "4.6.2"
+miuix = "0.9.4"
 coreKtx = "1.19.0"
 documentfile = "1.1.0"
 junit = "4.13.2"
@@ -56,6 +57,10 @@ compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
+
+# Miuix (Xiaomi HyperOS / MIUI design system for Compose, Compose Multiplatform KMP)
+miuix-ui = { module = "top.yukonga.miuix.kmp:miuix-ui-android", version.ref = "miuix" }
+miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference-android", version.ref = "miuix" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

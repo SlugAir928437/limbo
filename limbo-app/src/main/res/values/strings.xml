@@ -248,6 +248,7 @@
     <string name="title_storage_device_editor">Storage Device</string>
     <string name="label_storage_type">Type</string>
     <string name="label_storage_size">Size</string>
+    <string name="label_storage_size_unit">Size unit</string>
     <string name="label_storage_image">Image</string>
     <string name="label_new_image_name">New image name</string>
     <string name="new_image">New</string>

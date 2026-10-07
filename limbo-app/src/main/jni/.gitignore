@@ -22,13 +22,4 @@ build_arm64-v8a
 qemu_gtk4_rollback.patch
 
 # 自生成配置
-android-config/meson-android-arm64-v8a.ini
-android-config/meson-android-armeabi-v7a.ini
-android-config/meson-android-x86.ini
-android-config/meson-android-x86_64.ini
-android-config/meson-gtk4-android-cross.ini
-android-config/meson-pixman-android-cross.ini
-android-config/meson-slirp-android-cross.ini
-android-config/meson-spice-android-cross.ini
-android-config/meson-spice-protocol-android-cross.ini
-android-config/meson-virgl-android-cross.ini
+android-config/*.ini

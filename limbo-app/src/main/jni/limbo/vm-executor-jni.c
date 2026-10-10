@@ -33,6 +33,9 @@
 #include <inttypes.h>
 #include <ucontext.h>
 #include <sys/syscall.h>
+#include <dirent.h>
+#include <pthread.h>
+#include <time.h>
 #include <string.h>
 #include <android/native_window_jni.h>
 #include "vm-executor-jni.h"
@@ -1072,6 +1075,117 @@ static void limbo_verify_affinity(const char *when) {
 				"cache/ID register write may fail", when, line);
 }
 
+/* ---------------------------------------------------------------------------
+ * 亲和性看门狗
+ *
+ * 一次性 pin 挡不住 Android 的 cpuset 迁移：进程被挪进另一个 cpuset 时，内核
+ * 会把该组线程的掩码重置成 cpuset 的集合，实测 qemu_init() 期间就会发生
+ * （日志 "outside the pinned cpus, now [4-7]"），于是 vCPU 又可能跑到异构核上，
+ * 触发 KVM 写回 demux CCSIDR 失败。所以这里起一个有界的小线程：在 VM 头几秒
+ * 里盯着本线程和 QEMU 的 vCPU 线程（线程名 "CPU <n>/KVM"），发现跑出簇外就收
+ * 回来，跑完自动退出，不常驻。
+ * ------------------------------------------------------------------------- */
+
+#define LIMBO_WATCHDOG_ROUNDS       30
+#define LIMBO_WATCHDOG_INTERVAL_MS  300
+
+/* 把已存在的 vCPU 线程收回簇内，返回被改动的线程数。 */
+static int limbo_pin_vcpu_threads(const struct limbo_cpu_mask *mask) {
+	DIR *dir = opendir("/proc/self/task");
+	struct dirent *ent;
+	int pinned = 0;
+
+	if (dir == NULL)
+		return 0;
+
+	while ((ent = readdir(dir)) != NULL) {
+		struct limbo_cpu_mask current;
+		char comm[32] = { 0 };
+		char path[64];
+		char *endptr;
+		long tid;
+		int fd;
+
+		if (ent->d_name[0] < '0' || ent->d_name[0] > '9')
+			continue;
+		tid = strtol(ent->d_name, &endptr, 10);
+		if (tid <= 0 || *endptr != '\0')
+			continue;
+
+		snprintf(path, sizeof(path), "/proc/self/task/%ld/comm", tid);
+		fd = open(path, O_RDONLY | O_CLOEXEC);
+		if (fd < 0)
+			continue;
+		if (read(fd, comm, sizeof(comm) - 1) <= 0) {
+			close(fd);
+			continue;
+		}
+		close(fd);
+
+		/* QEMU 的 vCPU 线程名是 "CPU <n>/KVM"，只认这个前缀，
+		 * 免得动到显示/IO 线程。 */
+		if (strncmp(comm, "CPU ", 4) != 0)
+			continue;
+
+		limbo_mask_zero(&current);
+		if (syscall(__NR_sched_getaffinity, (int) tid, sizeof(current),
+				&current) >= 0 && limbo_mask_subset(&current, mask))
+			continue;	/* 已经在簇内，不用动 */
+
+		if (syscall(__NR_sched_setaffinity, (int) tid, sizeof(*mask), mask) == 0)
+			pinned++;
+	}
+	closedir(dir);
+	return pinned;
+}
+
+static void *limbo_affinity_watchdog(void *unused) {
+	struct timespec interval;
+	char line[128];
+	int round;
+
+	(void) unused;
+	interval.tv_sec = LIMBO_WATCHDOG_INTERVAL_MS / 1000;
+	interval.tv_nsec = (LIMBO_WATCHDOG_INTERVAL_MS % 1000) * 1000000L;
+
+	for (round = 0; round < LIMBO_WATCHDOG_ROUNDS; round++) {
+		struct limbo_cpu_mask now;
+
+		nanosleep(&interval, NULL);
+
+		if (limbo_get_affinity(&now) == 0 &&
+				!limbo_mask_subset(&now, &limbo_pin_mask) &&
+				limbo_set_affinity(&limbo_pin_mask) == 0) {
+			limbo_mask_to_string(&limbo_pin_mask, line, sizeof(line));
+			LOGW("cpu affinity watchdog: mask was widened, pinned back to [%s]",
+					line);
+		}
+
+		if (limbo_pin_vcpu_threads(&limbo_pin_mask) > 0) {
+			limbo_mask_to_string(&limbo_pin_mask, line, sizeof(line));
+			LOGI("cpu affinity watchdog: re-pinned the vCPU threads to [%s]",
+					line);
+		}
+	}
+
+	LOGV("cpu affinity watchdog: done");
+	return NULL;
+}
+
+static void limbo_pin_watchdog_start(void) {
+	pthread_t thread;
+
+	if (limbo_pin_cpus == 0)
+		return;
+	if (pthread_create(&thread, NULL, limbo_affinity_watchdog, NULL) == 0) {
+		pthread_detach(thread);
+		LOGV("cpu affinity watchdog: started (%d x %dms)",
+				LIMBO_WATCHDOG_ROUNDS, LIMBO_WATCHDOG_INTERVAL_MS);
+	} else {
+		LOGW("cpu affinity watchdog: pthread_create failed");
+	}
+}
+
 /* Shared VM bootstrap used by both the in-process VMExecutor.start() and
  * the root child process (RootVmLauncher.startVm).  In the root child
  * thiz is NULL, so the per-instance JNI wiring (set_jni) is skipped. */
@@ -1202,8 +1316,12 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
 	 * （"Failed to put registers after init: Invalid argument"）。放在这里
 	 * 也早于任何 QEMU 线程的创建，掩码会被它们继承。 */
 	limbo_pin_cpus = 0;
-	if (limbo_args_use_kvm(argc, argv))
+	if (limbo_args_use_kvm(argc, argv)) {
 		limbo_pin_to_single_cluster(argc, argv);
+		/* 看门狗必须在 qemu_init() 之前起来：vCPU 的寄存器初始化就在
+		 * qemu_init() 里完成，期间掩码若被 cpuset 迁移放开就来不及收。 */
+		limbo_pin_watchdog_start();
+	}
 
 	dlerror();
 	qemu_init = (qemu_init_t) dlsym(handle, "qemu_init");

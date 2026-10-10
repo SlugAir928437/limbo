@@ -13,7 +13,21 @@ diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core
  
  #if defined(__LIMBO__) && defined(__ENABLE_AAUDIO__)
  #include <dlfcn.h>
-@@ -1098,10 +1103,17 @@
+@@ -1068,7 +1073,12 @@
+ int Android_JNI_OpenAudioDevice(int iscapture, int sampleRate, int is16Bit, int channelCount, int desiredBufferFrames)
+ {
+ #if defined(__LIMBO__) && defined(__ENABLE_AAUDIO__)
+-	if(enableAaudio) {
++	/* LIMBO: AAudio 这条捷径只处理播放。采集必须落到下面的采集分支去：
++	 * 之前它无条件返回成功，可是既没有建任何采集设备、也没设置
++	 * captureBuffer，SDL 的采集线程随后拿 NULL 数组去调 Java 的
++	 * captureRead*Buffer -> NullPointerException -> "JNI DETECTED ERROR IN
++	 * APPLICATION" -> SIGABRT（整机崩在 Thread-21）。 */
++	if(enableAaudio && !iscapture) {
+         ldhandle = loadLib();
+         if(ldhandle != NULL) {
+             loadSymbols();
+@@ -1098,10 +1108,17 @@
      if (iscapture) {
          __android_log_print(ANDROID_LOG_VERBOSE, "SDL", "SDL audio: opening device for capture");
          captureBuffer16Bit = is16Bit;
@@ -34,7 +48,7 @@ diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core
          }
      } else {
          __android_log_print(ANDROID_LOG_VERBOSE, "SDL", "SDL audio: opening device for output");
-@@ -1234,9 +1246,19 @@
+@@ -1234,9 +1251,20 @@
  
  int Android_JNI_CaptureAudioBuffer(void *buffer, int buflen)
  {
@@ -43,10 +57,11 @@ diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core
      jboolean isCopy = JNI_FALSE;
      jint br;
 +
-+    /* LIMBO: 静音采集。没有 Java 侧缓冲可读，直接给静音数据。
++    /* LIMBO: 静音采集，或者根本没有采集缓冲（例如 AAudio 只建了播放设备）。
++     * 没有 Java 侧缓冲可读时直接给静音数据。
 +     * 必须返回正数：SDL2 的采集线程把 0 当成"设备掉线"并关闭设备
 +     * （见 src/audio/SDL_audio.c 的 SDL_CaptureAudio）。 */
-+    if (captureIsSilent) {
++    if (captureIsSilent || captureBuffer == NULL) {
 +        SDL_memset(buffer, captureBuffer16Bit ? 0 : 0x80, buflen);
 +        return buflen;
 +    }
@@ -55,15 +70,16 @@ diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core
  
      if (captureBuffer16Bit) {
          SDL_assert((*env)->GetArrayLength(env, (jshortArray)captureBuffer) == (buflen / 2));
-@@ -1262,7 +1284,14 @@
+@@ -1262,7 +1290,15 @@
  
  void Android_JNI_FlushCapturedAudio(void)
  {
 -    JNIEnv *env = Android_JNI_GetEnv();
 +    JNIEnv *env;
 +
-+    /* LIMBO: 静音采集没有 Java 侧的 AudioRecord 可读，直接返回。 */
-+    if (captureIsSilent) {
++    /* LIMBO: 静音采集（或没有采集缓冲）时没有 Java 侧的 AudioRecord 可读，
++     * 直接返回。 */
++    if (captureIsSilent || captureBuffer == NULL) {
 +        return;
 +    }
 +
@@ -71,7 +87,7 @@ diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core
  #if 0  /* !!! FIXME: this needs API 23, or it'll do blocking reads and never end. */
      if (captureBuffer16Bit) {
          const jint len = (*env)->GetArrayLength(env, (jshortArray)captureBuffer);
-@@ -1285,7 +1314,11 @@
+@@ -1285,7 +1321,11 @@
      JNIEnv *env = Android_JNI_GetEnv();
  
      if (iscapture) {
@@ -84,3 +100,14 @@ diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core
          if (captureBuffer) {
              (*env)->DeleteGlobalRef(env, captureBuffer);
              captureBuffer = NULL;
+@@ -1299,7 +1339,9 @@
+         }
+     }
+ #if defined(__LIMBO__) && defined(__ENABLE_AAUDIO__)
+-    if(enableAaudio && destroyAaudioDevice!=NULL)
++    /* LIMBO: AAudio 设备只在 OpenAudioDevice 的播放分支里创建，所以也只能在
++     * 关闭播放设备时销毁。采集设备关闭时如果顺手销毁它，播放会一起没掉。 */
++    if(!iscapture && enableAaudio && destroyAaudioDevice!=NULL)
+         destroyAaudioDevice();
+ #endif
+ }

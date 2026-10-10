@@ -125,6 +125,11 @@ public class Config {
     // Enable if you build with the gunyah / gzvm accelerators (arm64 hypervisors)
     public static boolean enableGunyah = true;
     public static boolean enableGZVM = true;
+    // Enable if the QEMU library was built with the AGL (Android Graphics
+    // Layer) display backend (meson option -Dagl=enabled, needs epoxy/EGL).
+    // AGL renders the guest into an Android Surface owned by the app, which is
+    // how the gunyah/gzvm accelerated aarch64 VMs are displayed.
+    public static boolean enableAgl = true;
     public static String storagedir = null;
     public static boolean loadNativeLibsEarly = false;
     //XXX: QEMU 3.1.0 needs the libraries to be loaded from the main thread

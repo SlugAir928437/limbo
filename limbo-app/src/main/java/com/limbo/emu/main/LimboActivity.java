@@ -1600,11 +1600,28 @@ public class LimboActivity extends AppCompatActivity implements
         String ui = getMachine().getUI();
         if ("GTK".equals(ui)) {
             startGtk();
+        } else if ("AGL".equals(ui)) {
+            startAgl();
         } else if (getMachine().getEnableVNC() == 1) {
             startVNC();
         } else {
             startSDL();
         }
+    }
+
+    /** 当前机型是否使用 AGL 显示（画面直接绘制在 App 的 Surface 上）。 */
+    private boolean isAglDisplay() {
+        Machine machine = getMachine();
+        return machine != null && "AGL".equals(machine.getUI());
+    }
+
+    /**
+     * 启动 AGL 显示 Activity：它持有 SurfaceView，负责把 Surface 和触摸/键盘
+     * 事件交给 QEMU 的 AGL 后端，并负责启动虚拟机。
+     */
+    public void startAgl() {
+        Intent intent = new Intent(this, LimboAglActivity.class);
+        startActivityForResult(intent, Config.SDL_REQUEST_CODE);
     }
 
     /**
@@ -1668,7 +1685,10 @@ public class LimboActivity extends AppCompatActivity implements
         if (MachineController.getInstance().isRunning()) {
             if (MachineController.getInstance().isVNCEnabled())
                 LimboActivityCommon.promptStopVM(this, viewListener);
-            else {
+            else if (isAglDisplay()) {
+                LimboAglActivity.pendingStop = true;
+                startAgl();
+            } else {
                 LimboSDLActivity.pendingStop = true;
                 startSDL();
             }
@@ -1686,7 +1706,10 @@ public class LimboActivity extends AppCompatActivity implements
         if (MachineController.getInstance().isRunning()) {
             if (MachineController.getInstance().isVNCEnabled())
                 LimboActivityCommon.promptPause(this, viewListener);
-            else {
+            else if (isAglDisplay()) {
+                LimboAglActivity.pendingPause = true;
+                startAgl();
+            } else {
                 LimboSDLActivity.pendingPause = true;
                 startSDL();
             }

@@ -324,6 +324,7 @@ public class VMExecutor extends MachineExecutor {
     private void addUIOptions(Context context, ArrayList<String> paramsList) {
         String ui = getMachine().getUI();
         boolean gtk = "GTK".equals(ui);
+        boolean agl = "AGL".equals(ui);
         if (MachineController.getInstance().isVNCEnabled() && !gtk) {
             paramsList.add("-vnc");
             String vncParam = "";
@@ -363,6 +364,13 @@ public class VMExecutor extends MachineExecutor {
             if (gtk) {
                 // GTK4 Android 后端（由 activity 侧的 LimboGtk 初始化）
                 paramsList.add("gtk" + getDisplayGLOption());
+            } else if (agl) {
+                // AGL (Android Graphics Layer): LimboAglActivity hands its
+                // Surface to the backend through nativeAglSetSurface(), and the
+                // touch/keyboard events go through nativeAglPointer/Scroll/Key.
+                // The backend enables OpenGL itself (agl_display_early_init()),
+                // so it must not get the ,gl=on option here.
+                paramsList.add("agl");
             } else {
                 // SDL 后端必须加 show-cursor=on：客户机装上真正的 GPU/KMS 驱动后，
                 // 合成器改用 DRM 硬件光标平面，不再把光标画进帧缓冲，
@@ -422,7 +430,7 @@ public class VMExecutor extends MachineExecutor {
      * 否则 QEMU 在设备 realize 时会中止，报
      * "The display backend does not have OpenGL support enabled"
      * (hw/display/virtio-gpu-gl.c)。因此该选项与显示后端一起提供，
-     * 而不是留给机器的 extra params。
+     * 而不是留给机器的 extra params。AGL 后端自己会打开 OpenGL。
      *
      * @return 当机器使用 VirGL (GL) virtio-gpu 设备时返回 ",gl=on"，否则返回空字符串
      */
@@ -1301,7 +1309,22 @@ public class VMExecutor extends MachineExecutor {
             boolean needsRootAccel = Machine.ACCEL_GUNYAH.equals(accelMode)
                     || Machine.ACCEL_GZVM.equals(accelMode);
             if (needsRootAccel && !RootUtils.isRoot()) {
-                return startRootProcess(params);
+                // The AGL display paints into a Surface owned by this process,
+                // so the VM cannot live in the su/app_process child (that
+                // process has no window to render into).  Follow the ALS
+                // approach and elevate *this* process through KernelSU, then
+                // run QEMU in-process; when that is not available fall back to
+                // the (headless) root child process.
+                if (isAglDisplay() && grantRootInProcess()) {
+                    Log.d(TAG, "Root granted in-process (KernelSU), "
+                            + "running the VM in-process for the AGL display");
+                } else {
+                    if (isAglDisplay()) {
+                        ToastUtils.toastLong(LimboApplication.getInstance(),
+                                LimboApplication.getInstance().getString(R.string.agl_root_fallback));
+                    }
+                    return startRootProcess(params);
+                }
             }
 
             // KVM：询问用户是否以 root 启动（仅当当前不是 root 时才有意义）
@@ -1374,6 +1397,30 @@ public class VMExecutor extends MachineExecutor {
             MachineController.getInstance();
         }
         return mInstance;
+    }
+
+    /** True when this VM paints through the AGL display (in-process Surface). */
+    private boolean isAglDisplay() {
+        return getMachine() != null && "AGL".equals(getMachine().getUI());
+    }
+
+    /**
+     * 通过 KernelSU 给“当前线程”提权（ALS 参考实现的做法）。AGL 需要 App 的
+     * Surface，因此虚拟机必须跑在本进程里，不能像以往那样放到 su/app_process
+     * 子进程中。设备没有 KernelSU（或本应用未被授权）时返回 false。
+     */
+    private boolean grantRootInProcess() {
+        int res;
+        try {
+            res = RootUtils.grantRoot();
+        } catch (Throwable t) {
+            Log.w(TAG, "KernelSU root request failed", t);
+            return false;
+        }
+        boolean root = res == 0 && RootUtils.isRoot();
+        if (!root)
+            Log.w(TAG, "KernelSU root request failed: " + res);
+        return root;
     }
 
     /**

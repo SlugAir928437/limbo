@@ -73,18 +73,20 @@ Copyright (c) 2018
     全文见：LICENSES/GPL-2.0.txt、LICENSES/LGPL-2.1.txt
     引用与修改：本项目的 gunyah 加速器（accel/gunyah/*、target/arm/gunyah.c、
     hw/intc/arm_gicv3_gunyah.c、include/system/gunyah*.h、
-    linux-headers/linux/gunyah.h 等）移植自该项目，并针对 QEMU 11.0.0 的 API 与
-    Android/NDK 构建做了适配修改。对既有 QEMU 文件的修改同属移植内容，包括
+    linux-headers/linux/gunyah.h 等）与 AGL 显示后端（ui/agl.c、ui/agl-input.c、
+    include/ui/agl.h）移植自该项目，并针对 QEMU 11.0.0 的 API 与 Android/NDK
+    构建做了适配修改。对既有 QEMU 文件的修改同属移植内容，包括
     hw/arm/virt.c（GunyahV2M 的 V2M/MSI 模拟与 gunyah 分支）、
     hw/intc/arm_gicv3_common.c、hw/virtio/virtio-pci.c、target/arm/cpu.c、
-    target/arm/cpu64.c、include/system/hw_accel.h；上述文件的相关 hunk 内均已加
-    来源注释。ui/egl-helpers.c 中的 Android EGL/GLES3 初始化
-    （EGL_DEFAULT_DISPLAY + surfaceless 上下文）则是本项目自行编写的 Android/NDK
-    适配，不属于上游移植。linux-headers/linux/gunyah.h 为 Linux UAPI 头文件，
-    版权与许可证以其文件内原有声明为准。原始实现的版权归
-    AnyLaySys/qemu-gunyah 的贡献者所有。
+    target/arm/cpu64.c、include/system/hw_accel.h，以及 AGL 接入相关的
+    qapi/ui.json（-display agl，其 DisplayAGL 定义与上游 AGL 命名一致）；
+    上述文件的相关 hunk 内均已加来源注释。ui/egl-helpers.c 中的 Android
+    EGL/GLES3 初始化（EGL_DEFAULT_DISPLAY + surfaceless 上下文）则是本项目
+    自行编写的 Android/NDK 适配，不属于上游移植。linux-headers/linux/gunyah.h
+    为 Linux UAPI 头文件，版权与许可证以其文件内原有声明为准。原始实现的
+    版权归 AnyLaySys/qemu-gunyah 的贡献者所有。
     limbo 侧修改者：FreshingAir（Limbo Emulator Project），加速器移植
-    2026-09-24。
+    2026-09-24，AGL 显示后端 2026-09-26/27。
 
 8.2 AnyLaySys/qemu-gzvm
     地址：https://github.com/AnyLaySys/qemu-gzvm
@@ -102,11 +104,20 @@ Copyright (c) 2018
     内原有声明为准。原始实现的版权归 AnyLaySys/qemu-gzvm 的贡献者所有。
     limbo 侧修改者：FreshingAir（Limbo Emulator Project），2026-09-24。
 
-上述内容随提交 44773f9（2026-09-24，新增 gzvm 与 gunyah 加速）与 ff59f9c
-（2026-09-27，新增 Android EGL 初始化）引入，衍生源文件位于补丁
-qemu-v11.0.0-gunyah-gzvm-accel.patch 与 qemu-v11.0.0-android-egl.patch 中；
+8.3 AnyLaySys/als
+    地址：https://github.com/AnyLaySys/als
+    许可证：GPL-3.0（全文见 LICENSES/GPL-3.0.txt）
+    引用与修改：com.limbo.emu.jni.AglDisplay 的显示通道接口设计
+    （setSurface(Surface, float) 等）参考自该项目的 AGL.kt，Java 侧实现
+    由本项目独立编写。
+    limbo 侧实现者：FreshingAir（Limbo Emulator Project），2026-09-26/27。
+
+上述内容随提交 44773f9（2026-09-24，新增 gzvm 与 gunyah 加速）、46c95a3
+（2026-09-26，新增 AGL 显示后端）与 ff59f9c（2026-09-27，新增 Android EGL
+初始化）引入，衍生源文件位于补丁 qemu-v11.0.0-gunyah-gzvm-accel.patch、
+qemu-v11.0.0-agl-display.patch 与 qemu-v11.0.0-android-egl.patch 中；
 其文件头已注明来源仓库、原版权、limbo 侧修改者（FreshingAir）及日期，并按
-GPLv3 第 5(a)、5(b) 条保留原有声明。两个补丁文件首部另附来源前言，说明上游
+GPLv3 第 5(a)、5(b) 条保留原有声明。各补丁文件首部另附来源前言，说明上游
 来源、原版权与 limbo 侧修改者及日期。
 
 --------------------------------------------------------------------------------

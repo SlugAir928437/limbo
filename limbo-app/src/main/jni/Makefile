@@ -606,7 +606,7 @@ config-qemu: ndk pkg-config-link fetch-qemu
 		echo ">> NOTE: this QEMU tree declares no virglrenderer/opengl meson option:"; \
 		echo ">>       virtio-gpu-gl-pci will NOT be part of the build (set USE_VIRGL=false to silence)"; \
 	fi
-	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)" SPICE_CONFIGURE_FLAG="$(SPICE_CONFIGURE_FLAG)"
+	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" AGL_MESON_FLAGS="$(AGL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)" SPICE_CONFIGURE_FLAG="$(SPICE_CONFIGURE_FLAG)"
 
 clean-qemu:
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) distclean
@@ -722,6 +722,14 @@ QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
 # gzvm / gunyah 加速器补丁（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）
 ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.patch
 
+# AGL（Android Graphics Layer）显示后端补丁：gunyah/gzvm 加速的 aarch64 虚拟机
+# 必须把画面画到 App 自己的 Surface 上（-display agl），而独立 root 子进程拿不到
+# Surface，因此还需要配合进程内提权（见 RootUtils.grantRoot）。该后端依赖
+# epoxy/EGL，即 USE_GTK/USE_VIRGL 提供的 OpenGL 栈。同样只适用于官方 QEMU 树。
+AGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-agl-display.patch
+AGL_MESON_FLAGS     := -Dagl=enabled
+AGL_APPLY           := yes
+
 # Android EGL 初始化补丁：把系统 libEGL 的 surfaceless GLES3 上下文接进
 # ui/egl-helpers.c，供 USE_VIRGL=true（-Dopengl=enabled -Dvirglrenderer=enabled）
 # 时的 virtio-gpu-gl / virglrenderer 使用。仅适用于官方 QEMU 树
@@ -813,6 +821,8 @@ endif
 ifneq ($(QEMU_USE_OFFICIAL), yes)
 ACCEL_MESON_FLAGS    :=
 ACCEL_APPLY          :=
+AGL_MESON_FLAGS      :=
+AGL_APPLY            :=
 EGL_APPLY            :=
 VIRGL_BLOB_LOG_APPLY :=
 endif
@@ -1054,6 +1064,7 @@ fetch-qemu:
 		fi; \
 	fi
 	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
+	$(if $(AGL_APPLY),@if [ -f "$(AGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(AGL_PATCH)" 2>/dev/null; then echo ">> 应用 AGL 显示后端补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(AGL_PATCH)"; fi;)
 	$(if $(EGL_APPLY),@if [ -f "$(EGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(EGL_PATCH)" 2>/dev/null; then echo ">> 应用 Android EGL 初始化补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(EGL_PATCH)"; fi;)
 	$(if $(SDL_SCALE_APPLY),@if [ -f "$(SDL_SCALE_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(SDL_SCALE_PATCH)" 2>/dev/null; then echo ">> 应用 SDL 显示方式（缩放模式）补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(SDL_SCALE_PATCH)"; fi;)
 	$(if $(VIRGL_BLOB_LOG_APPLY),@if [ -f "$(VIRGL_BLOB_LOG_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(VIRGL_BLOB_LOG_PATCH)" 2>/dev/null; then echo ">> 应用 venus blob 请求诊断日志补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(VIRGL_BLOB_LOG_PATCH)"; fi;)

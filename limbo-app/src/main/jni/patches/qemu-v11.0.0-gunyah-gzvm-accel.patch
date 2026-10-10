@@ -1,7 +1,7 @@
 Subject: [PATCH] gunyah/gzvm accelerators ported from AnyLaySys (QEMU 11.0.0)
 
 Ported to this tree from:
-  * https://github.com/AnyLaySys/qemu-gunyah  (gunyah accelerator)
+  * https://github.com/AnyLaySys/qemu-gunyah  (gunyah accelerator, AGL display backend)
   * https://github.com/AnyLaySys/qemu-gzvm    (gzvm accelerator)
 
 Both upstream projects are released under GPL-2.0-or-later (library parts

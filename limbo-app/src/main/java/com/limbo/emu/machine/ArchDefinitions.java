@@ -256,6 +256,13 @@ public class ArchDefinitions {
         // VM would crash with UnsatisfiedLinkError, so hide the option there.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             arrList.add("GTK");
+        // AGL (Android Graphics Layer): the guest is rendered into a Surface
+        // owned by the app (QEMU "-display agl"), which is the only display the
+        // gunyah/gzvm accelerated VMs can use since those run in-process as
+        // root.  It requires a libqemu-system-*.so built with the AGL backend.
+        if (Config.enableAgl && (LimboApplication.arch == Config.Arch.arm
+                || LimboApplication.arch == Config.Arch.arm64))
+            arrList.add("AGL");
         return arrList;
     }
 

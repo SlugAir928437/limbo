@@ -69,6 +69,39 @@ public class Config {
     public static final int STATUS_PAUSED = 1001;
     public static final String ACTION_START = "com.limbo.emu.action.STARTVM";
 
+    // ------------------------------------------------------------------
+    // App <-> JNI 原生执行体的通信方式（AIDL / Binder）
+    // ------------------------------------------------------------------
+
+    /**
+     * 是否通过 AIDL(Binder) 与 JNI 原生执行体通信。
+     *
+     * <p>开启后，{@code MachineController} 持有的执行器是 {@code AidlVmExecutor}
+     * ——它把所有调用转发给 {@code VmExecutorService}，由服务端那个进程内的
+     * {@code VMExecutor} 去调用 JNI。
+     */
+    public static boolean enableAidlVm = true;
+
+    /**
+     * 是否把原生 VM 隔离到独立进程。
+     *
+     * <p>置为 true 时必须同时给 AndroidManifest 里的
+     * {@code .vm.VmExecutorService} 加上 {@code android:process=":vm"}，
+     * 否则本字段没有实际效果。
+     *
+     * <p>注意：SDL 显示后端强依赖"与 SurfaceView 同进程"（原生 SDL 会回调
+     * 本进程的 {@code SDLActivity}），因此隔离进程时只有把 Surface 显式通过
+     * {@link com.limbo.emu.vm.IVmExecutorService#setSurface} 交给服务端、
+     * 且显示后端不依赖 SDL Java 胶水的场景才可用。
+     */
+    public static boolean vmProcessIsolated = false;
+
+    /** VmExecutorService 的 action，客户端绑定时使用。 */
+    public static final String vmServiceAction = "com.limbo.emu.action.VM_EXECUTOR";
+
+    /** 客户端等待 VmExecutorService 连接的超时时间（毫秒）。 */
+    public static final long vmServiceBindTimeoutMs = 15000;
+
     // GUI Options
     public static final boolean enable_SDL = true;
 

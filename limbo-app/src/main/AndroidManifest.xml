@@ -94,6 +94,29 @@
                 android:value="Runs the emulated virtual machine in the background" />
         </service>
 
+        <!--
+            App 与 JNI 原生执行体之间的 AIDL 服务。
+            默认与 App 同进程：调用被收敛到一个 Binder 接口上，行为与改造前一致。
+
+            如需把原生 VM 隔离到独立进程，取消下面 android:process 的注释，
+            并把 Config.vmProcessIsolated 置为 true。
+
+            android:process=":vm"
+        -->
+        <service
+            android:name=".vm.VmExecutorService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:label="Limbo VM Executor">
+            <intent-filter>
+                <action android:name="com.limbo.emu.action.VM_EXECUTOR" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Hosts the native virtual machine executor" />
+        </service>
+
         <meta-data
             android:name="ScopedStorage"
             android:value="true" />

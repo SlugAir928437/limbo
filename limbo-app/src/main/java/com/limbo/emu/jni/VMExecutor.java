@@ -44,6 +44,7 @@ import com.limbo.emu.main.LimboSDLActivity;
 import com.limbo.emu.main.LimboSettingsManager;
 import com.limbo.emu.qmp.QmpClient;
 import com.limbo.emu.toast.ToastUtils;
+import com.limbo.emu.vm.AidlVmExecutor;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -136,10 +137,14 @@ public class VMExecutor extends MachineExecutor {
     private volatile boolean rootVmMode;
     /** 父进程是否已请求停止 root VM，用于区分用户主动关机与子进程异常退出。 */
     private volatile boolean rootVmStopRequested;
-    /** KVM root 启动选择的结果：未决定 / 当前进程 / root 子进程。 */
+    /** KVM 启动方式的选择结果：未决定 / 进程内直接启动 / root 子进程 / 先放宽 /dev/kvm。 */
     private static final int KVM_CHOICE_UNDECIDED = 0;
     private static final int KVM_CHOICE_NORMAL    = 1;
     private static final int KVM_CHOICE_ROOT      = 2;
+    private static final int KVM_CHOICE_RELAX     = 3;
+
+    /** 放宽 /dev/kvm 权限时 su 命令的超时时间（毫秒）。 */
+    private static final long   RELAX_KVM_TIMEOUT_MS = 10000;
 
     private final AtomicInteger kvmChoice =
             new AtomicInteger(KVM_CHOICE_UNDECIDED);
@@ -216,10 +221,16 @@ public class VMExecutor extends MachineExecutor {
      * 只记日志，不抛出 UnsatisfiedLinkError。
      */
     public static void setSdlScaleMode(int mode) {
+        // 跨进程隔离时原生库加载在服务进程里，本进程直接调用会因为库未加载而失败，
+        // 必须把设置通过 AIDL 转发给服务端。
+        if (Config.enableAidlVm && Config.vmProcessIsolated
+                && AidlVmExecutor.forwardSdlScaleMode(mode)) {
+            return;
+        }
         try {
             setSDLScaleMode(mode);
         } catch (Throwable t) {
-            Log.w(TAG, "setSDLScaleMode(" + mode + ") 失败: " + t);
+            Log.w(TAG, "setSdlScaleMode(" + mode + ") 失败: " + t);
         }
     }
 
@@ -1230,18 +1241,27 @@ public class VMExecutor extends MachineExecutor {
     }
 
     /**
-     * 当加速器为 KVM 时询问用户是否以 root 身份启动 VM。
+     * 当加速器为 KVM 且当前进程打不开 /dev/kvm 时，询问用户怎么启动。
+     *
+     * <p>三个选项对应三种取舍：
+     * <ul>
+     *   <li>{@link #KVM_CHOICE_RELAX}：用 su 把 /dev/kvm 放开给 app 进程，
+     *       QEMU 留在 app 进程里跑 —— 唯一能"KVM + GPU 加速"同时成立的组合；</li>
+     *   <li>{@link #KVM_CHOICE_ROOT}：VM 跑到 root 子进程里，不动 SELinux，
+     *       但子进程是 headless（-display none），用不了 virtio-gpu-gl；</li>
+     *   <li>{@link #KVM_CHOICE_NORMAL}：直接进程内启动，由 QEMU 自己报权限错误。</li>
+     * </ul>
      *
      * <p>该方法会阻塞调用线程（后台线程），直到用户在对话框上做出选择。
      * 对话框本身在主线程弹出。
      *
-     * @return true 表示用户选择以 root 启动
+     * @return 用户的选择（见上面的常量）
      */
-    private boolean askKvmRootChoice() {
+    private int askKvmChoice() {
         // 已经问过（例如重启）就直接复用上次结果
         int cached = kvmChoice.get();
         if (cached != KVM_CHOICE_UNDECIDED) {
-            return cached == KVM_CHOICE_ROOT;
+            return cached;
         }
 
         synchronized (kvmChoiceLock) {
@@ -1255,7 +1275,7 @@ public class VMExecutor extends MachineExecutor {
                     final Activity activity = getDialogActivity();
                     if (activity == null) {
                         // 没有 Activity 时无法弹窗，直接按普通方式启动
-                        Log.w(TAG, "No Activity available, skipping KVM root dialog");
+                        Log.w(TAG, "No Activity available, skipping KVM dialog");
                         decideKvmRoot(decided, KVM_CHOICE_NORMAL, latch);
                         return;
                     }
@@ -1264,7 +1284,9 @@ public class VMExecutor extends MachineExecutor {
                                 .setTitle(R.string.kvm_root_dialog_title)
                                 .setMessage(R.string.kvm_root_dialog_message)
                                 .setCancelable(false)
-                                .setPositiveButton(R.string.kvm_root_dialog_root,
+                                .setPositiveButton(R.string.kvm_root_dialog_relax,
+                                        (d, w) -> decideKvmRoot(decided, KVM_CHOICE_RELAX, latch))
+                                .setNeutralButton(R.string.kvm_root_dialog_root,
                                         (d, w) -> decideKvmRoot(decided, KVM_CHOICE_ROOT, latch))
                                 .setNegativeButton(R.string.kvm_root_dialog_normal,
                                         (d, w) -> decideKvmRoot(decided, KVM_CHOICE_NORMAL, latch))
@@ -1275,7 +1297,7 @@ public class VMExecutor extends MachineExecutor {
                                 .show();
                     } catch (Throwable t) {
                         // 弹窗失败（如无 Activity）时回退到普通启动
-                        Log.e(TAG, "Failed to show KVM root dialog", t);
+                        Log.e(TAG, "Failed to show KVM dialog", t);
                         decideKvmRoot(decided, KVM_CHOICE_NORMAL, latch);
                     }
                 });
@@ -1288,8 +1310,56 @@ public class VMExecutor extends MachineExecutor {
                 }
             }
         }
-        return kvmChoice.get() == KVM_CHOICE_ROOT;
+        return kvmChoice.get();
     }
+
+    /**
+     * 当前（非 root）进程能否打开 /dev/kvm。
+     *
+     * <p>用 O_RDWR 打开，和 QEMU 自己做的是同一件事，因此这是"KVM 到底能不能用"的
+     * 最小判据：文件权限（chmod）和 SELinux（untrusted_app 域 → kvm_device）任意一项
+     * 不合格都会失败。
+     */
+    private static boolean canOpenKvm() {
+        try (java.io.RandomAccessFile kvm = new java.io.RandomAccessFile("/dev/kvm", "rw")) {
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    /**
+     * 用 su 把 /dev/kvm 放开给 app 进程，好让 QEMU 留在 app 进程里跑
+     * （这样 SDL 的 gl=on / virtio-gpu-gl-pci 的 GPU 加速才保得住）。
+     *
+     * <p>分两步，能停就停：
+     * <ol>
+     *   <li>{@code chmod 666 /dev/kvm}：解决文件权限（很多设备是 0600 root:root）；</li>
+     *   <li>{@code setenforce 0}：app 所在的 untrusted_app 域默认没有 kvm_device 的
+     *       访问规则，只有 SELinux permissive 才放行。注意这会把整机 SELinux 临时降到
+     *       permissive（重启后恢复 enforcing），所以只在用户明确选择该选项时执行。</li>
+     * </ol>
+     *
+     * @return app 进程最终能否打开 /dev/kvm
+     */
+    private static boolean relaxKvmAccess() {
+        if (canOpenKvm()) {
+            return true;
+        }
+        if (!RootUtils.hasSu()) {
+            return false;
+        }
+        execAsRoot("chmod 666 /dev/kvm", RELAX_KVM_TIMEOUT_MS);
+        if (canOpenKvm()) {
+            Log.i(TAG, "/dev/kvm opened after chmod, KVM stays in-process (GL preserved)");
+            return true;
+        }
+        execAsRoot("setenforce 0", RELAX_KVM_TIMEOUT_MS);
+        boolean usable = canOpenKvm();
+        Log.i(TAG, "/dev/kvm usable after setenforce 0: " + usable);
+        return usable;
+    }
+
     /**
      * 启动原生进程。应从后台线程的前台服务中调用，以防止进程被杀。
      *
@@ -1298,6 +1368,14 @@ public class VMExecutor extends MachineExecutor {
     public String start() {
         String res = null;
         try {
+            // 内部储存被摘掉时（emulated 卷被 vold 卸载），所有外部储存路径都会
+            // 变成 /dev/null/... ：磁盘镜像、内核、日志全部打不开。先确认卷还在，
+            // 必要时用 root 重新挂回来，而不是让 QEMU 抛一个看不懂的错误。
+            if (!ExternalStorage.isMounted() && !ExternalStorage.repair()) {
+                Log.e(TAG, "External storage unavailable, aborting VM start");
+                return LimboApplication.getInstance().getString(R.string.storage_not_mounted);
+            }
+
             String[] params = prepareParams(LimboApplication.getInstance());
             printParams(params);
 
@@ -1327,14 +1405,26 @@ public class VMExecutor extends MachineExecutor {
                 }
             }
 
-            // KVM：询问用户是否以 root 启动（仅当当前不是 root 时才有意义）
+            // KVM：先看当前进程能不能直接用 /dev/kvm。
+            // 注意"root 子进程"和"GPU 加速"是互斥的：root 子进程没有 SDL 窗口，
+            // 只能是 -display none，而 virtio-gpu-gl-pci / SDL gl=on 都依赖 app 进程
+            // 里的那个窗口。所以打不开 /dev/kvm 时，优先用 su 把 /dev/kvm 放开给
+            // app 进程，让 QEMU 留在进程内跑（KVM 与 GPU 加速同时成立）。
             boolean isKvm = Machine.ACCEL_KVM.equals(accelMode);
-            if (isKvm && !RootUtils.isRoot()) {
-                boolean useRoot = askKvmRootChoice();
-                if (useRoot) {
+            if (isKvm && !RootUtils.isRoot() && !canOpenKvm()) {
+                int choice = askKvmChoice();
+                if (choice == KVM_CHOICE_ROOT) {
                     return startRootProcess(params);
                 }
-                // 用户选择普通启动，继续走进程内路径
+                if (choice == KVM_CHOICE_RELAX && !relaxKvmAccess()) {
+                    // 放宽失败（没有 su / 授权被拒）：退回 root 子进程，否则 KVM 用不了，
+                    // 代价是没有 GPU 加速（headless 显示后端）。
+                    Log.w(TAG, "Could not make /dev/kvm usable, falling back to root VM");
+                    ToastUtils.toastLong(LimboApplication.getInstance(),
+                            LimboApplication.getInstance().getString(R.string.kvm_relax_failed));
+                    return startRootProcess(params);
+                }
+                // KVM_CHOICE_NORMAL：继续走进程内路径，让 QEMU 自己报权限错误
             }
 
             // XXX: 对于 VNC，我们需要在合理时间后手动恢复
@@ -1455,7 +1545,10 @@ public class VMExecutor extends MachineExecutor {
 
             String libFilename = params[0];
             String libPath     = nativeLibDir + "/" + libFilename;
-            String[] childParams = headlessParams(params);
+            // root 子进程绕开 FUSE 读写镜像：/storage/emulated/<user> 换成底层
+            // /data/media/<user>（同一份文件）。root 走 FUSE 又慢，又容易因为
+            // MediaProvider 的守护进程出问题而连带把系统内部储存搞掉。
+            String[] childParams = ExternalStorage.remapForRoot(headlessParams(params));
 
             writeRootVmScript(scriptFile, nativeLibDir, apkPath, appProcess,
                     filesDir, pidFile, libFilename, libPath, childParams);
@@ -1765,18 +1858,71 @@ public class VMExecutor extends MachineExecutor {
                 displayIdx = i;
             }
         }
+        String[] out;
         if (displayIdx >= 0) {
-            String[] out = params.clone();
+            out = params.clone();
             out[displayIdx + 1] = "none";
-            return out;
+        } else if (hasVnc) {
+            out = params;
+        } else {
+            out = Arrays.copyOf(params, params.length + 2);
+            out[params.length]     = "-display";
+            out[params.length + 1] = "none";
         }
-        if (hasVnc) {
-            return params;
+        // -display none 没有任何 OpenGL 后端，因此 VirGL 设备必须一起降级，
+        // 否则 QEMU 在 realize virtio-gpu-gl-pci 时直接报
+        // "The display backend does not have OpenGL support enabled" 并退出。
+        return downgradeGLDevices(out);
+    }
+
+    /**
+     * 把 GL（VirGL）显卡设备降级成同族的非 GL 设备。
+     *
+     * <p>root 子进程只能用 {@code -display none}，而 virtio-gpu-gl-pci 依赖显示后端
+     * 提供 OpenGL（见 hw/display/virtio-gpu-gl.c）：headless 下 QEMU 会以
+     * {@code -device virtio-gpu-gl-pci,...: The display backend does not have OpenGL
+     * support enabled} 直接退出，整个虚拟机起不来。headless 场景下 GL 也没有任何
+     * 意义（没有窗口、VNC 也读不到 blob 帧缓冲），所以这里退化成普通 virtio-gpu。
+     *
+     * @return 需要改动时返回新数组，否则原样返回
+     */
+    @NonNull private static String[] downgradeGLDevices(@NonNull String[] params) {
+        String[] out = null;
+        for (int i = 0; i < params.length; i++) {
+            String p = params[i];
+            if (p == null || !p.startsWith("virtio-gpu-gl")) {
+                continue;
+            }
+            if (out == null) {
+                out = params.clone();
+            }
+            out[i] = downgradeGLDevice(p);
         }
-        String[] out = Arrays.copyOf(params, params.length + 2);
-        out[params.length]     = "-display";
-        out[params.length + 1] = "none";
-        return out;
+        return out == null ? params : out;
+    }
+
+    /**
+     * {@code virtio-gpu-gl-pci,blob=on,hostmem=2G,venus=on} → {@code virtio-gpu-pci}。
+     * blob/hostmem/venus 是 GL 设备才认识的属性，非 GL 设备上必须一并去掉。
+     */
+    @NonNull private static String downgradeGLDevice(@NonNull String device) {
+        int comma = device.indexOf(',');
+        String name = comma < 0 ? device : device.substring(0, comma);
+        StringBuilder sb = new StringBuilder(device.length());
+        sb.append(name.replace("virtio-gpu-gl", "virtio-gpu"));
+        if (comma >= 0) {
+            for (String prop : device.substring(comma + 1).split(",")) {
+                if (prop.isEmpty()) {
+                    continue;
+                }
+                if (prop.startsWith("blob=") || prop.startsWith("hostmem=")
+                        || prop.startsWith("venus=")) {
+                    continue;
+                }
+                sb.append(',').append(prop);
+            }
+        }
+        return sb.toString();
     }
 
     /** shell 单引号转义。 */

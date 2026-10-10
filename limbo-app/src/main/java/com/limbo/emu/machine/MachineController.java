@@ -346,6 +346,18 @@ public class MachineController {
         setMachine(machineDatabase.getMachine(value));
     }
 
+    /**
+     * 按名字加载虚拟机。
+     *
+     * <p>当 VM 执行体运行在 AIDL 服务端（可能位于独立进程）时，服务端进程没有
+     * 界面侧的当前机器上下文，需要由客户端把机器名同步过来后才能启动。
+     *
+     * @param value 机器名，null 表示清空当前机器
+     */
+    public void setMachineByName(String value) {
+        setStoredMachine(value);
+    }
+
     //TODO: this should be accessible via a notifier and not directly
     void saveStateVMDB() {
         machineDatabase.updateMachineFieldAsync(

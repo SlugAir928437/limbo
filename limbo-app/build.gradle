@@ -147,6 +147,9 @@ android {
         compose = true
         buildConfig = true
         viewBinding = true
+        // App 与 JNI 原生层之间改为通过 AIDL(Binder) 通信，
+        // 需要开启 AIDL 源码生成（src/main/aidl/**）。
+        aidl = true
     }
     buildTypes {
         release {

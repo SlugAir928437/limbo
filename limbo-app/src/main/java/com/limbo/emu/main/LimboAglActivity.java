@@ -56,6 +56,7 @@ import com.limbo.emu.machine.Machine;
 import com.limbo.emu.machine.MachineAction;
 import com.limbo.emu.machine.MachineController;
 import com.limbo.emu.toast.ToastUtils;
+import com.limbo.emu.vm.VmDisplay;
 
 /**
  * AGL（Android Graphics Layer）显示宿主 Activity。
@@ -229,7 +230,7 @@ public class LimboAglActivity extends AppCompatActivity
         if (scanCode <= 0) {
             return false;
         }
-        AglDisplay.key(scanCode, down);
+        VmDisplay.key(scanCode, down);
         return true;
     }
 
@@ -499,7 +500,7 @@ public class LimboAglActivity extends AppCompatActivity
         public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
             Surface s = holder.getSurface();
             if (s != null && s.isValid()) {
-                AglDisplay.setSurface(s, displayRefreshRate());
+                VmDisplay.setSurface(s, displayRefreshRate());
             }
         }
 
@@ -511,7 +512,7 @@ public class LimboAglActivity extends AppCompatActivity
         void releaseSurface() {
             pointerButtons = 0;
             touchDown = false;
-            AglDisplay.setSurface(null, 0);
+            VmDisplay.setSurface(null, 0);
         }
 
         /** 屏幕当前刷新率（Hz），取不到时返回 0 由后端决定。 */
@@ -562,7 +563,7 @@ public class LimboAglActivity extends AppCompatActivity
                     pointer(event, event.getButtonState());
                     return true;
                 case MotionEvent.ACTION_SCROLL:
-                    AglDisplay.scroll(
+                    VmDisplay.scroll(
                             event.getAxisValue(MotionEvent.AXIS_HSCROLL),
                             -event.getAxisValue(MotionEvent.AXIS_VSCROLL));
                     return true;
@@ -576,7 +577,7 @@ public class LimboAglActivity extends AppCompatActivity
             pointerX = event.getX();
             pointerY = event.getY();
             pointerButtons = buttons;
-            AglDisplay.pointer(pointerX, pointerY, pointerButtons);
+            VmDisplay.pointer(pointerX, pointerY, pointerButtons);
         }
     }
 }

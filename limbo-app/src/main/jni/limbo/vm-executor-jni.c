@@ -591,6 +591,16 @@ static void limbo_install_crash_handler(void) {
  * 之前把当前线程的亲和性收敛到一个同构簇；此后 QEMU 创建的所有线程（vCPU、
  * 显示、IO）都由该线程 fork 出来，会继承这个掩码。
  *
+ * 实测有两个坑要一起绕开，否则这套收敛形同虚设：
+ *  1) 读亲和性的成功判断写错了：sched_getaffinity 成功时返回的是"写入的字节
+ *     数"（cpumask_size()），不是 0。原来按 "返回值 != 0" 判断成功，于是永远
+ *     走失败分支，日志里那条 "sched_getaffinity failed: No such file or
+ *     directory" 其实是过期的 errno（返回值本身是正的）。改成"返回值 < 0 才算
+ *     失败"，并保留 libc -> /proc/self/status 的 Cpus_allowed_list ->
+ *     /sys/devices/system/cpu/online 逐层回退兜底。
+ *  2) 写亲和性：按 系统调用 -> libc sched_setaffinity 回退，写完回读校验
+ *     （qemu_init() 之后再校一次，日志里能直接看出有没有跑出簇外）。
+ *
  * 只对 "-accel kvm" 生效：TCG 是纯软件模拟，gunyah/gzvm 有自己的加速器语义，
  * 都不该被这里改动。
  * ------------------------------------------------------------------------- */
@@ -632,22 +642,195 @@ static int limbo_mask_isset(const struct limbo_cpu_mask *mask, int cpu) {
 	return (mask->bits[cpu / LIMBO_CPU_BITS] >> (cpu % LIMBO_CPU_BITS)) & 1UL;
 }
 
+/* 把 "0-3,5,7-9" 形式的 CPU 列表解析进掩码，返回新置位的 CPU 个数。 */
+static int limbo_parse_cpu_list(const char *list, struct limbo_cpu_mask *mask) {
+	int count = 0;
+
+	while (list != NULL && *list != '\0') {
+		char *endptr;
+		long first, last, cpu;
+
+		if (*list < '0' || *list > '9') {
+			list++;
+			continue;
+		}
+		first = strtol(list, &endptr, 10);
+		list = endptr;
+		last = first;
+		if (*list == '-') {
+			list++;
+			last = strtol(list, &endptr, 10);
+			list = endptr;
+		}
+		if (last < first) {
+			long swap = first;
+			first = last;
+			last = swap;
+		}
+		for (cpu = first; cpu <= last; cpu++) {
+			if (cpu < 0 || cpu >= LIMBO_CPU_MAX)
+				continue;
+			if (!limbo_mask_isset(mask, (int) cpu)) {
+				limbo_mask_set(mask, (int) cpu);
+				count++;
+			}
+		}
+	}
+	return count;
+}
+
+/* 读 procfs/sysfs 的文本，在内容里找 key（key 为空串表示整篇都要），
+ * 再从 key 之后解析 CPU 列表。返回置位的 CPU 个数，0 表示没读到。 */
+static int limbo_read_cpu_list_from_file(const char *path, const char *key,
+		struct limbo_cpu_mask *mask) {
+	char buf[4096];
+	size_t used = 0;
+	ssize_t n;
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	char *pos;
+
+	if (fd < 0)
+		return 0;
+	while (used < sizeof(buf) - 1) {
+		n = read(fd, buf + used, sizeof(buf) - 1 - used);
+		if (n <= 0)
+			break;
+		used += (size_t) n;
+	}
+	close(fd);
+	if (used == 0)
+		return 0;
+	buf[used] = '\0';
+
+	pos = strstr(buf, key);
+	if (pos == NULL)
+		return 0;
+	pos += strlen(key);
+	return limbo_parse_cpu_list(pos, mask);
+}
+
+/* libc 导出的 sched_getaffinity / sched_setaffinity。用 dlsym 取而不做声明：
+ * limbo_logutils.h 已经把 features.h 定稿，<sched.h> 里的声明（要 __USE_GNU
+ * 才可见）拿不到；dlsym 不需要声明，符号真的不存在时还能安全跳过。 */
+typedef int (*limbo_sched_affinity_fn)(int pid, size_t set_size, const void *mask);
+
+static limbo_sched_affinity_fn limbo_libc_affinity_fn(const char *name) {
+	return (limbo_sched_affinity_fn) dlsym(RTLD_DEFAULT, name);
+}
+
+/* 掩码 -> "0-3,5" 形式的字符串，只为日志核对。 */
+static void limbo_mask_to_string(const struct limbo_cpu_mask *mask,
+		char *buf, size_t bufsize) {
+	int cpu, start = -1;
+	size_t used = 0;
+
+	if (bufsize == 0)
+		return;
+	buf[0] = '\0';
+	for (cpu = 0; cpu <= LIMBO_CPU_MAX; cpu++) {
+		int isset = (cpu < LIMBO_CPU_MAX) ? limbo_mask_isset(mask, cpu) : 0;
+
+		if (isset && start < 0) {
+			start = cpu;
+			continue;
+		}
+		if (!isset && start >= 0) {
+			char one[32];
+
+			if (start == cpu - 1)
+				snprintf(one, sizeof(one), "%s%d",
+						used ? "," : "", start);
+			else
+				snprintf(one, sizeof(one), "%s%d-%d",
+						used ? "," : "", start, cpu - 1);
+			if (used + strlen(one) >= bufsize)
+				break;
+			strcat(buf, one);
+			used += strlen(one);
+			start = -1;
+		}
+	}
+}
+
+/* sub 是否完全落在 super 内，用于回读校验。 */
+static int limbo_mask_subset(const struct limbo_cpu_mask *sub,
+		const struct limbo_cpu_mask *super) {
+	int cpu;
+
+	for (cpu = 0; cpu < LIMBO_CPU_MAX; cpu++) {
+		if (limbo_mask_isset(sub, cpu) && !limbo_mask_isset(super, cpu))
+			return 0;
+	}
+	return 1;
+}
+
 /* 掩码按结构体大小整体传给内核；内核只拷贝 cpumask_size() 那几字节，多余的
  * 位被忽略，所以传大一点是安全的（这样在 CPU 数不同的设备上都不用改）。 */
 static int limbo_get_affinity(struct limbo_cpu_mask *mask) {
-	if (syscall(__NR_sched_getaffinity, 0, sizeof(*mask), mask) != 0) {
-		LOGW("cpu affinity: sched_getaffinity failed: %s", strerror(errno));
-		return -1;
+	limbo_sched_affinity_fn libc_fn;
+	long ret;
+	int err;
+
+	limbo_mask_zero(mask);
+	errno = 0;
+	/* 这个系统调用成功时返回写入的字节数（cpumask_size()，一定 > 0），
+	 * 只有返回值 < 0 才是失败。 */
+	ret = syscall(__NR_sched_getaffinity, 0, sizeof(*mask), mask);
+	if (ret >= 0)
+		return 0;
+	err = errno;
+	LOGW("cpu affinity: sched_getaffinity syscall failed: ret=%ld errno=%d (%s)",
+			ret, err, strerror(err));
+
+	/* 下面几层是为了"读不到也要能继续收敛"：只要能拿到 CPU 列表就行。 */
+	limbo_mask_zero(mask);
+	libc_fn = limbo_libc_affinity_fn("sched_getaffinity");
+	if (libc_fn != NULL && libc_fn(0, sizeof(*mask), mask) == 0) {
+		LOGI("cpu affinity: allowed cpus read via libc sched_getaffinity");
+		return 0;
 	}
-	return 0;
+
+	limbo_mask_zero(mask);
+	if (limbo_read_cpu_list_from_file("/proc/self/status",
+			"Cpus_allowed_list:", mask) > 0) {
+		LOGI("cpu affinity: allowed cpus read from /proc/self/status");
+		return 0;
+	}
+
+	limbo_mask_zero(mask);
+	if (limbo_read_cpu_list_from_file("/sys/devices/system/cpu/online",
+			"", mask) > 0) {
+		LOGW("cpu affinity: allowed cpus unavailable, assuming every online "
+				"cpu is usable");
+		return 0;
+	}
+
+	LOGW("cpu affinity: cannot determine the allowed cpu set");
+	return -1;
 }
 
 static int limbo_set_affinity(const struct limbo_cpu_mask *mask) {
-	if (syscall(__NR_sched_setaffinity, 0, sizeof(*mask), mask) != 0) {
-		LOGW("cpu affinity: sched_setaffinity failed: %s", strerror(errno));
-		return -1;
+	limbo_sched_affinity_fn libc_fn;
+	long ret;
+	int err;
+
+	errno = 0;
+	/* 这个系统调用成功返回 0，失败返回 -1。 */
+	ret = syscall(__NR_sched_setaffinity, 0, sizeof(*mask), mask);
+	if (ret == 0)
+		return 0;
+	err = errno;
+	LOGW("cpu affinity: sched_setaffinity syscall failed: ret=%ld errno=%d (%s)",
+			ret, err, strerror(err));
+
+	libc_fn = limbo_libc_affinity_fn("sched_setaffinity");
+	if (libc_fn != NULL && libc_fn(0, sizeof(*mask), mask) == 0) {
+		LOGI("cpu affinity: mask applied via libc sched_setaffinity");
+		return 0;
 	}
-	return 0;
+
+	LOGW("cpu affinity: sched_setaffinity failed in every way");
+	return -1;
 }
 
 /* 读 sysfs 文本文件开头的十进制整数；失败返回 -1 */
@@ -767,6 +950,10 @@ static int limbo_cpu_cluster_key(int cpu, char *key, size_t keysize, long *speed
 	return 0;
 }
 
+/* 收敛结果，给 qemu_init() 之后的回读校验用；limbo_pin_cpus == 0 表示没 pin。 */
+static struct limbo_cpu_mask limbo_pin_mask;
+static int limbo_pin_cpus = 0;
+
 /* 把当前线程收敛到单一同构簇。返回被选中的 CPU 数，0 表示未做改动。 */
 static int limbo_pin_to_single_cluster(int argc, char **argv) {
 	struct limbo_cluster clusters[LIMBO_MAX_CLUSTERS];
@@ -776,9 +963,13 @@ static int limbo_pin_to_single_cluster(int argc, char **argv) {
 	long best_score = -1;
 	char line[128];
 
+	limbo_pin_cpus = 0;
 	limbo_mask_zero(&allowed);
-	if (limbo_get_affinity(&allowed) != 0)
+	if (limbo_get_affinity(&allowed) != 0) {
+		LOGW("cpu affinity: cpu set unknown, cannot pin; KVM will most "
+				"likely fail on big.LITTLE hosts, consider TCG");
 		return 0;
+	}
 
 	for (cpu = 0; cpu < LIMBO_CPU_MAX; cpu++) {
 		char key[LIMBO_CLUSTER_KEY_LEN];
@@ -839,24 +1030,48 @@ static int limbo_pin_to_single_cluster(int argc, char **argv) {
 	if (best < 0)
 		return 0;
 
-	if (limbo_set_affinity(&clusters[best].cpus) != 0)
+	if (limbo_set_affinity(&clusters[best].cpus) != 0) {
+		LOGW("cpu affinity: cannot pin; KVM will most likely fail on "
+				"big.LITTLE hosts, consider TCG");
 		return 0;
-
-	line[0] = '\0';
-	for (cpu = 0; cpu < LIMBO_CPU_MAX; cpu++) {
-		char one[8];
-
-		if (!limbo_mask_isset(&clusters[best].cpus, cpu))
-			continue;
-		snprintf(one, sizeof(one), "%s%d", line[0] ? "," : "", cpu);
-		if (strlen(line) + strlen(one) >= sizeof(line))
-			break;
-		strcat(line, one);
 	}
+
+	/* 记下来：qemu_init() 之后还要回读一次，确认线程没跑出这一簇。 */
+	limbo_pin_mask = clusters[best].cpus;
+	limbo_pin_cpus = clusters[best].ncpu;
+
+	limbo_mask_to_string(&clusters[best].cpus, line, sizeof(line));
 	LOGI("cpu affinity: pinned to %d cpu(s) [%s] of cluster '%s' (%d cluster(s))",
 			clusters[best].ncpu, line, clusters[best].key, nclusters);
+
+	if (limbo_get_affinity(&allowed) == 0) {
+		limbo_mask_to_string(&allowed, line, sizeof(line));
+		LOGV("cpu affinity: kernel now reports [%s]", line);
+	}
+
 	return clusters[best].ncpu;
 }
+
+/* qemu_init() 之后回读一次亲和性：vCPU 线程继承本线程的掩码，万一它跑到了
+ * 簇外，KVM 写回 cache/ID 寄存器（demux CCSIDR）就会再次失败，日志要能看出来。 */
+static void limbo_verify_affinity(const char *when) {
+	struct limbo_cpu_mask mask;
+	char line[128];
+
+	if (limbo_pin_cpus == 0)
+		return;
+	if (limbo_get_affinity(&mask) != 0) {
+		LOGI("cpu affinity %s: unreadable, cannot verify", when);
+		return;
+	}
+	limbo_mask_to_string(&mask, line, sizeof(line));
+	if (limbo_mask_subset(&mask, &limbo_pin_mask))
+		LOGI("cpu affinity %s: still on the pinned cpus [%s]", when, line);
+	else
+		LOGW("cpu affinity %s: outside the pinned cpus, now [%s]; KVM "
+				"cache/ID register write may fail", when, line);
+}
+
 /* Shared VM bootstrap used by both the in-process VMExecutor.start() and
  * the root child process (RootVmLauncher.startVm).  In the root child
  * thiz is NULL, so the per-instance JNI wiring (set_jni) is skipped. */
@@ -986,6 +1201,7 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
 	 * 同构簇，否则 vCPU 在大小核之间迁移会让 cache/ID 寄存器写回失败
 	 * （"Failed to put registers after init: Invalid argument"）。放在这里
 	 * 也早于任何 QEMU 线程的创建，掩码会被它们继承。 */
+	limbo_pin_cpus = 0;
 	if (limbo_args_use_kvm(argc, argv))
 		limbo_pin_to_single_cluster(argc, argv);
 
@@ -1038,6 +1254,10 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
         }
 
         qemu_init(argc, argv);
+        /* KVM 的 vCPU 线程在 qemu_init() 里创建，继承上面收敛出来的掩码；
+         * 这里回读一次，确认没有跑出同构簇（跑出去就会再次触发 demux CCSIDR
+         * 写回失败）。 */
+        limbo_verify_affinity("after qemu_init");
         /* The display backends exist now: deliver a Surface that arrived
          * before the library was loaded (AGL display). */
         flush_buffered_agl_window();

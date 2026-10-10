@@ -1,0 +1,86 @@
+diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core/android/SDL_android.c
+--- /tmp/SDL2/src/core/android/SDL_android.c	2018-03-02 00:34:42.000000000 +0800
++++ SDL2/src/core/android/SDL_android.c	2026-10-10 21:30:00.000000000 +0800
+@@ -1000,6 +1000,11 @@
+ static void* audioBufferPinned = NULL;
+ static jboolean captureBuffer16Bit = JNI_FALSE;
+ static jobject captureBuffer = NULL;
++/* LIMBO: 宿主没有麦克风（或应用没有 RECORD_AUDIO 权限）时，把采集退化成
++ * "静音采集"：QEMU 的音频 voice 需要 in/out 两半都建起来，采集打不开会连带
++ * 播放流一起报 "Could not create a backend for voice"，这里只把采集置为静音，
++ * 不影响播放。 */
++static SDL_bool captureIsSilent = SDL_FALSE;
+ 
+ #if defined(__LIMBO__) && defined(__ENABLE_AAUDIO__)
+ #include <dlfcn.h>
+@@ -1098,10 +1103,17 @@
+     if (iscapture) {
+         __android_log_print(ANDROID_LOG_VERBOSE, "SDL", "SDL audio: opening device for capture");
+         captureBuffer16Bit = is16Bit;
++        captureIsSilent = SDL_FALSE;
+         if ((*env)->CallStaticIntMethod(env, mAudioManagerClass, midCaptureOpen, sampleRate, audioBuffer16Bit, audioBufferStereo, desiredBufferFrames) != 0) {
+-            /* Error during audio initialization */
+-            __android_log_print(ANDROID_LOG_WARN, "SDL", "SDL audio: error on AudioRecord initialization!");
+-            return 0;
++            /* Error during audio initialization. */
++            /* LIMBO: 采集打不开（没有麦克风，或应用没有申请 RECORD_AUDIO）时不再
++             * 让这次 OpenAudioDevice 失败：QEMU 的音频 voice 要 in/out 两半都
++             * 建起来，采集失败会让整条播放流一起失败（"Could not create a
++             * backend for voice 'ac97.pi'"）。退化成静音采集，voice 正常建立、
++             * 播放不受影响，采集数据恒为静音。 */
++            __android_log_print(ANDROID_LOG_WARN, "SDL", "SDL audio: error on AudioRecord initialization, falling back to silent capture");
++            captureIsSilent = SDL_TRUE;
++            return desiredBufferFrames;
+         }
+     } else {
+         __android_log_print(ANDROID_LOG_VERBOSE, "SDL", "SDL audio: opening device for output");
+@@ -1234,9 +1246,19 @@
+ 
+ int Android_JNI_CaptureAudioBuffer(void *buffer, int buflen)
+ {
+-    JNIEnv *env = Android_JNI_GetEnv();
++    JNIEnv *env;
+     jboolean isCopy = JNI_FALSE;
+     jint br;
++
++    /* LIMBO: 静音采集。没有 Java 侧缓冲可读，直接给静音数据。
++     * 必须返回正数：SDL2 的采集线程把 0 当成"设备掉线"并关闭设备
++     * （见 src/audio/SDL_audio.c 的 SDL_CaptureAudio）。 */
++    if (captureIsSilent) {
++        SDL_memset(buffer, captureBuffer16Bit ? 0 : 0x80, buflen);
++        return buflen;
++    }
++
++    env = Android_JNI_GetEnv();
+ 
+     if (captureBuffer16Bit) {
+         SDL_assert((*env)->GetArrayLength(env, (jshortArray)captureBuffer) == (buflen / 2));
+@@ -1262,7 +1284,14 @@
+ 
+ void Android_JNI_FlushCapturedAudio(void)
+ {
+-    JNIEnv *env = Android_JNI_GetEnv();
++    JNIEnv *env;
++
++    /* LIMBO: 静音采集没有 Java 侧的 AudioRecord 可读，直接返回。 */
++    if (captureIsSilent) {
++        return;
++    }
++
++    env = Android_JNI_GetEnv();
+ #if 0  /* !!! FIXME: this needs API 23, or it'll do blocking reads and never end. */
+     if (captureBuffer16Bit) {
+         const jint len = (*env)->GetArrayLength(env, (jshortArray)captureBuffer);
+@@ -1285,7 +1314,11 @@
+     JNIEnv *env = Android_JNI_GetEnv();
+ 
+     if (iscapture) {
+-        (*env)->CallStaticVoidMethod(env, mAudioManagerClass, midCaptureClose);
++        /* LIMBO: 静音采集时 Java 侧根本没开过 AudioRecord，不用也不能去读它。 */
++        if (!captureIsSilent) {
++            (*env)->CallStaticVoidMethod(env, mAudioManagerClass, midCaptureClose);
++        }
++        captureIsSilent = SDL_FALSE;
+         if (captureBuffer) {
+             (*env)->DeleteGlobalRef(env, captureBuffer);
+             captureBuffer = NULL;

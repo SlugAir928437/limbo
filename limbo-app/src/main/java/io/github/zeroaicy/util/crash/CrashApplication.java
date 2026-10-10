@@ -8,19 +8,14 @@ import com.limbo.emu.local_properties;
 import com.limbo.emu.main.LimboApplication;
 import com.tencent.bugly.crashreport.CrashReport;
 
-import io.github.zeroaicy.util.ContextUtil;
 import io.github.zeroaicy.util.DebugUtil;
 import io.github.zeroaicy.util.FileUtil;
 
 public class CrashApplication extends LimboApplication {
 
 	static Application mCrashApplication;
-	
-	static{
-        DebugUtil.debug();
-    }
 
-	protected static boolean isDebug = true;
+	protected static boolean isDebug = BuildConfig.DEBUG;
 
 	@Override
 	public void onCreate(){
@@ -50,14 +45,19 @@ public class CrashApplication extends LimboApplication {
 
     public static void CrashInit(){
         CrashApphandler instance = CrashApphandler.getInstance();
-		Context context = ContextUtil.getContext();
-        instance.setCAHCE_CRASH_LOG(context.getExternalCacheDir().getAbsolutePath());
-		instance.setLIMIT_LOG_COUNT(5);
-		instance.init();
+        if (FileUtil.CrashLogPath != null) {
+            instance.setCAHCE_CRASH_LOG(FileUtil.CrashLogPath);
+        }
+        instance.setLIMIT_LOG_COUNT(5);
+        instance.init();
     }
     public static void CrashInit(Context base){
         CrashApphandler instance = CrashApphandler.getInstance();
-		instance.setCAHCE_CRASH_LOG(FileUtil.CrashLogPath);
+		// CrashLogPath 可能为 null（外部储存不可用且内部 cache 也解析失败），
+		// 此时保留 CrashAppLog 的默认目录，别把 null 塞进去。
+		if (FileUtil.CrashLogPath != null) {
+			instance.setCAHCE_CRASH_LOG(FileUtil.CrashLogPath);
+		}
 		instance.setLIMIT_LOG_COUNT(5);
 		instance.init(base);
     }

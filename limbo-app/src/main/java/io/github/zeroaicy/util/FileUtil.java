@@ -23,7 +23,17 @@ public class FileUtil {
 	public static String LogCatPath;
 
 	static {
-		init();
+		try {
+			init();
+		} catch (Throwable e) {
+			// 解析日志目录失败绝不能再往上抛：这段代码在 Application 初始化期间就会被
+			// 触发（CrashApplication -> DebugUtil -> FileUtil），异常会变成
+			// ExceptionInInitializerError 让 App 完全起不来，连崩溃页都弹不出来。
+			// 路径置空后 Log.enable(null) 会安全地关掉文件日志。
+			e.printStackTrace();
+			FileUtil.CrashLogPath = null;
+			FileUtil.LogCatPath = null;
+		}
 	}
 
 	private static void init() {
@@ -34,6 +44,9 @@ public class FileUtil {
 
 	public static String getLogCatPath(String crashLogPath) {
 
+		if (crashLogPath == null) {
+			return null;
+		}
 		StringBuilder logCatPathBuilder = new StringBuilder();
 		logCatPathBuilder.append(crashLogPath);
 
@@ -53,14 +66,44 @@ public class FileUtil {
 
 	private static String getCrashLogPath(String CrashDir) {
 
-		Context context = ContextUtil.getContext();
-		File logRootDirectory = context.getExternalCacheDir();
-
-		// /内置储存器/Android/data/${PackageName}/cache
-		logRootDirectory = context.getExternalCacheDir();
-
+		File logRootDirectory = getLogRootDirectory();
+		if (logRootDirectory == null) {
+			return null;
+		}
 		String crashDir = logRootDirectory.getAbsolutePath() + CrashDir;
 		return crashDir;
+	}
+
+	/**
+	 * 取写日志用的根目录：优先外部储存（/内置储存器/Android/data/${PackageName}/cache），
+	 * 外部储存不可用时退回内部 cache（/data/data/${PackageName}/cache）。
+	 *
+	 * <p>不能直接相信 getExternalCacheDir()：储存卷没准备好时它可能返回 null，
+	 * 也可能返回指向无效卷的路径（曾出现 {@code /dev/null/Android/data/com.limbo.emu/cache}），
+	 * 拼出来的日志文件打不开（open failed: ENOTDIR），而写日志失败会一路抛到
+	 * Application 初始化里把 App 干掉。所以这里必须做兜底。
+	 *
+	 * @return 可用的目录；实在拿不到时返回 null
+	 */
+	private static File getLogRootDirectory() {
+		try {
+			Context context = ContextUtil.getContext();
+			if (context == null) {
+				return null;
+			}
+			try {
+				File external = context.getExternalCacheDir();
+				if (external != null) {
+					return external;
+				}
+			} catch (Throwable e) {
+				// 外部储存不可用，继续尝试内部目录
+			}
+			return context.getCacheDir();
+		} catch (Throwable e) {
+			e.printStackTrace();
+			return null;
+		}
 	}
 
 	public static List<String> Files2Strings(List<File> files) {

@@ -364,7 +364,11 @@
     <string name="archNotBundledMessage">This build does not bundle the QEMU engine for %1$s, so it cannot be selected. Build it with jni/Makefile (INSTALL_QEMU_LIBS) and reinstall to enable it.</string>
 
     <string name="kvm_root_dialog_title">KVM Acceleration</string>
-    <string name="kvm_root_dialog_message">KVM acceleration detected. Start the virtual machine as root?\n\nStarting as root can fix insufficient /dev/kvm permissions on some devices, but requires the device to be rooted.</string>
-    <string name="kvm_root_dialog_root">Start as root</string>
+    <string name="kvm_root_dialog_message">KVM acceleration is selected, but this app process cannot open /dev/kvm (file permissions and/or SELinux).\n\nKeep GPU acceleration: let su relax /dev/kvm (chmod 666, plus permissive SELinux if it is still blocked; SELinux stays permissive device-wide until reboot) and run the VM inside the app process. This is the only option that keeps KVM together with the GPU-accelerated display (SDL gl=on / virtio-gpu-gl-pci).\n\nStart in a root process: fixes /dev/kvm without touching SELinux, but that process is headless (-display none), so the guest gets no window and no GL; the GL device is downgraded to a plain virtio-gpu.\n\nNormal start: start in-process and let QEMU report the /dev/kvm error itself.</string>
+    <string name="kvm_root_dialog_relax">Keep GPU acceleration</string>
+    <string name="kvm_root_dialog_root">Start in a root process</string>
     <string name="kvm_root_dialog_normal">Normal start</string>
+    <string name="kvm_relax_failed">/dev/kvm could not be made usable. Starting the VM in a root process instead (no GPU acceleration).</string>
+
+    <string name="storage_not_mounted">Internal storage is not mounted (the emulated volume was removed by the system, so all external paths resolve to /dev/null/...). Remounting it with root failed too. Reboot the phone or remount the volume, then start the VM again.</string>
 </resources>

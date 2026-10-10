@@ -51,8 +51,32 @@ public abstract class CrashAppLog implements Thread.UncaughtExceptionHandler {
 
     /**
      * 默认放在内存卡的根目录路径
+     * <p>外部储存没挂载时 Environment.getExternalStorageDirectory() 可能返回 null
+     * （或者返回占位路径 /dev/null），这里必须兜底，否则实例化 CrashApphandler 时
+     * 就会 NPE —— 那会让整个崩溃上报（以及 Application 初始化）失败。
      */
-    private String CAHCE_CRASH_LOG = Environment.getExternalStorageDirectory().getAbsolutePath() + "/.Log";
+    private String CAHCE_CRASH_LOG = defaultCrashLogDir();
+
+    private static String defaultCrashLogDir() {
+        try {
+            File external = Environment.getExternalStorageDirectory();
+            if (external != null) {
+                return external.getAbsolutePath() + "/.Log";
+            }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        try {
+            // 外部储存不可用：退回应用内部 cache
+            Context context = ContextUtil.getContext();
+            if (context != null && context.getCacheDir() != null) {
+                return context.getCacheDir().getAbsolutePath() + "/.Log";
+            }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        return "/data/local/tmp/.Log";
+    }
     /**
      * 系统默认的异常类
      */

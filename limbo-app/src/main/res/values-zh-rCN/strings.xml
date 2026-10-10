@@ -352,7 +352,11 @@
     <string name="archNotBundledMessage">当前安装包未内置 %1$s 的 QEMU 引擎，无法切换。请用 jni/Makefile（INSTALL_QEMU_LIBS）编译该架构的引擎后重新安装即可启用。</string>
 
     <string name="kvm_root_dialog_title">KVM 加速</string>
-    <string name="kvm_root_dialog_message">检测到使用 KVM 加速。是否以 root 身份启动虚拟机？\n\n以 root 启动可解决部分设备上 /dev/kvm 权限不足的问题，但需要设备已 root。</string>
-    <string name="kvm_root_dialog_root">以 root 启动</string>
+    <string name="kvm_root_dialog_message">已选择 KVM 加速，但当前 app 进程打不开 /dev/kvm（文件权限和/或 SELinux）。\n\n保留 GPU 加速：用 su 把 /dev/kvm 放开（chmod 666，必要时再执行 setenforce 0；SELinux 会整机保持 permissive 直到重启），让虚拟机留在 app 进程里运行。这是唯一能让 KVM 与 GPU 加速（SDL gl=on / virtio-gpu-gl-pci）同时成立的组合。\n\n以 root 子进程启动：不用动 SELinux 就能解决 /dev/kvm，但那个子进程是 headless（-display none），客户机既没有窗口也用不了 GL，GL 显卡会被降级成普通 virtio-gpu。\n\n普通启动：直接在 app 进程里启动，由 QEMU 自己报 /dev/kvm 的错误。</string>
+    <string name="kvm_root_dialog_relax">保留 GPU 加速</string>
+    <string name="kvm_root_dialog_root">以 root 子进程启动</string>
     <string name="kvm_root_dialog_normal">普通启动</string>
+    <string name="kvm_relax_failed">无法让 /dev/kvm 变得可用，改为在 root 子进程中启动虚拟机（没有 GPU 加速）。</string>
+
+    <string name="storage_not_mounted">内部储存未挂载（emulated 卷被系统摘掉了，所有外部储存路径都会变成 /dev/null/...），用 root 重新挂载也失败了。请重启手机或手动重新挂载该卷后再启动虚拟机。</string>
 </resources>

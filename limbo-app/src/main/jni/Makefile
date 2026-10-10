@@ -1026,7 +1026,8 @@ fetch-sdl2:
 		rm -rf /tmp/SDL2-2.0.8; \
 		tar -xzf /tmp/SDL2-2.0.8.tar.gz -C /tmp && \
 		mv -f /tmp/SDL2-2.0.8 "$(LIMBO_JNI_ROOT)/SDL2" && \
-		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8-android.patch" ); \
+		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8-android.patch" ) && \
+		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8-android-silent-capture.patch" ); \
 	else \
 		echo ">> SDL2 已存在，跳过"; \
 	fi

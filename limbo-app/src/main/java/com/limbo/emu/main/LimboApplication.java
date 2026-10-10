@@ -249,7 +249,13 @@ public class LimboApplication extends Application {
     }
 
     private void setupFolders() {
-        Config.storagedir = Environment.getExternalStorageDirectory().toString();
+        // 内部储存被摘掉时（emulated 卷被卸载）getExternalStorageDirectory() 可能返回
+        // null，或者返回占位路径 /dev/null：这里必须兜住，否则 Application 初始化阶段
+        // 就会 NPE 闪退（同一类故障见 FileUtil 的日志目录解析）。
+        File storage = com.limbo.emu.jni.ExternalStorage.root();
+        if (storage != null) {
+            Config.storagedir = storage.getAbsolutePath();
+        }
         File folder = new File(LimboApplication.getTmpFolder());
         if (!folder.exists()) {
             boolean res = folder.mkdirs();

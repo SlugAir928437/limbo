@@ -760,121 +760,93 @@ ifeq ($(USE_EDK2),true)
 endif
 
 # ---------------------------------------------------------------------------
-# 源码获取与补丁（把 build workflow 里的“下载代码 / 打补丁”收进 Makefile）
+# 源码获取（把 build workflow 里的“下载代码”收进 Makefile）
 # 幂等：目标目录已就绪则跳过。qemu 按 BUILD_GUEST 自动选择：
-#   x86/arm (i386/x86_64/arm/aarch64) -> 官方 QEMU + GTK4 补丁（qemu-v11.0.0.patch）
-#   ia64（或空）                    -> IA-64 fork（FreshingAir/qemu-system-ia64）
+#   x86/arm (i386/x86_64/arm/aarch64)
+#       -> SlugAir928437/QEMU：官方 QEMU v11.0.0 + Limbo 全部补丁【已经打好】的
+#          源码仓库。补丁不再由本 Makefile 应用，构建时只做一次浅克隆。
+#   ia64（或空）
+#       -> IA-64 fork（FreshingAir/qemu-system-ia64），仍由下面 fetch-qemu
+#          应用它自己的 Android 适配补丁。
 # gtk4android 亦由此处克隆（不再以 git submodule 形式存在于仓库）。
 # ---------------------------------------------------------------------------
-QEMU_OFFICIAL_TAG   := v11.0.0
-QEMU_OFFICIAL_URL   := https://gitlab.com/qemu-project/qemu.git
-QEMU_OFFICIAL_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0.patch
-QEMU_OFFICIAL_MARK  := $(LIMBO_JNI_ROOT)/qemu/.gtk4-official
-QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
+# 已打补丁的官方 QEMU 源码仓库（专门存放 patch 后的代码）。
+#   - 克隆走 HTTPS：CI runner 里没有任何 SSH 私钥，用 git@github.com: 会直接失败；
+#     仓库是公开的，HTTPS 匿名克隆即可（与以前从 gitlab.com 匿名克隆官方树一样）。
+#   - 推送（维护这份源码时）才需要 SSH：QEMU_OFFICIAL_PUSH_URL。
+# 同步维护方式：在本地 qemu/ 打完补丁 -> git commit -> push 到 PUSH_URL。
+QEMU_OFFICIAL_URL      := https://github.com/SlugAir928437/QEMU.git
+QEMU_OFFICIAL_PUSH_URL := git@github.com:SlugAir928437/QEMU.git
+QEMU_OFFICIAL_BRANCH   := main
+QEMU_FORK_URL          := https://github.com/FreshingAir/qemu-system-ia64.git
 
-# gzvm / gunyah 加速器补丁（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）
-ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.patch
-ACCEL_DESC          := gunyah/gzvm 加速器合并补丁
+# gzvm / gunyah 加速器（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）。
+# 源码已固化在 QEMU_OFFICIAL_URL（accel/gunyah、accel/gzvm、hw/arm/virt-gzvm.c、
+# hw/intc/arm_gicv3_{gunyah,gzvm}.c、target/arm/{gunyah,gzvm}.c 等），
+# 构建时只剩下面的 ACCEL_MESON_FLAGS 需要下发。补丁原件见
+# patches/qemu-v11.0.0-gunyah-gzvm-accel.patch（仅供追溯）。
 
-# AGL（Android Graphics Layer）显示后端补丁：gunyah/gzvm 加速的 aarch64 虚拟机
+# AGL（Android Graphics Layer）显示后端：gunyah/gzvm 加速的 aarch64 虚拟机
 # 必须把画面画到 App 自己的 Surface 上（-display agl），而独立 root 子进程拿不到
 # Surface，因此还需要配合进程内提权（见 RootUtils.grantRoot）。该后端依赖
-# epoxy/EGL，即 USE_GTK/USE_VIRGL 提供的 OpenGL 栈。同样只适用于官方 QEMU 树。
-AGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-agl-display.patch
+# epoxy/EGL，即 USE_GTK/USE_VIRGL 提供的 OpenGL 栈。源码固化同上
+# （ui/agl.c、ui/agl-input.c、include/ui/agl.h、qapi/ui.json 等）。
 AGL_MESON_FLAGS     := -Dagl=enabled
-AGL_APPLY           := yes
-AGL_DESC            := AGL 显示后端补丁
 
-# Android EGL 初始化补丁：把系统 libEGL 的 surfaceless GLES3 上下文接进
+# Android EGL 初始化：把系统 libEGL 的 surfaceless GLES3 上下文接进
 # ui/egl-helpers.c，供 USE_VIRGL=true（-Dopengl=enabled -Dvirglrenderer=enabled）
-# 时的 virtio-gpu-gl / virglrenderer 使用。仅适用于官方 QEMU 树
-# （IA-64 fork 关闭 VirGL/OpenGL，无需该补丁）。
-EGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-android-egl.patch
-EGL_APPLY           := yes
-EGL_DESC            := Android EGL 初始化补丁
+# 时的 virtio-gpu-gl / virglrenderer 使用。源码固化在 QEMU_OFFICIAL_URL
+# （IA-64 fork 关闭 VirGL/OpenGL，用不到这份改动）。补丁原件见
+# patches/qemu-v11.0.0-android-egl.patch（仅供追溯）。
 
-# SDL 显示方式（缩放模式）补丁：给 ui/sdl2-2d.c / ui/sdl2-gl.c 加上
+# SDL 显示方式（缩放模式）：给 ui/sdl2-2d.c / ui/sdl2-gl.c 加上
 # limbo_sdl_scale_mode（0=拉伸至全屏 1=等比缩放 2=1:1），由 Java 侧经
 # set_qemu_var() 下发，取值与 GTK 后端的 limbo_gtk_scale_mode 一致。
-# 这两个文件各自独立成一个补丁：ui/sdl2.c 的缩放改动与 VRR 改动落在同一处，
-# 已合并进下面的 SDL_DISPLAY_PATCH（合并后补丁的旧镜像就是干净的 QEMU 树，
-# 不再出现「两个补丁抢同一行、git apply --check 静默失败」的老问题）。
-SDL_SCALE_2D_PATCH  := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-scale-sdl2-2d.patch
-SDL_SCALE_2D_APPLY  := yes
-SDL_SCALE_2D_DESC   := SDL 显示方式（缩放模式）补丁 ui/sdl2-2d.c
-SDL_SCALE_GL_PATCH  := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-scale-sdl2-gl.patch
-SDL_SCALE_GL_APPLY  := yes
-SDL_SCALE_GL_DESC   := SDL 显示方式（缩放模式）补丁 ui/sdl2-gl.c
+# 源码固化在 QEMU_OFFICIAL_URL。补丁原件见
+# patches/qemu-v11.0.0-limbo-sdl-scale-sdl2-2d.patch / -sdl2-gl.patch（仅供追溯）。
 
-# SDL 显示补丁（ui/sdl2.c，缩放 + 可变刷新率一并）：加上 limbo_sdl_scale_mode
+# SDL 显示（ui/sdl2.c，缩放 + 可变刷新率一并）：limbo_sdl_scale_mode
 # 与 limbo_sdl_refresh_rate（0=关闭 >0=目标刷新率 Hz），由 Java 侧经
 # set_qemu_var() 下发。VRR 生效后 SDL 后端的 dcl->update_interval 严格按目标
 # 频率重算（1000/hz ms，不再有空闲降频到 30ms 的钳制），配合 Android 侧
 # Surface.setFrameRate() 让面板切到同一刷新率。
-SDL_DISPLAY_PATCH   := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-display.patch
-SDL_DISPLAY_APPLY   := yes
-SDL_DISPLAY_DESC    := SDL 显示补丁 ui/sdl2.c（缩放模式 + 可变刷新率）
+# 源码固化在 QEMU_OFFICIAL_URL。补丁原件见
+# patches/qemu-v11.0.0-limbo-sdl-display.patch（仅供追溯）。
 
-# GTK 可变刷新率（VRR）补丁：给 ui/gtk.c 加上 limbo_gtk_refresh_rate
+# GTK 可变刷新率（VRR）：ui/gtk.c 的 limbo_gtk_refresh_rate
 # （0=关闭 >0=目标刷新率 Hz），由 Java 侧经 set_qemu_var() 与 SDL 后端一起下发。
 # gd_update_monitor_refresh_rate() 在 GDK 报不出刷新率（Android 上常见为 0）时
 # 会用该值覆盖，并把 dcl->update_interval 严格按 1000/hz ms 设置（原先还被
-# MIN(..., GUI_REFRESH_INTERVAL_DEFAULT) 钳在 33Hz）。补丁针对已打完主补丁的
-# ui/gtk.c 生成，必须排在主补丁之后应用。
-GTK_VRR_PATCH       := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-gtk-vrr.patch
-GTK_VRR_APPLY       := yes
-GTK_VRR_DESC        := GTK 可变刷新率（VRR）补丁
+# MIN(..., GUI_REFRESH_INTERVAL_DEFAULT) 钳在 33Hz）。
+# 源码固化在 QEMU_OFFICIAL_URL。补丁原件见
+# patches/qemu-v11.0.0-limbo-gtk-vrr.patch（仅供追溯）。
 
-# venus（Vulkan over VirGL）诊断补丁：在 hw/display/virtio-gpu-virgl.c 的
+# venus（Vulkan over VirGL）诊断日志：hw/display/virtio-gpu-virgl.c 的
 # virgl_cmd_resource_create_blob() 里无条件打印一行 create_blob 的请求参数
 # （res / ctx_id / blob_mem / blob_flags / blob_id / size / nr_entries）。
 # 用途：客户机里 "venus 起不来"（vkmark/vkcube 报 vkCreateInstance failed
 # with ERROR_OUT_OF_HOST_MEMORY）时，QEMU 只会打印
 # "virgl blob create error: <errno>"，看不到它到底收到了什么参数；有这一行
 # 就能直接判断是哪个字段不被 virglrenderer 接受。
-# 只加日志、不改行为；定位完把 VIRGL_BLOB_LOG_APPLY 置空（或删掉本补丁）即可停用。
-VIRGL_BLOB_LOG_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-virgl-blob-log.patch
-VIRGL_BLOB_LOG_APPLY := yes
-VIRGL_BLOB_LOG_DESC  := venus blob 请求诊断日志补丁
-
-# 给 QEMU 树打补丁的通用宏，recipe 里用
-#     $(call PATCH_APPLY,PATCH 变量,PATCH 说明)
-# 调用（参数的逗号由 call 用来分隔，所以说明文字写进 *_DESC 变量、不要直接内联）。
+# 只加日志、不改行为。源码固化在 QEMU_OFFICIAL_URL；要停用就删掉那行打印并
+# 重新提交该仓库（补丁原件 patches/qemu-v11.0.0-virgl-blob-log.patch 仅供追溯）。
 #
-# 以前这里只写 `git apply --check ... 2>/dev/null && git apply ...`：补丁一旦因为
-# 上下文对不上而 --check 失败，整条命令静默变成空操作，功能就这么悄悄丢了（可变
-# 刷新率就是这样丢失的）。现在先看补丁是否已经打过（--reverse --check），
-# 已打过就跳过；既没打过又打不上则直接报错中断，不再静默跳过。
-define PATCH_APPLY
-p="$(1)"; desc="$(2)"; \
-if [ ! -f "$$p" ]; then echo "ERROR: 补丁缺失: $$p"; exit 1; fi; \
-if git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$$p" 2>/dev/null; then \
-	echo ">> 应用 $$desc"; \
-	git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$$p" || exit 1; \
-elif git -C "$(LIMBO_JNI_ROOT)/qemu" apply --reverse --check "$$p" 2>/dev/null; then \
-	echo ">> $$desc：已应用，跳过"; \
-else \
-	echo "ERROR: $$desc 无法应用（$$p）"; \
-	echo "       补丁与当前 QEMU 树不匹配：重新生成该补丁，或删掉 $(LIMBO_JNI_ROOT)/qemu 后重新 fetch。"; \
-	exit 1; \
-fi
-endef
+# 说明：以上补丁在 QEMU_OFFICIAL_URL 里的落地顺序就是下面变量的排列顺序
+# （主补丁 -> 加速器 -> AGL -> EGL -> SDL -> GTK VRR -> blob 日志），
+# 其中 GTK VRR 针对【已打完主补丁的】ui/gtk.c 生成，调换顺序会使补丁原件失效。
 
 # 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
 #  export BUILD_ACCEL=gunyah / gzvm / both / none 覆盖）
-# 映射成 config-qemu 里传给 ./configure 的 -Dgunyah/-Dgzvm meson 特性
+# 映射成 config-qemu 里传给 ./configure 的 -Dgunyah/-Dgzvm meson 特性。
+# 补丁已在 QEMU_OFFICIAL_URL 里打好，这里不再有对应的 *_APPLY 开关。
 ifeq ($(BUILD_ACCEL), none)
 ACCEL_MESON_FLAGS    :=
-ACCEL_APPLY          :=
 else ifeq ($(BUILD_ACCEL), gunyah)
 ACCEL_MESON_FLAGS    := -Dgunyah=enabled -Dgzvm=disabled
-ACCEL_APPLY          := yes
 else ifeq ($(BUILD_ACCEL), gzvm)
 ACCEL_MESON_FLAGS    := -Dgunyah=disabled -Dgzvm=enabled
-ACCEL_APPLY          := yes
 else
 ACCEL_MESON_FLAGS    := -Dgunyah=enabled -Dgzvm=enabled
-ACCEL_APPLY          := yes
 endif
 QEMU_FORK_BRANCH    := main
 # IA-64 fork 仍缺的 Android 适配（官方树的 qemu-v11.0.0.patch 已有、fork 未合入）：
@@ -938,16 +910,13 @@ else
 QEMU_USE_OFFICIAL := no
 endif
 
-# gzvm / gunyah 加速器、Android EGL 初始化、venus blob 诊断补丁仅适用于官方
-# QEMU 11.0.0 树：IA-64 fork 无对应 meson 选项，传入 -Dgunyah/-Dgzvm 会导致
-# "Unknown option" 配置失败，补丁也不应打到 fork 树上。
+# gzvm / gunyah 加速器与 Android EGL 初始化仅适用于官方 QEMU 11.0.0 树
+# （即 QEMU_OFFICIAL_URL 那份已打补丁的源码）：IA-64 fork 无对应 meson 选项，
+# 传入 -Dgunyah/-Dgzvm 会导致 "Unknown option" 配置失败。补丁不再就地应用，
+# 所以这里只需要清掉 meson 开关（AGL 的 -Dagl=enabled 同理清掉）。
 ifneq ($(QEMU_USE_OFFICIAL), yes)
 ACCEL_MESON_FLAGS    :=
-ACCEL_APPLY          :=
 AGL_MESON_FLAGS      :=
-AGL_APPLY            :=
-EGL_APPLY            :=
-VIRGL_BLOB_LOG_APPLY :=
 endif
 
 # VirtIO GPU GL (virtio-gpu-gl-pci): hw/display/meson.build only builds
@@ -1158,17 +1127,15 @@ fetch-sdl2:
 fetch-qemu:
 	@echo ">> fetch-qemu: BUILD_GUEST='$(BUILD_GUEST)' 使用官方?=$(QEMU_USE_OFFICIAL)"
 	@if [ "$(QEMU_USE_OFFICIAL)" = "yes" ]; then \
-		if [ ! -f "$(QEMU_OFFICIAL_MARK)" ]; then \
-			if [ ! -f "$(QEMU_OFFICIAL_PATCH)" ]; then \
-				echo "ERROR: $(QEMU_OFFICIAL_PATCH) 缺失，需 git add 提交后再构建"; exit 1; \
-			fi; \
-			echo ">> x86/arm guest: 下载官方 QEMU $(QEMU_OFFICIAL_TAG) + 应用 GTK4 补丁"; \
+		if [ ! -d "$(LIMBO_JNI_ROOT)/qemu/.git" ]; then \
+			echo ">> x86/arm guest: 克隆已打补丁的 QEMU 源码 $(QEMU_OFFICIAL_URL) ($(QEMU_OFFICIAL_BRANCH))"; \
+			echo ">>                （官方 v11.0.0 + Limbo 全部补丁，本 Makefile 不再应用补丁）"; \
 			rm -rf "$(LIMBO_JNI_ROOT)/qemu"; \
-			git clone --depth 1 --branch $(QEMU_OFFICIAL_TAG) --single-branch $(QEMU_OFFICIAL_URL) "$(LIMBO_JNI_ROOT)/qemu" && \
-			git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(QEMU_OFFICIAL_PATCH)" && \
-			touch "$(QEMU_OFFICIAL_MARK)"; \
+			git clone --depth 1 --branch $(QEMU_OFFICIAL_BRANCH) --single-branch $(QEMU_OFFICIAL_URL) "$(LIMBO_JNI_ROOT)/qemu"; \
+		else \
+			echo ">> 已打补丁的 QEMU 源码已存在，跳过"; \
 		fi; \
-		echo ">> official qemu 就绪（GTK4 补丁已应用）"; \
+		echo ">> official qemu 就绪（补丁已包含在源码里）"; \
 	else \
 		if [ ! -d "$(LIMBO_JNI_ROOT)/qemu/.git" ]; then \
 			echo ">> ia64 guest: 下载 IA-64 fork $(QEMU_FORK_BRANCH)"; \
@@ -1187,14 +1154,6 @@ fetch-qemu:
 			echo ">> qemu fork: copy_file_range 补丁已应用或无需应用"; \
 		fi; \
 	fi
-	$(if $(ACCEL_APPLY),@$(call PATCH_APPLY,$(ACCEL_PATCH),$(ACCEL_DESC)))
-	$(if $(AGL_APPLY),@$(call PATCH_APPLY,$(AGL_PATCH),$(AGL_DESC)))
-	$(if $(EGL_APPLY),@$(call PATCH_APPLY,$(EGL_PATCH),$(EGL_DESC)))
-	$(if $(SDL_SCALE_2D_APPLY),@$(call PATCH_APPLY,$(SDL_SCALE_2D_PATCH),$(SDL_SCALE_2D_DESC)))
-	$(if $(SDL_SCALE_GL_APPLY),@$(call PATCH_APPLY,$(SDL_SCALE_GL_PATCH),$(SDL_SCALE_GL_DESC)))
-	$(if $(SDL_DISPLAY_APPLY),@$(call PATCH_APPLY,$(SDL_DISPLAY_PATCH),$(SDL_DISPLAY_DESC)))
-	$(if $(GTK_VRR_APPLY),@$(call PATCH_APPLY,$(GTK_VRR_PATCH),$(GTK_VRR_DESC)))
-	$(if $(VIRGL_BLOB_LOG_APPLY),@$(call PATCH_APPLY,$(VIRGL_BLOB_LOG_PATCH),$(VIRGL_BLOB_LOG_DESC)))
 
 fetch-gtk4android:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \

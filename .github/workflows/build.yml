@@ -63,10 +63,12 @@ jobs:
         with:
           submodules: false
 
-      # 源码获取 / 补丁应用统一收进 jni/Makefile 的 fetch 目标（qemu/gtk4android
-      # 已取消 git submodule，全部由 `make fetch` 克隆）：
-      #   x86/arm 模拟架构  -> 下载官方 QEMU v11.0.0 + 应用 qemu-v11.0.0.patch
-      #   ia64              -> 下载 IA-64 fork（FreshingAir/qemu-system-ia64）
+      # 源码获取统一收进 jni/Makefile 的 fetch 目标（qemu/gtk4android 已取消 git
+      # submodule，全部由 `make fetch` 克隆）；QEMU 的补丁【不再在构建时应用】：
+      #   x86/arm 模拟架构  -> 克隆 SlugAir928437/QEMU（官方 v11.0.0 + Limbo 全部
+      #                        补丁已经打好的源码仓库）
+      #   ia64              -> 下载 IA-64 fork（FreshingAir/qemu-system-ia64），
+      #                        它自己的 Android 适配补丁仍由 fetch-qemu 应用
       #   gtk4android       -> 下载 SlugAir928437/gtk4android
       # 构建链被拆成下面 20 个独立步骤：fetch -> ndk -> 每个依赖各自的
       # config-X + X（libffi / glib / pixman / slirp / spice / gtk / virglrenderer，
@@ -124,7 +126,8 @@ jobs:
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
       # 依赖源码（glib/libffi/pixman/SDL2）与 QEMU/gtk4android 源码均已由
-      # 第 1 步 `make fetch` 下载并应用补丁，此处不再克隆。
+      # 第 1 步 `make fetch` 下载；QEMU 那份是【已打好补丁】的仓库，构建时不再
+      # 执行 git apply。
       - name: 缓存 meson wrap 下载 (pcre2 等)
         uses: actions/cache@v4
         with:
@@ -141,7 +144,7 @@ jobs:
           echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL} USE_EDK2=${USE_EDK2}"
           echo ">> NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
-      - name: 1/20 拉取源码并打补丁（make fetch）
+      - name: 1/20 拉取源码（make fetch）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail

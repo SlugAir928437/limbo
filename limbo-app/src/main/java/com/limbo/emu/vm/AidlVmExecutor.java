@@ -470,6 +470,24 @@ public class AidlVmExecutor extends MachineExecutor implements ServiceConnection
         }
     }
 
+    /** 静态转发：可变刷新率（VRR）目标频率。仅在跨进程隔离时才需要。 */
+    public static boolean forwardSdlRefreshRateHz(int hz) {
+        AidlVmExecutor instance = sInstance;
+        if (instance == null) {
+            return false;
+        }
+        IVmExecutorService svc = instance.service();
+        if (svc == null) {
+            return false;
+        }
+        try {
+            svc.setSdlRefreshRateHz(hz);
+            return true;
+        } catch (RemoteException e) {
+            return false;
+        }
+    }
+
     /** 静态转发：把 Surface 交给服务端的显示后端。 */
     public static boolean forwardSetSurface(Surface surface, float refreshRate) {
         AidlVmExecutor instance = sInstance;

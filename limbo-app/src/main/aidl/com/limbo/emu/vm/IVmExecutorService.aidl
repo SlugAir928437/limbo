@@ -110,6 +110,9 @@ interface IVmExecutorService {
     /** 设置 SDL 缩放模式（见 Config.SDL_SCALE_*）。 */
     void setSdlScaleMode(int mode);
 
+    /** 设置可变刷新率（VRR）目标频率（Hz），0 = 关闭。 */
+    void setSdlRefreshRateHz(int hz);
+
     /** AGL 后端：上报指针位置与按键掩码。 */
     void aglPointer(float x, float y, int buttons);
 

@@ -1,0 +1,36 @@
+--- a/ui/gtk.c
++++ b/ui/gtk.c
+@@ -696,6 +696,19 @@
+ 
+ #endif
+ 
++#ifdef __LIMBO__
++/*
++ * Variable refresh rate (VRR) target for the GTK display backend, in Hz
++ * (0 = disabled).  Set from the app UI by vm-executor-jni.c through
++ * set_qemu_var("limbo_gtk_refresh_rate").  When > 0 it overrides the
++ * refresh rate reported by the GDK monitor: on Android that one may be
++ * missing (0), and the panel rate the user picked in the app is the
++ * authoritative value anyway.  The symbol must stay dlsym-visible.
++ */
++__attribute__((visibility("default")))
++int limbo_gtk_refresh_rate = 0;
++#endif
++
+ void gd_update_monitor_refresh_rate(VirtualConsole *vc, GtkWidget *widget)
+ {
+     GdkSurface *surface = gd_widget_surface(widget);
+@@ -708,6 +721,13 @@
+     } else {
+         refresh_rate = 0;
+     }
++
++#ifdef __LIMBO__
++    /* VRR: an explicit target from the app wins over the GDK monitor rate. */
++    if (limbo_gtk_refresh_rate > 0) {
++        refresh_rate = limbo_gtk_refresh_rate * 1000; /* Hz -> mHz */
++    }
++#endif
+ 
+     gd_set_ui_refresh_rate(vc, refresh_rate);
+ 

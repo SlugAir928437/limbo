@@ -215,6 +215,19 @@ public class LimboSettingsManager extends PreferenceActivity {
         edit.apply();
     }
 
+    // SDL 可变刷新率（VRR）：0=关闭 -1=跟随屏幕 >0=目标频率(Hz)
+    public static int getSDLRefreshRate(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getInt("sdlRefreshRate", Config.SDL_REFRESH_OFF);
+    }
+
+    public static void setSDLRefreshRate(Context context, int value) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor edit = prefs.edit();
+        edit.putInt("sdlRefreshRate", value);
+        edit.apply();
+    }
+
     // VNC
     public static boolean getVNCEnablePassword(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);

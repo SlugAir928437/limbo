@@ -151,6 +151,15 @@ public class VmExecutorService extends Service {
         }
 
         @Override
+        public void setSdlRefreshRateHz(int hz) {
+            try {
+                VMExecutor.setSDLRefreshRateHz(hz);
+            } catch (Throwable t) {
+                Log.w(TAG, "setSDLRefreshRateHz(" + hz + ") failed: " + t);
+            }
+        }
+
+        @Override
         public void aglPointer(float x, float y, int buttons) {
             try {
                 AglDisplay.pointer(x, y, buttons);

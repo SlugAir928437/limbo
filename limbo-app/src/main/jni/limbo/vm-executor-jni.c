@@ -54,6 +54,14 @@ void * handle = 0;
  * 库再统一下发）；运行中调用则立刻通过 set_qemu_var() 生效。 */
 static int limbo_pending_sdl_scale_mode = -1;
 
+/* Limbo：显示后端的可变刷新率（VRR）目标频率（Hz），0=关闭，-1=尚未下发。
+ * 对应 QEMU 侧 SDL 的 ui/sdl2.c::limbo_sdl_refresh_rate 与 GTK 的
+ * ui/gtk.c::limbo_gtk_refresh_rate（见 patches/qemu-v11.0.0-limbo-sdl-vrr.patch
+ * 与 qemu-v11.0.0-limbo-gtk-vrr.patch）；AGL 后端的刷新率则随 Surface 一起下发
+ * （见 AglDisplay.setSurface）。与缩放模式一样允许在 VM 启动前调用：那时 qemu
+ * 库还没 dlopen，先缓存，等 start() 加载完库再统一下发。 */
+static int limbo_pending_sdl_refresh_rate = -1;
+
 void * loadLib(const char* lib_filename, const char * lib_path_str) {
 
 	char res_msg[MAX_STRING_LEN];
@@ -334,6 +342,24 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLScaleMode(
     }
     set_qemu_var(env, NULL, "limbo_sdl_scale_mode", limbo_pending_sdl_scale_mode);
     set_qemu_var(env, NULL, "limbo_gtk_scale_mode", limbo_pending_sdl_scale_mode);
+}
+
+/*
+ * 设置显示后端的可变刷新率（VRR）目标频率（Hz）：0 = 关闭，>0 = 目标频率。
+ * SDL 与 GTK 后端各有一个同名全局（limbo_sdl_refresh_rate /
+ * limbo_gtk_refresh_rate），这里一并下发；AGL 后端走 AglDisplay.setSurface()。
+ * 静态 native（VMExecutor.setSDLRefreshRateHz），因此第二个参数是 jclass。
+ */
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateHz(
+		JNIEnv* env, jclass clazz, jint jhz) {
+    limbo_pending_sdl_refresh_rate = (int) jhz;
+
+    if (handle == NULL) {
+        /* qemu 库还没加载（VM 尚未启动）：缓存，等 start() 里再下发 */
+        return;
+    }
+    set_qemu_var(env, NULL, "limbo_sdl_refresh_rate", limbo_pending_sdl_refresh_rate);
+    set_qemu_var(env, NULL, "limbo_gtk_refresh_rate", limbo_pending_sdl_refresh_rate);
 }
 
 
@@ -1293,6 +1319,17 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
     if (limbo_pending_sdl_scale_mode >= 0) {
         set_qemu_var(env, thiz, "limbo_sdl_scale_mode", limbo_pending_sdl_scale_mode);
         set_qemu_var(env, thiz, "limbo_gtk_scale_mode", limbo_pending_sdl_scale_mode);
+    }
+
+    /* 把 Java 侧选择的可变刷新率（VRR）目标频率下发给 QEMU 的显示后端：
+     * 0 = 关闭，>0 = 目标刷新率（Hz）。SDL 与 GTK 后端各有一个同名全局
+     * （limbo_sdl_refresh_rate / limbo_gtk_refresh_rate），符号由
+     * patches/qemu-v11.0.0-limbo-sdl-vrr.patch 与 ...-gtk-vrr.patch 分别在
+     * ui/sdl2.c / ui/gtk.c 里导出；没打补丁的构建没有对应符号，
+     * set_qemu_var() 会打条日志后忽略，不影响启动。 */
+    if (limbo_pending_sdl_refresh_rate >= 0) {
+        set_qemu_var(env, thiz, "limbo_sdl_refresh_rate", limbo_pending_sdl_refresh_rate);
+        set_qemu_var(env, thiz, "limbo_gtk_refresh_rate", limbo_pending_sdl_refresh_rate);
     }
 
 	// Use correct function signatures to avoid undefined behavior on ARM64

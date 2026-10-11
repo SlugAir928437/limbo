@@ -48,6 +48,9 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
     MouseState mouseState = new MouseState();
     private boolean firstTouch = false;
 
+    /** 当前生效的目标刷新率（Hz），0 表示未设置（交给系统/后端）。 */
+    private int frameRateHz = 0;
+
     private final LimboSDLActivity sdlActivity;
 
     public LimboSDLSurface(LimboSDLActivity sdlActivity, Context context) {
@@ -63,6 +66,7 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
     public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
         Log.d(TAG, "surfaceChanged: " + width + "x" + height);
         super.surfaceChanged(holder, format, width, height);
+        sdlActivity.applyRefreshRateNow();
         refreshSurfaceView();
     }
 
@@ -71,7 +75,22 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
         Log.d(TAG, "surfaceCreated");
         super.surfaceCreated(holder);
         setWillNotDraw(false);
+        sdlActivity.applyRefreshRateNow();
         refreshSurfaceView();
+    }
+
+    /**
+     * 应用可变刷新率：把目标频率（Hz）交给系统，由系统决定是否切换面板刷新率。
+     *
+     * @param hz 目标刷新率（Hz），0 表示关闭
+     */
+    public void applyFrameRate(int hz) {
+        frameRateHz = hz;
+        applyFrameRateToSurface();
+    }
+
+    private void applyFrameRateToSurface() {
+        RefreshRateUtils.applyToSurface(getHolder().getSurface(), frameRateHz);
     }
 
     public void refreshSurfaceView() {

@@ -1,0 +1,68 @@
+--- a/ui/sdl2.c
++++ b/ui/sdl2.c
+@@ -67,6 +67,44 @@
+ #define SDL_HINT_RENDER_BATCHING "SDL_RENDER_BATCHING"
+ #endif
+ 
++#ifdef __LIMBO__
++/*
++ * Limbo：SDL 显示后端的可变刷新率（VRR）。
++ * 由 Java 侧经 set_qemu_var("limbo_sdl_refresh_rate") 下发，单位为 Hz：
++ *   0  = 关闭，沿用 QEMU 原有的忙(10ms)/闲(30ms)节奏；
++ *   >0 = 目标刷新率（Hz，如 120），输出节奏与 Android 面板的
++ *        Surface.setFrameRate() 保持一致。
++ * 必须保持为 dlsym 可见的非 static 符号：Java 侧用 dlsym 找它。
++ */
++__attribute__((visibility("default")))
++int limbo_sdl_refresh_rate = 0;
++
++/*
++ * 把 VRR 目标频率换算成 dcl->update_interval（单位 ms，
++ * 与 GUI_REFRESH_INTERVAL_DEFAULT 一致）。
++ *   idle = true ：空闲，不低于 QEMU 原空闲节奏（30ms），避免无谓耗电；
++ *   idle = false：忙，按目标频率输出（如 120Hz -> 8ms）。
++ * limbo_sdl_refresh_rate <= 0 时回落到 QEMU 原有常量。
++ */
++static int limbo_sdl_refresh_interval(bool idle)
++{
++    int interval;
++
++    if (limbo_sdl_refresh_rate <= 0) {
++        return idle ? GUI_REFRESH_INTERVAL_DEFAULT
++                     : SDL2_REFRESH_INTERVAL_BUSY;
++    }
++    interval = 1000 / limbo_sdl_refresh_rate;
++    if (interval < 1) {
++        interval = 1;
++    }
++    if (idle && interval < GUI_REFRESH_INTERVAL_DEFAULT) {
++        interval = GUI_REFRESH_INTERVAL_DEFAULT;
++    }
++    return interval;
++}
++#endif
++
+ static void sdl_update_caption(struct sdl2_console *scon);
+ 
+ static struct sdl2_console *get_scon_from_window(uint32_t window_id)
+@@ -719,12 +757,20 @@
+         if (scon->idle_counter < SDL2_MAX_IDLE_COUNT) {
+             scon->idle_counter++;
+             if (scon->idle_counter >= SDL2_MAX_IDLE_COUNT) {
++#ifdef __LIMBO__
++                scon->dcl.update_interval = limbo_sdl_refresh_interval(true);
++#else
+                 scon->dcl.update_interval = GUI_REFRESH_INTERVAL_DEFAULT;
++#endif
+             }
+         }
+     } else {
+         scon->idle_counter = 0;
++#ifdef __LIMBO__
++        scon->dcl.update_interval = limbo_sdl_refresh_interval(false);
++#else
+         scon->dcl.update_interval = SDL2_REFRESH_INTERVAL_BUSY;
++#endif
+     }
+ }
+ 

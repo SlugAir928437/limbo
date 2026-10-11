@@ -149,6 +149,7 @@ public class LimboAglActivity extends AppCompatActivity
         if (machine == null || machine.getSoundCard() == null) {
             menu.removeItem(R.id.itemVolume);
         }
+        RefreshRateUtils.syncMenu(menu, LimboSettingsManager.getSDLRefreshRate(this));
         popup.setOnMenuItemClickListener(this::onMenuItemSelected);
         popup.show();
     }
@@ -177,8 +178,25 @@ public class LimboAglActivity extends AppCompatActivity
             LimboActivityCommon.promptPause(this, viewListener);
         } else if (id == R.id.itemViewLog) {
             Logger.viewLimboLog(this);
+        } else {
+            // 可变刷新率子菜单：关闭 / 跟随屏幕 / 60 / 90 / 120 Hz
+            Integer refreshMode = RefreshRateUtils.menuMode(id);
+            if (refreshMode != null) {
+                applyRefreshRateMode(refreshMode);
+            }
         }
         return true;
+    }
+
+    /**
+     * 应用可变刷新率：AGL 后端没有独立的刷新率来源，直接把目标频率随 Surface
+     * 下发给它（VmDisplay.setSurface），面板侧由 Surface.setFrameRate() 决定。
+     */
+    private void applyRefreshRateMode(int mode) {
+        LimboSettingsManager.setSDLRefreshRate(this, mode);
+        if (surface != null) {
+            surface.applyRefreshRate();
+        }
     }
 
     private void toggleKeyboard() {
@@ -474,6 +492,7 @@ public class LimboAglActivity extends AppCompatActivity
         private int pointerButtons;
         private float pointerX = Float.NaN;
         private float pointerY = Float.NaN;
+        private Surface currentSurface;
 
         AglSurfaceView(Context context) {
             super(context);
@@ -500,12 +519,14 @@ public class LimboAglActivity extends AppCompatActivity
         public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
             Surface s = holder.getSurface();
             if (s != null && s.isValid()) {
-                VmDisplay.setSurface(s, displayRefreshRate());
+                currentSurface = s;
+                applyRefreshRate();
             }
         }
 
         @Override
         public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+            currentSurface = null;
             releaseSurface();
         }
 
@@ -515,8 +536,26 @@ public class LimboAglActivity extends AppCompatActivity
             VmDisplay.setSurface(null, 0);
         }
 
+        /**
+         * 按当前「可变刷新率」设置下发给 AGL 后端（QEMU）与 Android 面板。
+         *
+         * <p>AGL 后端没有自己的刷新率来源，只能收到 Java 侧传入的值，所以关闭
+         * （目标频率 0）时退回屏幕当前刷新率，保持与之前一致的「跟随面板」行为。
+         */
+        void applyRefreshRate() {
+            if (currentSurface == null || !currentSurface.isValid()) {
+                return;
+            }
+            int mode = LimboSettingsManager.getSDLRefreshRate(getContext());
+            int hz = RefreshRateUtils.resolveHz(getDisplay(), mode);
+            RefreshRateUtils.applyToSurface(currentSurface, hz);
+            // 后端期望 mHz，0 表示「沿用已应用的节奏」，因此关闭时用屏幕刷新率兜底
+            int backendHz = hz > 0 ? hz : Math.round(displayHz());
+            VmDisplay.setSurface(currentSurface, backendHz);
+        }
+
         /** 屏幕当前刷新率（Hz），取不到时返回 0 由后端决定。 */
-        private float displayRefreshRate() {
+        private float displayHz() {
             if (getDisplay() == null || getDisplay().getMode() == null) {
                 return 0f;
             }

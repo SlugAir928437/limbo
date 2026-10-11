@@ -42,6 +42,9 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeRefreshScreen(
 JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setvncrefreshrate(
 		JNIEnv* env, jobject thiz, jint jvalue);
 
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateHz(
+		JNIEnv* env, jclass clazz, jint jhz);
+
 JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateDefault(
 		JNIEnv* env, jobject thiz, jint jvalue);
         

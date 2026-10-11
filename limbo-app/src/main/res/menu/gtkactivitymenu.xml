@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Top toolbar menu for LimboGtkActivity. Mirrors the SDL runtime menu
-    (sdlactivitymenu.xml) minus the entries that only make sense for the
-    SDL display backend (mouse modes, refresh rate, key mapper, etc.).
+    Top toolbar menu for LimboGtkActivity / LimboAglActivity. Mirrors the SDL
+    runtime menu (sdlactivitymenu.xml) minus the entries that only make sense
+    for the SDL display backend (mouse modes, key mapper, ...).
 -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -50,5 +50,34 @@
         android:id="@+id/itemHelp"
         android:icon="@drawable/help"
         android:title="@string/help" />
+
+    <!-- 可变刷新率（VRR），由 LimboGtkActivity / LimboAglActivity 处理：
+         -1=跟随屏幕 0=关闭 >0=目标频率(Hz) -->
+    <item
+        android:id="@+id/itemRefreshRate"
+        android:icon="@android:drawable/ic_menu_recent_history"
+        android:title="@string/refresh_rate">
+        <menu>
+            <group
+                android:id="@+id/groupRefreshRate"
+                android:checkableBehavior="single">
+                <item
+                    android:id="@+id/itemRefreshOff"
+                    android:title="@string/refresh_rate_off" />
+                <item
+                    android:id="@+id/itemRefreshAuto"
+                    android:title="@string/refresh_rate_auto" />
+                <item
+                    android:id="@+id/itemRefresh60"
+                    android:title="@string/refresh_rate_60" />
+                <item
+                    android:id="@+id/itemRefresh90"
+                    android:title="@string/refresh_rate_90" />
+                <item
+                    android:id="@+id/itemRefresh120"
+                    android:title="@string/refresh_rate_120" />
+            </group>
+        </menu>
+    </item>
 
 </menu>

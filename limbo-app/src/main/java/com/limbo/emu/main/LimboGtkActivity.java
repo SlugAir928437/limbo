@@ -8,8 +8,10 @@ import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Display;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.Surface;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
@@ -24,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat;
 import com.limbo.emu.R;
 import com.limbo.emu.files.FileUtils;
 import com.limbo.emu.jni.LimboGtk;
+import com.limbo.emu.jni.VMExecutor;
 import com.limbo.emu.log.Logger;
 import com.limbo.emu.machine.Machine;
 import com.limbo.emu.machine.MachineAction;
@@ -53,6 +56,10 @@ import org.gtk.android.ToplevelActivity;
 public class LimboGtkActivity extends ToplevelActivity
         implements MachineController.OnMachineStatusChangeListener {
     private static final String TAG = "LimboGtkActivity";
+
+    /** GTK 顶层 Surface 由 QEMU 建窗口后才出现，这里用有界重试等它就绪。 */
+    private static final int REFRESH_RATE_RETRY_MS = 500;
+    private static final int MAX_REFRESH_RATE_RETRIES = 30;
 
     private ViewListener viewListener;
     private AudioManager am;
@@ -104,6 +111,71 @@ public class LimboGtkActivity extends ToplevelActivity
                 Log.e(TAG, "Failed to start VM: " + ex.getMessage());
             }
         }).start();
+
+        // 恢复上次选择的可变刷新率（native 侧先缓存，等 QEMU 库加载后下发）；
+        // GTK 顶层 Surface 稍后才由 QEMU 创建，等它就绪再把频率交给面板。
+        applyRefreshRateWhenSurfaceReady();
+    }
+
+    // ============================================================
+    // 可变刷新率（VRR）
+    // ============================================================
+
+    /**
+     * 把当前设置解析成目标频率（Hz）并下发：QEMU 侧改 limbo_gtk_refresh_rate
+     * （GTK 后端据此重算 dcl->update_interval），面板侧由 Surface.setFrameRate() 决定。
+     */
+    private void applyRefreshRateNow() {
+        int hz = resolveRefreshRateHz();
+        VMExecutor.setSdlRefreshRateHz(hz);
+        RefreshRateUtils.applyToSurface(gtkSurface(), hz);
+    }
+
+    private void applyRefreshRateMode(int mode) {
+        LimboSettingsManager.setSDLRefreshRate(this, mode);
+        applyRefreshRateNow();
+    }
+
+    private int resolveRefreshRateHz() {
+        return RefreshRateUtils.resolveHz(currentDisplay(),
+                LimboSettingsManager.getSDLRefreshRate(this));
+    }
+
+    private Display currentDisplay() {
+        ToplevelView view = getGtkView();
+        return view != null ? view.getDisplay() : getWindow().getDecorView().getDisplay();
+    }
+
+    /** GTK 顶层 Surface，QEMU 创建窗口前为 null。 */
+    private Surface gtkSurface() {
+        ToplevelView view = getGtkView();
+        if (view == null || view.toplevel == null) {
+            return null;
+        }
+        return view.toplevel.getHolder().getSurface();
+    }
+
+    /**
+     * 有界轮询等待 GTK 顶层 Surface 就绪后再应用刷新率（Surface 由 QEMU 建窗口时
+     * 才创建，onCreate 阶段通常还没好）。
+     */
+    private void applyRefreshRateWhenSurfaceReady() {
+        final ToplevelView anchor = getGtkView();
+        if (anchor == null) {
+            return;
+        }
+        anchor.postDelayed(new Runnable() {
+            private int attempts;
+
+            @Override
+            public void run() {
+                if (gtkSurface() != null || attempts++ >= MAX_REFRESH_RATE_RETRIES) {
+                    applyRefreshRateNow();
+                    return;
+                }
+                anchor.postDelayed(this, REFRESH_RATE_RETRY_MS);
+            }
+        }, REFRESH_RATE_RETRY_MS);
     }
 
     private void showVMMenu() {
@@ -115,6 +187,7 @@ public class LimboGtkActivity extends ToplevelActivity
         if (machine == null || machine.getSoundCard() == null) {
             menu.removeItem(R.id.itemVolume);
         }
+        RefreshRateUtils.syncMenu(menu, LimboSettingsManager.getSDLRefreshRate(this));
         popup.setOnMenuItemClickListener(this::onMenuItemSelected);
         popup.show();
     }
@@ -143,6 +216,11 @@ public class LimboGtkActivity extends ToplevelActivity
             LimboActivityCommon.promptPause(this, viewListener);
         } else if (id == R.id.itemViewLog) {
             Logger.viewLimboLog(this);
+        } else {
+            Integer refreshMode = RefreshRateUtils.menuMode(id);
+            if (refreshMode != null) {
+                applyRefreshRateMode(refreshMode);
+            }
         }
         return true;
     }

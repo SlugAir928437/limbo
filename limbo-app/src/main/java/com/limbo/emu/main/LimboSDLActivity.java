@@ -36,6 +36,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
@@ -266,6 +267,12 @@ public class LimboSDLActivity extends SDLActivity
             applyScaleMode(Config.SDL_SCALE_ASPECT);
         } else if (item.getItemId() == R.id.itemOneToOne) {
             applyScaleMode(Config.SDL_SCALE_NATIVE);
+        } else {
+            // 可变刷新率子菜单：关闭 / 跟随屏幕 / 60 / 90 / 120 Hz
+            Integer refreshMode = RefreshRateUtils.menuMode(item.getItemId());
+            if (refreshMode != null) {
+                applyRefreshRateMode(refreshMode);
+            }
         }
 
         invalidateOptionsMenu();
@@ -295,6 +302,50 @@ public class LimboSDLActivity extends SDLActivity
     private void applyScaleMode(int mode) {
         LimboSettingsManager.setSDLScaleMode(this, mode);
         VMExecutor.setSdlScaleMode(mode);
+    }
+
+    /**
+     * 同步「可变刷新率」子菜单的选中项，对应当前生效的模式。
+     */
+    private void syncRefreshRateMenu(Menu menu) {
+        RefreshRateUtils.syncMenu(menu, LimboSettingsManager.getSDLRefreshRate(this));
+    }
+
+    /**
+     * 应用可变刷新率：记住用户的选择后立即下发。运行中切换立刻生效
+     * （面板侧由 Surface.setFrameRate() 决定是否切刷新率，QEMU 侧调整输出节奏）。
+     */
+    private void applyRefreshRateMode(int mode) {
+        LimboSettingsManager.setSDLRefreshRate(this, mode);
+        applyRefreshRateNow();
+    }
+
+    /**
+     * 把当前设置解析成目标频率（Hz）并下发到 Android 面板与 QEMU 显示后端。
+     * Surface 就绪（或屏幕发生变化）时也会调用，用于「跟随屏幕」模式重新取当前刷新率。
+     */
+    public void applyRefreshRateNow() {
+        int hz = resolveRefreshRateHz(LimboSettingsManager.getSDLRefreshRate(this));
+        VMExecutor.setSdlRefreshRateHz(hz);
+        if (mSurface instanceof LimboSDLSurface) {
+            ((LimboSDLSurface) mSurface).applyFrameRate(hz);
+        }
+    }
+
+    /**
+     * 把用户选择的模式解析成目标刷新率（Hz）。
+     *
+     * @param mode 0=关闭 -1=跟随屏幕 &gt;0=固定频率(Hz)
+     * @return 目标刷新率（Hz），0 表示不限制（交给系统/后端）
+     */
+    private int resolveRefreshRateHz(int mode) {
+        // XXX: SDLActivity.mSurface 的声明类型 SDLSurface 是包内可见的，不能直接
+        // 调它的方法，必须先转成我们自己的 LimboSDLSurface。
+        Display display = null;
+        if (mSurface instanceof LimboSDLSurface) {
+            display = ((LimboSDLSurface) mSurface).getDisplay();
+        }
+        return RefreshRateUtils.resolveHz(display, mode);
     }
 
     private void promptSendText() {
@@ -450,6 +501,9 @@ public class LimboSDLActivity extends SDLActivity
         // 显示方式（缩放模式）子菜单：同步当前选中项
         syncScaleModeMenu(menu);
 
+        // 可变刷新率子菜单：同步当前选中项
+        syncRefreshRateMenu(menu);
+
         // Remove external mouse for now
         menu.removeItem(menu.findItem(R.id.itemExternalMouse).getItemId());
 
@@ -546,6 +600,10 @@ public class LimboSDLActivity extends SDLActivity
         // 恢复上次选择的显示方式（缩放模式）。native 侧会先缓存，
         // 等 QEMU 库加载完成（start()）再下发给显示后端。
         VMExecutor.setSdlScaleMode(LimboSettingsManager.getSDLScaleMode(this));
+        // 恢复上次选择的可变刷新率；「跟随屏幕」模式此时可能还取不到刷新率，
+        // 等 Surface 就绪（surfaceCreated/surfaceChanged）会再解析一次。
+        VMExecutor.setSdlRefreshRateHz(
+                resolveRefreshRateHz(LimboSettingsManager.getSDLRefreshRate(this)));
     }
 
     private void setupScreen() {
@@ -793,6 +851,7 @@ public class LimboSDLActivity extends SDLActivity
             menu.removeItem(R.id.itemVolume);
         }
         syncScaleModeMenu(menu);
+        syncRefreshRateMenu(menu);
         popup.setOnMenuItemClickListener(this::onOptionsItemSelected);
         popup.show();
     }

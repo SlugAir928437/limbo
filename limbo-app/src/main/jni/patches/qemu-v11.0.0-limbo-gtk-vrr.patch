@@ -1,21 +1,10 @@
 diff --git a/ui/gtk.c b/ui/gtk.c
 --- a/ui/gtk.c
 +++ b/ui/gtk.c
-@@ -712,10 +712,51 @@
-     gd_set_ui_refresh_rate(vc, refresh_rate);
+@@ -696,6 +696,45 @@
  
-     /* T = 1 / f = 1 [s*Hz] / f = 1000*1000 [ms*mHz] / f */
-+#ifdef __LIMBO__
-+    /* VRR：用户显式选定了目标频率时，输出节奏严格按它走（见下面的注释）。 */
-+    vc->gfx.dcl.update_interval = limbo_gtk_refresh_interval(refresh_rate);
-+#else
-     vc->gfx.dcl.update_interval = refresh_rate ?
-         MIN(1000 * 1000 / refresh_rate, GUI_REFRESH_INTERVAL_DEFAULT) :
-         GUI_REFRESH_INTERVAL_DEFAULT;
--}
-+#endif
-+}
-+
+ #endif
+ 
 +#ifdef __LIMBO__
 +/*
 + * Variable refresh rate (VRR) target for the GTK display backend, in Hz
@@ -37,6 +26,9 @@ diff --git a/ui/gtk.c b/ui/gtk.c
 + * pace (GUI_REFRESH_INTERVAL_DEFAULT) here would clamp the console timer to
 + * 33Hz and pin the picture at ~30-40 fps whatever the user selected, which is
 + * exactly the "stuck at 40Hz" symptom.
++ *
++ * Must stay defined *before* gd_update_monitor_refresh_rate(): it is called
++ * unconditionally from there, and C has no implicit declarations.
 + */
 +static int limbo_gtk_refresh_interval(int refresh_rate_mhz)
 +{
@@ -51,6 +43,22 @@ diff --git a/ui/gtk.c b/ui/gtk.c
 +    return MAX(1, 1000 * 1000 / mhz);
 +}
 +#endif
++
+ void gd_update_monitor_refresh_rate(VirtualConsole *vc, GtkWidget *widget)
+ {
+     GdkSurface *surface = gd_widget_surface(widget);
+@@ -712,9 +751,14 @@
+     gd_set_ui_refresh_rate(vc, refresh_rate);
+ 
+     /* T = 1 / f = 1 [s*Hz] / f = 1000*1000 [ms*mHz] / f */
++#ifdef __LIMBO__
++    /* VRR：用户显式选定了目标频率时，输出节奏严格按它走（见上面的定义）。 */
++    vc->gfx.dcl.update_interval = limbo_gtk_refresh_interval(refresh_rate);
++#else
+     vc->gfx.dcl.update_interval = refresh_rate ?
+         MIN(1000 * 1000 / refresh_rate, GUI_REFRESH_INTERVAL_DEFAULT) :
+         GUI_REFRESH_INTERVAL_DEFAULT;
++#endif
+ }
  
  #ifdef __LIMBO__
- /*

@@ -46,7 +46,7 @@ SDL_BUSY_OLD = """        scon->idle_counter = 0;
 
 GTK_NEW = """    /* T = 1 / f = 1 [s*Hz] / f = 1000*1000 [ms*mHz] / f */
 #ifdef __LIMBO__
-    /* VRR：用户显式选定了目标频率时，输出节奏严格按它走（见下面的注释）。 */
+    /* VRR：用户显式选定了目标频率时，输出节奏严格按它走（见上面的定义）。 */
     vc->gfx.dcl.update_interval = limbo_gtk_refresh_interval(refresh_rate);
 #else
     vc->gfx.dcl.update_interval = refresh_rate ?

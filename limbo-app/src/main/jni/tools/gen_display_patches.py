@@ -89,15 +89,17 @@ def helper_block_preimage(text):
 
 def gtk_preimage(gtk):
     """Workspace ui/gtk.c minus the VRR global/helper and its update_interval use."""
+    # 1) the VRR global + helper (defined before gd_update_monitor_refresh_rate)
     opener = "#ifdef __LIMBO__\n/*\n * Variable refresh rate (VRR) target"
     start = gtk.index(opener)
     end = gtk.index("    return MAX(1, 1000 * 1000 / mhz);\n}\n#endif\n\n", start) + \
         len("    return MAX(1, 1000 * 1000 / mhz);\n}\n#endif\n\n")
     out = gtk[:start] + gtk[end:]
 
+    # 2) its use inside gd_update_monitor_refresh_rate()
     new_body = """    /* T = 1 / f = 1 [s*Hz] / f = 1000*1000 [ms*mHz] / f */
 #ifdef __LIMBO__
-    /* VRR：用户显式选定了目标频率时，输出节奏严格按它走（见下面的注释）。 */
+    /* VRR：用户显式选定了目标频率时，输出节奏严格按它走（见上面的定义）。 */
     vc->gfx.dcl.update_interval = limbo_gtk_refresh_interval(refresh_rate);
 #else
     vc->gfx.dcl.update_interval = refresh_rate ?

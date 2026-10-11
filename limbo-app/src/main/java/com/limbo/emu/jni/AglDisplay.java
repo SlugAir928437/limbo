@@ -19,20 +19,16 @@ Copyright (C) Max Kastanas 2012
 package com.limbo.emu.jni;
 
 import android.content.Context;
-import android.os.Build;
 import android.util.Log;
 import android.view.Surface;
 
+import com.limbo.emu.files.FileUtils;
 import com.limbo.emu.main.ArchManager;
 import com.limbo.emu.main.LimboApplication;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 /**
  * AGL（Android Graphics Layer）显示通道的入口。
@@ -108,37 +104,16 @@ public final class AglDisplay {
             return true;
         }
         String name = ArchManager.libName(LimboApplication.arch);
-
-        // 1. 安装时解压（extractNativeLibs=true）的老设备：引擎是 nativeLibraryDir
-        //    下的普通文件。
-        String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
-        if (nativeLibDir != null) {
-            File lib = new File(nativeLibDir, name);
-            if (lib.isFile()) {
-                try (InputStream in = new FileInputStream(lib)) {
-                    return containsAglSymbol(in);
-                }
-            }
-        }
-
-        // 2. 现代 Android 默认不解压：引擎在 APK 内的 lib/<abi>/<name>，直接流式扫。
-        String abi = null;
-        String[] abis = Build.SUPPORTED_ABIS;
-        if (abis != null && abis.length > 0) {
-            abi = abis[0];
-        }
-        if (abi == null || abi.isEmpty()) {
-            abi = "arm64-v8a";
-        }
-        try (ZipFile apk = new ZipFile(context.getApplicationInfo().sourceDir)) {
-            ZipEntry entry = apk.getEntry("lib/" + abi + "/" + name);
-            if (entry == null) {
+        // 必须和虚拟机真正加载的那一份是同一个文件：FileUtils#openNativeLib 用的是
+        // 与 getNativeLibSearchDir 完全相同的优先级（优先 APK 自己那份，只有 APK 里
+        // 是压缩存放时才退回 nativeLibraryDir），否则会探出“说没有、其实有”这类
+        // 误导性结论。
+        try (InputStream in = FileUtils.openNativeLib(context, name)) {
+            if (in == null) {
                 // 引擎压根不在包里（该架构不可选）：这里不下结论。
                 return true;
             }
-            try (InputStream in = apk.getInputStream(entry)) {
-                return containsAglSymbol(in);
-            }
+            return containsAglSymbol(in);
         }
     }
 

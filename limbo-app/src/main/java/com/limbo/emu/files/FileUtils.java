@@ -46,6 +46,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -56,6 +57,8 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * @author dev
@@ -70,29 +73,134 @@ public class FileUtils {
     }
 
     /**
-     * 返回可以从中查找/加载 native 库的路径。
+     * 返回当前应该从哪个位置加载 native 库（包括 QEMU 引擎）。
      *
-     * APK 关闭了安装时解压（extractNativeLibs=false / useLegacyPackaging=false）时，
-     * nativeLibraryDir 指向的目录本身还是会被建出来，但里面是空的；此时回退到
-     * APK 内部的 lib/&lt;abi&gt; 路径，链接器可直接从 APK 内 mmap 加载，形如
-     * /data/app/.../base.apk!/lib/arm64-v8a 。
+     * <p>优先用 APK 自己那份：现代打包（extractNativeLibs=false /
+     * useLegacyPackaging=false）会把库以未压缩、页对齐的形式留在 APK 里，链接器
+     * 可以直接 mmap 加载，形如
+     * {@code /data/app/.../base.apk!/lib/arm64-v8a}。反过来，
+     * {@code nativeLibraryDir}（{@code /data/app/.../lib/&lt;abi&gt;}）只保证“目录”
+     * 存在：新装时它是空的；但**旧版本安装时解压出来的库可能还留在那个目录里**，
+     * 一旦优先使用它，就会拿旧引擎去跑新代码 —— 例如旧引擎没有 AGL 后端，App 一
+     * 发 {@code -display agl}，QEMU 就以
+     * {@code Parameter 'type' does not accept value 'agl'} 退出。
+     *
+     * <p>只有 APK 里的库是压缩存放（老式 extractNativeLibs=true，链接器无法从 APK
+     * 内加载）时，才退回 {@code nativeLibraryDir}。
      */
     public static String getNativeLibSearchDir(Context context) {
+        if (context == null) {
+            return null;
+        }
+        String apkLibDir = apkLibDir(context);
+        if (apkLibDir != null && apkShipsUncompressedLibs(context)) {
+            Log.d(TAG, "Using native libs from the APK: " + apkLibDir);
+            return apkLibDir;
+        }
         String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
-        if (nativeLibDir != null && hasExtractedNativeLibs(nativeLibDir)) {
+        if (nativeLibDir != null) {
+            Log.d(TAG, "Using native libs from " + nativeLibDir
+                    + (hasExtractedNativeLibs(nativeLibDir) ? "" : " (no extracted .so there yet)"));
             return nativeLibDir;
         }
-        String abi = null;
-        String[] supportedAbis = Build.SUPPORTED_ABIS;
-        if (supportedAbis != null && supportedAbis.length > 0) {
-            abi = supportedAbis[0];
-        }
-        if (abi == null || abi.isEmpty()) {
-            abi = "arm64-v8a";
-        }
-        String apkLibDir = context.getApplicationInfo().sourceDir + "!/lib/" + abi;
-        Log.d(TAG, "No extracted native libs in " + nativeLibDir + ", using " + apkLibDir);
         return apkLibDir;
+    }
+
+    /** APK 内的 native 库目录，形如 {@code /data/app/.../base.apk!/lib/arm64-v8a}。 */
+    public static String apkLibDir(Context context) {
+        if (context == null) {
+            return null;
+        }
+        return context.getApplicationInfo().sourceDir + "!/lib/" + currentAbi();
+    }
+
+    /** 设备首选 ABI（与 APK 打包时用的 abiFilters 一致）。 */
+    @NonNull
+    private static String currentAbi() {
+        String[] supportedAbis = Build.SUPPORTED_ABIS;
+        if (supportedAbis != null && supportedAbis.length > 0 && supportedAbis[0] != null
+                && !supportedAbis[0].isEmpty()) {
+            return supportedAbis[0];
+        }
+        return "arm64-v8a";
+    }
+
+    /** 缓存：APK 内是否带未压缩的 native 库（按 APK 路径缓存，换 APK 会重新判一次）。 */
+    private static String uncompressedLibsApk;
+    private static boolean uncompressedLibs;
+
+    /**
+     * APK 的 {@code lib/<abi>/} 下有没有 **未压缩（STORED）** 的 .so。
+     *
+     * <p>现代打包（extractNativeLibs=false）就是这种：库未压缩、页对齐，可以直接
+     * 从 APK 里 mmap 加载。老式打包（extractNativeLibs=true）则会把库压缩进 APK，
+     * 这时只能靠安装时解压出来的副本，必须退回 {@code nativeLibraryDir}。
+     */
+    private static synchronized boolean apkShipsUncompressedLibs(Context context) {
+        String apkPath = context.getApplicationInfo().sourceDir;
+        if (apkPath == null) {
+            return false;
+        }
+        if (apkPath.equals(uncompressedLibsApk)) {
+            return uncompressedLibs;
+        }
+        boolean result = false;
+        String prefix = "lib/" + currentAbi() + "/";
+        try (ZipFile apk = new ZipFile(apkPath)) {
+            java.util.Enumeration<? extends ZipEntry> entries = apk.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                String name = entry.getName();
+                if (name != null && name.startsWith(prefix) && name.endsWith(".so")) {
+                    // 只看一个条目即可：同一个 APK 的打包方式是一致的。
+                    result = entry.getMethod() == ZipEntry.STORED;
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not inspect native libs in " + apkPath, t);
+        }
+        uncompressedLibsApk = apkPath;
+        uncompressedLibs = result;
+        return result;
+    }
+
+    /**
+     * 按 {@link #getNativeLibSearchDir} 的同一优先级打开某个 native 库。
+     *
+     * <p>AGL 后端探测要用它：探测的必须是虚拟机真正会加载的那一份，否则会出现
+     * “探测说没有、其实有”或者反过来的误导。返回 null 表示两边都没有该库
+     * （调用方自行决定怎么处理）；调用方负责关闭返回的流。
+     */
+    public static InputStream openNativeLib(Context context, String libName) throws IOException {
+        String searchDir = getNativeLibSearchDir(context);
+        if (searchDir == null || libName == null) {
+            return null;
+        }
+        int bang = searchDir.indexOf("!/");
+        if (bang < 0) {
+            File file = new File(searchDir, libName);
+            return file.isFile() ? new FileInputStream(file) : null;
+        }
+        String apkPath = searchDir.substring(0, bang);
+        String entryName = searchDir.substring(bang + 2) + "/" + libName;
+        final ZipFile apk = new ZipFile(apkPath);
+        ZipEntry entry = apk.getEntry(entryName);
+        if (entry == null) {
+            apk.close();
+            return null;
+        }
+        // 流的生命周期由调用方控制：关流时连带把 ZipFile 关掉。
+        return new FilterInputStream(apk.getInputStream(entry)) {
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                } finally {
+                    apk.close();
+                }
+            }
+        };
     }
 
     /**

@@ -774,6 +774,7 @@ QEMU_FORK_URL       := https://github.com/FreshingAir/qemu-system-ia64.git
 
 # gzvm / gunyah 加速器补丁（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）
 ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.patch
+ACCEL_DESC          := gunyah/gzvm 加速器合并补丁
 
 # AGL（Android Graphics Layer）显示后端补丁：gunyah/gzvm 加速的 aarch64 虚拟机
 # 必须把画面画到 App 自己的 Surface 上（-display agl），而独立 root 子进程拿不到
@@ -782,6 +783,7 @@ ACCEL_PATCH         := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gunyah-gzvm-accel.
 AGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-agl-display.patch
 AGL_MESON_FLAGS     := -Dagl=enabled
 AGL_APPLY           := yes
+AGL_DESC            := AGL 显示后端补丁
 
 # Android EGL 初始化补丁：把系统 libEGL 的 surfaceless GLES3 上下文接进
 # ui/egl-helpers.c，供 USE_VIRGL=true（-Dopengl=enabled -Dvirglrenderer=enabled）
@@ -789,6 +791,7 @@ AGL_APPLY           := yes
 # （IA-64 fork 关闭 VirGL/OpenGL，无需该补丁）。
 EGL_PATCH           := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-android-egl.patch
 EGL_APPLY           := yes
+EGL_DESC            := Android EGL 初始化补丁
 
 # SDL 显示方式（缩放模式）补丁：给 ui/sdl2-2d.c / ui/sdl2-gl.c 加上
 # limbo_sdl_scale_mode（0=拉伸至全屏 1=等比缩放 2=1:1），由 Java 侧经
@@ -910,8 +913,26 @@ LIBJPEG_TGZ          := https://github.com/libjpeg-turbo/libjpeg-turbo/releases/
 SPICE_PROTO_TGZ      := https://www.spice-space.org/download/releases/spice-protocol-0.14.5.tar.xz
 SPICE_TGZ            := https://www.spice-space.org/download/releases/spice-0.15.2.tar.bz2
 
-# x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用 IA-64 fork
-ifneq ($(filter x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu,$(BUILD_GUEST)),)
+# x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用 IA-64 fork。
+#
+# 注意 BUILD_GUEST 是【逗号分隔】的客户机列表：CI 的官方架构任务把
+# x86_64/i386/arm/aarch64 合并成一条构建（见 .github/workflows/build.yml 的
+# matrix.guest），make all 的 EXPORT_GUEST_ALL 同理。而 $(filter)/$(filter-out)
+# 只按【空白】分词，把逗号列表原样交给它时整个列表会被当成一个词、永远匹配不上，
+# 官方架构的构建于是被误判成 IA-64 fork —— 下面那个 ifneq 会立刻把 AGL /
+# Android EGL / gunyah-gzvm 的补丁与配置开关（含 -Dagl=enabled）一起清掉，打出来
+# 的 libqemu-system-*.so 里就没有 AGL 后端（只留下 QEMU_AGL_CHECK 的一句告警，
+# AGL 显示永远起不来）。所以先按逗号拆成空白分隔，再判断列表里是否全是官方架构。
+QEMU_OFFICIAL_GUESTS := x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu
+QEMU_COMMA := ,
+QEMU_EMPTY :=
+QEMU_SPACE := $(QEMU_EMPTY) $(QEMU_EMPTY)
+QEMU_GUESTS := $(subst $(QEMU_COMMA),$(QEMU_SPACE),$(strip $(BUILD_GUEST)))
+
+ifeq ($(strip $(QEMU_GUESTS)),)
+# 未指定 BUILD_GUEST：沿用旧行为（IA-64 fork）
+QEMU_USE_OFFICIAL := no
+else ifeq ($(filter-out $(QEMU_OFFICIAL_GUESTS),$(QEMU_GUESTS)),)
 QEMU_USE_OFFICIAL := yes
 else
 QEMU_USE_OFFICIAL := no
@@ -1166,9 +1187,9 @@ fetch-qemu:
 			echo ">> qemu fork: copy_file_range 补丁已应用或无需应用"; \
 		fi; \
 	fi
-	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
-	$(if $(AGL_APPLY),@if [ -f "$(AGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(AGL_PATCH)" 2>/dev/null; then echo ">> 应用 AGL 显示后端补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(AGL_PATCH)"; fi;)
-	$(if $(EGL_APPLY),@if [ -f "$(EGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(EGL_PATCH)" 2>/dev/null; then echo ">> 应用 Android EGL 初始化补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(EGL_PATCH)"; fi;)
+	$(if $(ACCEL_APPLY),@$(call PATCH_APPLY,$(ACCEL_PATCH),$(ACCEL_DESC)))
+	$(if $(AGL_APPLY),@$(call PATCH_APPLY,$(AGL_PATCH),$(AGL_DESC)))
+	$(if $(EGL_APPLY),@$(call PATCH_APPLY,$(EGL_PATCH),$(EGL_DESC)))
 	$(if $(SDL_SCALE_2D_APPLY),@$(call PATCH_APPLY,$(SDL_SCALE_2D_PATCH),$(SDL_SCALE_2D_DESC)))
 	$(if $(SDL_SCALE_GL_APPLY),@$(call PATCH_APPLY,$(SDL_SCALE_GL_PATCH),$(SDL_SCALE_GL_DESC)))
 	$(if $(SDL_DISPLAY_APPLY),@$(call PATCH_APPLY,$(SDL_DISPLAY_PATCH),$(SDL_DISPLAY_DESC)))

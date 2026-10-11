@@ -95,32 +95,50 @@ INSTALL_PIXMAN_LIBS=cp -Lf pixman/build-android-$(APP_ABI)/pixman/libpixman-1.so
 # 直接以
 #   libqemu-system-aarch64.so: -display agl: Parameter 'type' does not accept value 'agl'
 # 退出，AGL 显示（gunyah/gzvm 客户机唯一的显示方式）永远起不来。
-# 判定标准是该客户机是否出现在本次的 $(BUILD_GUEST)（即 QEMU --target-list）里：
-# 不在其中的旧引擎一律跳过，并从 obj/local 与 jniLibs 里一并删除（否则
-# INSTALL_LIBS 的 `cp *.so` 与后续打包照样会把它带上）；确实需要它，就把它加进
-# BUILD_GUEST 重新构建。
-INSTALL_QEMU_LIBS=for target in x86_64 i386 arm aarch64 ia64; do \
-	if echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
-		if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
-			cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
-				"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \
-			case $$target in arm|aarch64) \
-				if ! grep -q agl_set_window "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; then \
-					echo ">> WARNING: libqemu-system-$$target.so 里没有 AGL 显示后端（缺 agl_set_window）。"; \
-					echo ">>          App 的 Config.enableAgl 仍会提供 AGL 显示并发 -display agl，QEMU 会拒绝它："; \
-					echo ">>          'Parameter type does not accept value agl'。请确认 AGL 补丁已应用、configure 带了 -Dagl=enabled，"; \
-					echo ">>          且 USE_GTK=true 提供的 epoxy 被找到（opengl 未找到时 AGL 不会编进去）。"; \
-				fi ;; \
-			esac; \
-		else \
-			echo ">> ERROR: BUILD_GUEST 含 $$target-softmmu，但没构建出 $(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target（QEMU 构建失败或未执行）"; \
-		fi; \
-	else \
+# 判定标准是该客户机是否出现在本次的 $(BUILD_GUEST)（即 QEMU --target-list）里。
+# 所以这里拆成两件事，并且【两个调用点都要走一遍】：
+#   PRUNE_QEMU_LIBS - 把不在 BUILD_GUEST 里的旧引擎从 obj/local 与 jniLibs 删掉
+#                     （否则 INSTALL_LIBS 的 `cp *.so`、gradle 打包会原样带上）；
+#   QEMU_AGL_CHECK  - 即将打包的 arm/aarch64 引擎里必须真的有 AGL 后端（AGL 补丁
+#                     + -Dagl=enabled），缺了就在构建日志里点名告警。
+# 调用点：_build-qemu（刚构建完、复制引擎之后）与 install-common（把 obj/local
+# 同步进 jniLibs、即进 APK 之前，只跑 `make install` 时也会执行）。
+QEMU_TARGETS := x86_64 i386 arm aarch64 ia64
+
+PRUNE_QEMU_LIBS=for target in $(QEMU_TARGETS); do \
+	if ! echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
 		rm -f "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so" \
 			"$(LIMBO_APP_LIBS)/jniLibs/$(APP_ABI_DIR)/libqemu-system-$$target.so"; \
 		echo ">> 跳过旧引擎 libqemu-system-$$target.so：$$target 不在本次 BUILD_GUEST=$(BUILD_GUEST) 里"; \
 		echo ">>   它来自上一次构建，可能缺少本次新增的功能（例如 AGL 显示后端 -display agl 会被 QEMU 拒绝），"; \
 		echo ">>   已从 obj/local 与 jniLibs 移除；确实需要它就把 $$target-softmmu 加进 BUILD_GUEST 重新构建。"; \
+	fi; \
+done
+
+# $(1) 是要体检的目录：obj/local/<abi>（刚复制好）或 jniLibs/<abi>（即将打包）。
+define QEMU_AGL_CHECK
+for target in arm aarch64; do \
+	if echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
+		lib="$(1)/libqemu-system-$$target.so"; \
+		if [ -f "$$lib" ] && ! grep -q agl_set_window "$$lib"; then \
+			echo ">> WARNING: $$lib 里没有 AGL 显示后端（缺 agl_set_window）。"; \
+			echo ">>          App 的 Config.enableAgl 会提供 AGL 显示并发 -display agl，QEMU 只会以"; \
+			echo ">>          'Parameter type does not accept value agl' 拒绝它（虚拟机起不来）。"; \
+			echo ">>          请确认 AGL 补丁已应用、configure 带上了 -Dagl=enabled，且 USE_GTK=true 提供的"; \
+			echo ">>          epoxy 被找到（opengl 没找到时 AGL 不会编进去），或者重新构建这个引擎。"; \
+		fi; \
+	fi; \
+done
+endef
+
+INSTALL_QEMU_LIBS=for target in $(QEMU_TARGETS); do \
+	if echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
+		if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
+			cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
+				"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \
+		else \
+			echo ">> ERROR: BUILD_GUEST 含 $$target-softmmu，但没构建出 $(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target（QEMU 构建失败或未执行）"; \
+		fi; \
 	fi; \
 done
 
@@ -655,7 +673,9 @@ deps: ndk glib pixman slirp $(SPICE_DEPS_TARGET) $(if $(USE_GTK),gtk)
 
 _build-qemu: ndk 
 	make _qemu
+	$(PRUNE_QEMU_LIBS)
 	$(INSTALL_QEMU_LIBS)
+	$(call QEMU_AGL_CHECK,$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI))
 	$(INSTALL_LIBS)
 	$(RENAME_TUNCTL)
 	$(RENAME_PARPROUTED)
@@ -703,7 +723,9 @@ clean-symbols:
 
 install-common:
 	$(CREATE_LIBSDIR)
+	$(PRUNE_QEMU_LIBS)
 	$(INSTALL_LIBS)
+	$(call QEMU_AGL_CHECK,$(LIMBO_APP_LIBS)/jniLibs/$(APP_ABI_DIR))
 	$(STRIP_LIBS)
 	$(COLLECT_SYMBOLS)
 
@@ -774,6 +796,22 @@ EGL_APPLY           := yes
 # 只改 sdl2*，不依赖主补丁的上下文，因此单独成一个补丁文件。
 SDL_SCALE_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-scale.patch
 SDL_SCALE_APPLY     := yes
+
+# SDL 可变刷新率（VRR）补丁：给 ui/sdl2.c 加上 limbo_sdl_refresh_rate
+# （0=关闭 >0=目标刷新率 Hz），由 Java 侧经 set_qemu_var() 下发。开启后 SDL
+# 后端的忙/闲刷新间隔按目标频率重算（忙时 1000/hz ms，闲时不低于 30ms），配合
+# Android 侧 Surface.setFrameRate() 让面板切到同一刷新率。与缩放模式补丁改动
+# 的区域不重叠，两者可叠加应用。
+SDL_VRR_PATCH       := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-vrr.patch
+SDL_VRR_APPLY       := yes
+
+# GTK 可变刷新率（VRR）补丁：给 ui/gtk.c 加上 limbo_gtk_refresh_rate
+# （0=关闭 >0=目标刷新率 Hz），由 Java 侧经 set_qemu_var() 与 SDL 后端一起下发。
+# gd_update_monitor_refresh_rate() 在 GDK 报不出刷新率（Android 上常见为 0）时
+# 会用该值覆盖，进而把 dcl->update_interval 调到 1000/hz ms。补丁针对已打完主补丁
+# 的 ui/gtk.c 生成，必须排在主补丁之后应用。
+GTK_VRR_PATCH       := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-gtk-vrr.patch
+GTK_VRR_APPLY       := yes
 
 # venus（Vulkan over VirGL）诊断补丁：在 hw/display/virtio-gpu-virgl.c 的
 # virgl_cmd_resource_create_blob() 里无条件打印一行 create_blob 的请求参数
@@ -1099,6 +1137,8 @@ fetch-qemu:
 	$(if $(AGL_APPLY),@if [ -f "$(AGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(AGL_PATCH)" 2>/dev/null; then echo ">> 应用 AGL 显示后端补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(AGL_PATCH)"; fi;)
 	$(if $(EGL_APPLY),@if [ -f "$(EGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(EGL_PATCH)" 2>/dev/null; then echo ">> 应用 Android EGL 初始化补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(EGL_PATCH)"; fi;)
 	$(if $(SDL_SCALE_APPLY),@if [ -f "$(SDL_SCALE_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(SDL_SCALE_PATCH)" 2>/dev/null; then echo ">> 应用 SDL 显示方式（缩放模式）补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(SDL_SCALE_PATCH)"; fi;)
+	$(if $(SDL_VRR_APPLY),@if [ -f "$(SDL_VRR_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(SDL_VRR_PATCH)" 2>/dev/null; then echo ">> 应用 SDL 可变刷新率（VRR）补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(SDL_VRR_PATCH)"; fi;)
+	$(if $(GTK_VRR_APPLY),@if [ -f "$(GTK_VRR_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(GTK_VRR_PATCH)" 2>/dev/null; then echo ">> 应用 GTK 可变刷新率（VRR）补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(GTK_VRR_PATCH)"; fi;)
 	$(if $(VIRGL_BLOB_LOG_APPLY),@if [ -f "$(VIRGL_BLOB_LOG_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(VIRGL_BLOB_LOG_PATCH)" 2>/dev/null; then echo ">> 应用 venus blob 请求诊断日志补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(VIRGL_BLOB_LOG_PATCH)"; fi;)
 
 fetch-gtk4android:

@@ -235,6 +235,38 @@ public class VMExecutor extends MachineExecutor {
     }
 
     /**
+     * 设置显示后端的可变刷新率（VRR）目标频率：0 = 关闭（后端沿用自身节奏），
+     * 大于 0 表示目标刷新率（Hz），与 Android 面板的
+     * {@code Surface.setFrameRate()} 取同一数值。
+     *
+     * <p>SDL 与 GTK 后端分别对应 QEMU 侧 ui/sdl2.c 的 limbo_sdl_refresh_rate 与
+     * ui/gtk.c 的 limbo_gtk_refresh_rate；AGL 后端由
+     * {@code AglDisplay.setSurface()} 随 Surface 一起收到刷新率（mHz）。
+     *
+     * <p>声明成 static，方便在拿到 VMExecutor 实例之前就设定；值会缓存，
+     * 等 QEMU 库加载后由 start() 下发，运行中再次调用则立即生效。
+     */
+    public static native void setSDLRefreshRateHz(int hz);
+
+    /**
+     * setSDLRefreshRateHz() 的带保护版本：native 库还没加载（或构建里没带该符号）时
+     * 只记日志，不抛出 UnsatisfiedLinkError。
+     */
+    public static void setSdlRefreshRateHz(int hz) {
+        // 跨进程隔离时原生库加载在服务进程里，本进程直接调用会因为库未加载而失败，
+        // 必须把设置通过 AIDL 转发给服务端。
+        if (Config.enableAidlVm && Config.vmProcessIsolated
+                && AidlVmExecutor.forwardSdlRefreshRateHz(hz)) {
+            return;
+        }
+        try {
+            setSDLRefreshRateHz(hz);
+        } catch (Throwable t) {
+            Log.w(TAG, "setSdlRefreshRateHz(" + hz + ") 失败: " + t);
+        }
+    }
+
+    /**
      * 以 QEMU 格式打印参数，便于调试。
      *
      * @param params 参数数组
@@ -1378,6 +1410,24 @@ public class VMExecutor extends MachineExecutor {
 
             String[] params = prepareParams(LimboApplication.getInstance());
             printParams(params);
+
+            // AGL 显示要求引擎真的编进了 AGL 后端（AGL 补丁 + -Dagl=enabled）：
+            // 引擎里没有 agl_set_window 时 `-display agl` 会被 QEMU 当成非法显示
+            // 类型当场拒绝
+            //   libqemu-system-*.so: -display agl: Parameter 'type' does not accept value 'agl'
+            // 于是虚拟机连启动都做不到（画面还没起来就退出了）。在进入任何启动
+            // 路径【之前】把参数退回无画面：-display none，并把只有在有 OpenGL
+            // 后端时才能 realize 的 virtio-gpu-gl 一起降级（复用 root 子进程那套
+            // headlessParams），同时把原因和出路告诉用户。AGL 相关的 root 判定
+            // （isAglDisplay）不受影响，gunyah/gzvm 照旧要求进程内提权。
+            if (isAglDisplay() && !AglDisplay.isBackendPresent()) {
+                Log.w(TAG, "AGL display requested but " + getQemuLibrary()
+                        + " has no AGL backend (agl_set_window missing);"
+                        + " falling back to a headless display");
+                ToastUtils.toastLong(LimboApplication.getInstance(),
+                        LimboApplication.getInstance().getString(R.string.agl_backend_missing));
+                params = headlessParams(params);
+            }
 
             // gunyah/gzvm 会打开 /dev/gunyah 或 /dev/gzvm，在目标设备上
             // 这是 root-only 的：除非当前进程已经是 root，

@@ -24,6 +24,12 @@
     <string name="zoom_out">缩小</string>
     <string name="one_to_one">原始分辨率 (1:1)</string>
     <string name="scaling">显示方式</string>
+    <string name="refresh_rate">可变刷新率</string>
+    <string name="refresh_rate_off">关闭</string>
+    <string name="refresh_rate_auto">跟随屏幕</string>
+    <string name="refresh_rate_60">60 Hz</string>
+    <string name="refresh_rate_90">90 Hz</string>
+    <string name="refresh_rate_120">120 Hz</string>
     <string name="save_state">暂停虚拟机</string>
     <string name="showkbd_label">键盘</string>
     <string name="drives">驱动器</string>
@@ -303,6 +309,7 @@
     <string name="root_vm_already_running">虚拟机已在 root 进程中运行</string>
     <string name="root_vm_exited_unexpectedly">以 root 进程运行的虚拟机异常退出</string>
     <string name="agl_root_fallback">KernelSU 未授予 root，AGL 显示无法在本进程内运行虚拟机，已回退到无画面的独立 root 子进程。请把显示方式改为 VNC，或在 KernelSU 中为本应用授予 root 权限。</string>
+    <string name="agl_backend_missing">当前 QEMU 引擎没有编入 AGL 显示后端，AGL 显示无法使用。已回退到无画面启动：请把显示方式改为 VNC（或 SDL），或用带 AGL 补丁、-Dagl=enabled 的配置重新构建这个 QEMU 引擎。</string>
     <string name="label_disable_hpet">禁用 HPET</string>
     <string name="label_disable_tsc">禁用 TSC</string>
     <string name="label_disable_acpi">禁用 ACPI</string>

@@ -23,6 +23,12 @@
     <string name="zoom_out">Zoom Out</string>
     <string name="one_to_one">Native (1:1)</string>
     <string name="scaling">Display Mode</string>
+    <string name="refresh_rate">Variable Refresh Rate</string>
+    <string name="refresh_rate_off">Off</string>
+    <string name="refresh_rate_auto">Follow Display</string>
+    <string name="refresh_rate_60">60 Hz</string>
+    <string name="refresh_rate_90">90 Hz</string>
+    <string name="refresh_rate_120">120 Hz</string>
     <string name="save_state">Pause VM</string>
     <string name="showkbd_label">Keyboard</string>
     <string name="drives">Drives</string>
@@ -305,6 +311,7 @@
     <string name="root_vm_already_running">The VM is already running in a root process</string>
     <string name="root_vm_exited_unexpectedly">The VM running in the root process exited unexpectedly</string>
     <string name="agl_root_fallback">KernelSU did not grant root, so the AGL display cannot run the VM in this process. The VM was started in a separate root process without a display: switch the display to VNC, or grant root to this app in KernelSU.</string>
+    <string name="agl_backend_missing">This QEMU engine was built without the AGL display backend, so the AGL display cannot be used. The VM was started without a display: switch the display to VNC (or SDL), or rebuild the QEMU engine with the AGL patch and -Dagl=enabled.</string>
     <string name="label_disable_hpet">Disable HPET</string>
     <string name="label_disable_tsc">Disable TSC</string>
     <string name="label_disable_acpi">Disable ACPI</string>

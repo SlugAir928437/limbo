@@ -18,7 +18,21 @@ Copyright (C) Max Kastanas 2012
  */
 package com.limbo.emu.jni;
 
+import android.content.Context;
+import android.os.Build;
+import android.util.Log;
 import android.view.Surface;
+
+import com.limbo.emu.main.ArchManager;
+import com.limbo.emu.main.LimboApplication;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * AGL（Android Graphics Layer）显示通道的入口。
@@ -39,6 +53,124 @@ import android.view.Surface;
  */
 public final class AglDisplay {
     private AglDisplay() {
+    }
+
+    private static final String TAG = "AglDisplay";
+
+    /**
+     * AGL 后端的入口符号名。
+     *
+     * <p>发到用户手上的引擎都会被 strip，导出符号表（.dynstr）之外的东西都不剩，
+     * 所以只要还能在引擎文件里搜到这个名字，就说明 dlsym("agl_set_window") 拿得
+     * 到，AGL 后端确实被编进去了。
+     */
+    private static final byte[] AGL_SYMBOL =
+            "agl_set_window".getBytes(StandardCharsets.US_ASCII);
+
+    /** 探测结果缓存（null = 还没探过）。 */
+    private static volatile Boolean backendPresent;
+
+    /**
+     * 当前安装包里的那份 QEMU 引擎是否带 AGL 显示后端。
+     *
+     * <p>QEMU 只在构建时开了 AGL（AGL 补丁 + <code>-Dagl=enabled</code>）才会把
+     * <code>agl</code> 收进 qapi 的 DisplayType，也才会编出并导出
+     * <code>agl_set_window</code>。引擎里没有这个符号时发 <code>-display agl</code>，
+     * QEMU 会把它当成非法显示类型，直接以
+     * <pre>libqemu-system-aarch64.so: -display agl: Parameter 'type' does not accept value 'agl'</pre>
+     * 退出——画面还没起来，虚拟机已经没了。所以 {@link
+     * com.limbo.emu.jni.VMExecutor} 在拼参数前先问这里，缺后端就退回无画面并把
+     * 原因告诉用户。
+     *
+     * <p>结果会缓存；探测本身失败（读不到文件、IO 异常）时返回 true，即保持既有
+     * 行为、让 QEMU 自己去报错，而不是把用户挡在 AGL 之外。
+     */
+    public static boolean isBackendPresent() {
+        Boolean cached = backendPresent;
+        if (cached != null) {
+            return cached;
+        }
+        boolean present;
+        try {
+            present = probeBackend();
+        } catch (Throwable t) {
+            Log.w(TAG, "AGL backend probe failed, assuming it is present", t);
+            present = true;
+        }
+        backendPresent = present;
+        return present;
+    }
+
+    /** 到引擎文件里找 AGL 的入口符号；找不到（或引擎不在包里）时按“没有”/“别下结论”处理。 */
+    private static boolean probeBackend() throws IOException {
+        Context context = LimboApplication.getInstance();
+        if (context == null) {
+            return true;
+        }
+        String name = ArchManager.libName(LimboApplication.arch);
+
+        // 1. 安装时解压（extractNativeLibs=true）的老设备：引擎是 nativeLibraryDir
+        //    下的普通文件。
+        String nativeLibDir = context.getApplicationInfo().nativeLibraryDir;
+        if (nativeLibDir != null) {
+            File lib = new File(nativeLibDir, name);
+            if (lib.isFile()) {
+                try (InputStream in = new FileInputStream(lib)) {
+                    return containsAglSymbol(in);
+                }
+            }
+        }
+
+        // 2. 现代 Android 默认不解压：引擎在 APK 内的 lib/<abi>/<name>，直接流式扫。
+        String abi = null;
+        String[] abis = Build.SUPPORTED_ABIS;
+        if (abis != null && abis.length > 0) {
+            abi = abis[0];
+        }
+        if (abi == null || abi.isEmpty()) {
+            abi = "arm64-v8a";
+        }
+        try (ZipFile apk = new ZipFile(context.getApplicationInfo().sourceDir)) {
+            ZipEntry entry = apk.getEntry("lib/" + abi + "/" + name);
+            if (entry == null) {
+                // 引擎压根不在包里（该架构不可选）：这里不下结论。
+                return true;
+            }
+            try (InputStream in = apk.getInputStream(entry)) {
+                return containsAglSymbol(in);
+            }
+        }
+    }
+
+    /** 流式扫描，找 {@link #AGL_SYMBOL}（模式很短，按首字节过滤后再逐字节比对）。 */
+    private static boolean containsAglSymbol(InputStream in) throws IOException {
+        byte[] buf = new byte[64 * 1024];
+        int carry = 0;
+        while (true) {
+            int read = in.read(buf, carry, buf.length - carry);
+            if (read <= 0) {
+                return false;
+            }
+            int len = carry + read;
+            for (int i = 0; i + AGL_SYMBOL.length <= len; i++) {
+                if (buf[i] != AGL_SYMBOL[0]) {
+                    continue;
+                }
+                boolean hit = true;
+                for (int j = 1; j < AGL_SYMBOL.length; j++) {
+                    if (buf[i + j] != AGL_SYMBOL[j]) {
+                        hit = false;
+                        break;
+                    }
+                }
+                if (hit) {
+                    return true;
+                }
+            }
+            // 把块尾的 carry 个字节挪到下一块开头，避免符号跨块时漏判。
+            carry = AGL_SYMBOL.length - 1;
+            System.arraycopy(buf, len - carry, buf, 0, carry);
+        }
     }
 
     /**

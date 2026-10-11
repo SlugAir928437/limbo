@@ -40,6 +40,16 @@ public class Config {
     public static final int SDL_SCALE_ASPECT = 1;
     /** 原始分辨率 1:1：按客户机原始像素居中显示，放不下就裁剪 */
     public static final int SDL_SCALE_NATIVE = 2;
+
+    // SDL 可变刷新率（VRR），取值与 QEMU 侧 limbo_sdl_refresh_rate 一致
+    // （见 patches/qemu-v11.0.0-limbo-sdl-vrr.patch）
+    /** 关闭：保持 QEMU 原有的忙/闲刷新节奏 */
+    public static final int SDL_REFRESH_OFF = 0;
+    /** 跟随屏幕：按当前显示模式的刷新率作为目标频率 */
+    public static final int SDL_REFRESH_AUTO = -1;
+    /** 可变刷新率可选的固定目标频率（Hz） */
+    public static final int[] SDL_REFRESH_RATES = {60, 90, 120};
+
     public static final int SETTINGS_RETURN_CODE = 1000;
 
     public static final int SDL_REQUEST_CODE = 1007;
@@ -162,6 +172,9 @@ public class Config {
     // Layer) display backend (meson option -Dagl=enabled, needs epoxy/EGL).
     // AGL renders the guest into an Android Surface owned by the app, which is
     // how the gunyah/gzvm accelerated aarch64 VMs are displayed.
+    // 引擎里究竟有没有这个后端，App 运行期还会用 AglDisplay#isBackendPresent
+    // 再确认一次：没有的话改用无画面启动，而不是让 QEMU 以
+    // "Parameter 'type' does not accept value 'agl'" 退出。
     public static boolean enableAgl = true;
     public static String storagedir = null;
     public static boolean loadNativeLibsEarly = false;

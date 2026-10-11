@@ -37,6 +37,16 @@ import com.limbo.emu.R;
  * 后端处理（SDL 的 limbo_sdl_refresh_rate、GTK 的 limbo_gtk_refresh_rate，以及 AGL
  * 后端本就支持的 refresh_rate），三者都由
  * {@link com.limbo.emu.jni.VMExecutor#setSdlRefreshRateHz(int)} 统一下发。
+ *
+ * <p>两端必须同时生效，缺一个就会「选了高刷却固定在 40Hz」：
+ * <ul>
+ *   <li>QEMU 侧：一旦显式选定了频率，dcl-&gt;update_interval 就严格按 1000/hz ms
+ *       走，不能再回落到 30ms 的空闲节奏（gui_update() 取所有 listener 里最小的
+ *       那一个，一次回落就把控制台定时器压到 33Hz）；</li>
+ *   <li>面板侧：{@link #applyToSurface} 用 CHANGE_FRAME_RATE_ALWAYS 请求切换，
+ *       且「跟随屏幕」取的是面板<b>支持的最高</b>刷新率（见 {@link #maxSupportedHz}），
+ *       而不是 LTPO 面板空闲时正处的 40Hz 档。</li>
+ * </ul>
  */
 public final class RefreshRateUtils {
     private static final String TAG = "RefreshRateUtils";
@@ -58,14 +68,47 @@ public final class RefreshRateUtils {
         if (mode > 0) {
             return mode;
         }
-        // 跟随屏幕：取当前显示模式的刷新率
-        float hz = 0f;
+        // 跟随屏幕：用面板支持的最高刷新率，而不是可能正处于 40Hz 空闲档的当前模式
+        return maxSupportedHz(display);
+    }
+
+    /**
+     * 「跟随屏幕」模式下真正要用的目标频率：屏幕支持的最高刷新率。
+     *
+     * <p>不能直接拿 {@link Display#getMode()}（当前模式）：LTPO 面板在无输入时会
+     * 主动降到 40Hz 甚至 30Hz，于是当前模式报的就是 40Hz —— 这时「跟随屏幕」
+     * 反而把面板钉在 40Hz 上（用户看到的就是「选了高刷却固定在 40Hz」）。
+     * {@link Display#getSupportedModes()} 里取最高的一档才是面板的真实能力，
+     * 系统仍会按 Surface.setFrameRate() 的请求挑选最接近的实际模式。
+     *
+     * @param display 当前屏幕，可为 null（拿不到时退化为当前模式，再退化为 0）
+     * @return 最高支持的刷新率（Hz），0 表示拿不到
+     */
+    public static int maxSupportedHz(@Nullable Display display) {
         if (display != null) {
-            hz = display.getMode() != null
-                    ? display.getMode().getRefreshRate()
-                    : display.getRefreshRate();
+            Display.Mode[] modes;
+            try {
+                modes = display.getSupportedModes();
+            } catch (Throwable t) {
+                Log.w(TAG, "getSupportedModes() 失败: " + t);
+                modes = null;
+            }
+            if (modes != null && modes.length > 0) {
+                float best = 0f;
+                for (Display.Mode m : modes) {
+                    if (m != null && m.getRefreshRate() > best) {
+                        best = m.getRefreshRate();
+                    }
+                }
+                if (best > 0f) {
+                    return Math.round(best);
+                }
+            }
         }
-        return Math.round(hz);
+        if (display != null && display.getMode() != null) {
+            return Math.round(display.getMode().getRefreshRate());
+        }
+        return 0;
     }
 
     /**

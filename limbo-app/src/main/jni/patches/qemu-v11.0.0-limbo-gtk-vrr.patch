@@ -1,36 +1,56 @@
+diff --git a/ui/gtk.c b/ui/gtk.c
 --- a/ui/gtk.c
 +++ b/ui/gtk.c
-@@ -696,6 +696,19 @@
+@@ -712,10 +712,51 @@
+     gd_set_ui_refresh_rate(vc, refresh_rate);
  
- #endif
- 
+     /* T = 1 / f = 1 [s*Hz] / f = 1000*1000 [ms*mHz] / f */
++#ifdef __LIMBO__
++    /* VRR：用户显式选定了目标频率时，输出节奏严格按它走（见下面的注释）。 */
++    vc->gfx.dcl.update_interval = limbo_gtk_refresh_interval(refresh_rate);
++#else
+     vc->gfx.dcl.update_interval = refresh_rate ?
+         MIN(1000 * 1000 / refresh_rate, GUI_REFRESH_INTERVAL_DEFAULT) :
+         GUI_REFRESH_INTERVAL_DEFAULT;
+-}
++#endif
++}
++
 +#ifdef __LIMBO__
 +/*
 + * Variable refresh rate (VRR) target for the GTK display backend, in Hz
 + * (0 = disabled).  Set from the app UI by vm-executor-jni.c through
-+ * set_qemu_var("limbo_gtk_refresh_rate").  When > 0 it overrides the
-+ * refresh rate reported by the GDK monitor: on Android that one may be
-+ * missing (0), and the panel rate the user picked in the app is the
-+ * authoritative value anyway.  The symbol must stay dlsym-visible.
++ * set_qemu_var("limbo_gtk_refresh_rate"), alongside the SDL backend's
++ * limbo_sdl_refresh_rate.  The symbol must stay dlsym-visible.
 + */
 +__attribute__((visibility("default")))
 +int limbo_gtk_refresh_rate = 0;
-+#endif
 +
- void gd_update_monitor_refresh_rate(VirtualConsole *vc, GtkWidget *widget)
- {
-     GdkSurface *surface = gd_widget_surface(widget);
-@@ -708,6 +721,13 @@
-     } else {
-         refresh_rate = 0;
-     }
++/*
++ * Turn a refresh rate in mHz into the dcl->update_interval (ms) the console
++ * timer must run at.  An explicit target from the app wins over the GDK monitor
++ * rate: on Android the monitor often reports 0, and the panel rate the user
++ * picked is authoritative anyway.
++ *
++ * The target must be honoured exactly -- gui_update() takes the *smallest*
++ * update_interval across all display listeners, so returning QEMU's 30ms idle
++ * pace (GUI_REFRESH_INTERVAL_DEFAULT) here would clamp the console timer to
++ * 33Hz and pin the picture at ~30-40 fps whatever the user selected, which is
++ * exactly the "stuck at 40Hz" symptom.
++ */
++static int limbo_gtk_refresh_interval(int refresh_rate_mhz)
++{
++    int mhz = refresh_rate_mhz;
 +
-+#ifdef __LIMBO__
-+    /* VRR: an explicit target from the app wins over the GDK monitor rate. */
 +    if (limbo_gtk_refresh_rate > 0) {
-+        refresh_rate = limbo_gtk_refresh_rate * 1000; /* Hz -> mHz */
++        mhz = limbo_gtk_refresh_rate * 1000; /* Hz -> mHz */
 +    }
++    if (mhz <= 0) {
++        return GUI_REFRESH_INTERVAL_DEFAULT;
++    }
++    return MAX(1, 1000 * 1000 / mhz);
++}
 +#endif
  
-     gd_set_ui_refresh_rate(vc, refresh_rate);
- 
+ #ifdef __LIMBO__
+ /*

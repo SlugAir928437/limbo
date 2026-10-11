@@ -540,7 +540,9 @@ public class LimboAglActivity extends AppCompatActivity
          * 按当前「可变刷新率」设置下发给 AGL 后端（QEMU）与 Android 面板。
          *
          * <p>AGL 后端没有自己的刷新率来源，只能收到 Java 侧传入的值，所以关闭
-         * （目标频率 0）时退回屏幕当前刷新率，保持与之前一致的「跟随面板」行为。
+         * （目标频率 0）时退回面板支持的最高刷新率（见
+         * {@link RefreshRateUtils#maxSupportedHz}），而不是可能正处在 40Hz 空闲档的
+         * 当前显示模式。
          */
         void applyRefreshRate() {
             if (currentSurface == null || !currentSurface.isValid()) {
@@ -549,17 +551,11 @@ public class LimboAglActivity extends AppCompatActivity
             int mode = LimboSettingsManager.getSDLRefreshRate(getContext());
             int hz = RefreshRateUtils.resolveHz(getDisplay(), mode);
             RefreshRateUtils.applyToSurface(currentSurface, hz);
-            // 后端期望 mHz，0 表示「沿用已应用的节奏」，因此关闭时用屏幕刷新率兜底
-            int backendHz = hz > 0 ? hz : Math.round(displayHz());
+            // 后端期望 mHz，0 表示「沿用已应用的节奏」，因此关闭时用面板支持的最高
+            // 刷新率兜底（不能取当前模式：LTPO 面板空闲时就是 40Hz/30Hz，
+            // 会把后端的输出节奏一并压到 40Hz）。
+            int backendHz = hz > 0 ? hz : RefreshRateUtils.maxSupportedHz(getDisplay());
             VmDisplay.setSurface(currentSurface, backendHz);
-        }
-
-        /** 屏幕当前刷新率（Hz），取不到时返回 0 由后端决定。 */
-        private float displayHz() {
-            if (getDisplay() == null || getDisplay().getMode() == null) {
-                return 0f;
-            }
-            return getDisplay().getMode().getRefreshRate();
         }
 
         @Override

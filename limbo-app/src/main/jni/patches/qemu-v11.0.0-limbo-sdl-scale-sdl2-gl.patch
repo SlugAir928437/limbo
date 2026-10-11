@@ -1,0 +1,134 @@
+diff --git a/ui/sdl2-gl.c b/ui/sdl2-gl.c
+--- a/ui/sdl2-gl.c
++++ b/ui/sdl2-gl.c
+@@ -32,6 +32,77 @@
+ #include "ui/input.h"
+ #include "ui/sdl2.h"
+ 
++#ifdef __LIMBO__
++/* 定义在 ui/sdl2.c，0=拉伸至全屏 1=等比缩放 2=1:1，见那里的注释。 */
++extern int limbo_sdl_scale_mode;
++
++/* GL 后端直接控制 glViewport 来实现三种缩放模式。 */
++static void limbo_sdl_gl_apply_viewport(struct sdl2_console *scon, int ww, int wh)
++{
++    int mode = limbo_sdl_scale_mode;
++    int sw = surface_width(scon->surface);
++    int sh = surface_height(scon->surface);
++
++    if (mode < 0) {
++        mode = 1;
++    }
++    if (sw <= 0 || sh <= 0 || ww <= 0 || wh <= 0) {
++        return;
++    }
++
++    switch (mode) {
++    case 0: /* 拉伸至全屏：忽略宽高比铺满 */
++        glViewport(0, 0, ww, wh);
++        break;
++    case 2: { /* 1:1：原始像素居中，放不下就裁剪 */
++        int w = MIN(sw, ww);
++        int h = MIN(sh, wh);
++
++        glViewport((ww - w) / 2, (wh - h) / 2, w, h);
++        break;
++    }
++    case 1: /* 等比缩放（默认）：surface_gl_setup_viewport() 本身就是等比居中 */
++    default:
++        surface_gl_setup_viewport(scon->gls, scon->surface, ww, wh);
++        break;
++    }
++}
++
++/* 扫描输出（dmabuf 直通）路径的目标矩形，交给 egl_fb_blit() 使用。 */
++static void limbo_sdl_gl_scanout_rect(struct sdl2_console *scon,
++                                      int ww, int wh,
++                                      int *x, int *y, int *w, int *h)
++{
++    int mode = limbo_sdl_scale_mode;
++    int gw = scon->guest_fb.width;
++    int gh = scon->guest_fb.height;
++
++    *x = 0;
++    *y = 0;
++    *w = ww;
++    *h = wh;
++
++    if (mode < 0) {
++        mode = 1;
++    }
++    if (gw <= 0 || gh <= 0 || ww <= 0 || wh <= 0) {
++        return;
++    }
++
++    if (mode == 2) {
++        *w = MIN(gw, ww);
++        *h = MIN(gh, wh);
++    } else if (mode != 0) {
++        double scale = MIN((double)ww / gw, (double)wh / gh);
++
++        *w = (int)(gw * scale + 0.5);
++        *h = (int)(gh * scale + 0.5);
++    }
++    *x = (ww - *w) / 2;
++    *y = (wh - *h) / 2;
++}
++#endif
++
+ static void sdl2_set_scanout_mode(struct sdl2_console *scon, bool scanout)
+ {
+     if (scon->scanout_mode == scanout) {
+@@ -55,7 +126,11 @@
+     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+ 
+     SDL_GetWindowSize(scon->real_window, &ww, &wh);
++#ifdef __LIMBO__
++    limbo_sdl_gl_apply_viewport(scon, ww, wh);
++#else
+     surface_gl_setup_viewport(scon->gls, scon->surface, ww, wh);
++#endif
+ 
+     surface_gl_render_texture(scon->gls, scon->surface);
+     SDL_GL_SwapWindow(scon->real_window);
+@@ -114,6 +189,21 @@
+     struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
+ 
+     assert(scon->opengl);
++
++#ifdef __LIMBO__
++    /* 运行中切换缩放模式时强制整屏重绘一次（客户机不一定有脏区域）。 */
++    {
++        static int limbo_last_scale_mode = -2;
++
++        if (limbo_last_scale_mode != limbo_sdl_scale_mode) {
++            limbo_last_scale_mode = limbo_sdl_scale_mode;
++            scon->updates = 1;
++            if (scon->scanout_mode && scon->real_window) {
++                sdl2_gl_redraw(scon);
++            }
++        }
++    }
++#endif
+ 
+     graphic_hw_update(dcl->con);
+     if (scon->updates && scon->real_window) {
+@@ -247,7 +337,18 @@
+     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+ 
+     SDL_GetWindowSize(scon->real_window, &ww, &wh);
++#ifdef __LIMBO__
++    /* egl_fb_blit() 按 dst 的 x/y/width/height 做 blit，所以这里直接给出
++     * 目标矩形即可实现拉伸 / 等比 / 1:1 三种留边方式。 */
++    {
++        int x, y, w, h;
++
++        limbo_sdl_gl_scanout_rect(scon, ww, wh, &x, &y, &w, &h);
++        egl_fb_setup_default(&scon->win_fb, w, h, x, y);
++    }
++#else
+     egl_fb_setup_default(&scon->win_fb, ww, wh, 0, 0);
++#endif
+     egl_fb_blit(&scon->win_fb, &scon->guest_fb, !scon->y0_top);
+ 
+     SDL_GL_SwapWindow(scon->real_window);

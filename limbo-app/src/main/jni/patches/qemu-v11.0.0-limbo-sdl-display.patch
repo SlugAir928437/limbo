@@ -1,0 +1,65 @@
+diff --git a/ui/sdl2.c b/ui/sdl2.c
+--- a/ui/sdl2.c
++++ b/ui/sdl2.c
+@@ -62,6 +62,61 @@
+ #define SDL2_MAX_IDLE_COUNT (2 * GUI_REFRESH_INTERVAL_DEFAULT \
+                              / SDL2_REFRESH_INTERVAL_BUSY + 1)
+ 
++#ifdef __LIMBO__
++/*
++ * Limbo：SDL 显示后端的缩放模式，由 Java 侧经
++ * set_qemu_var("limbo_sdl_scale_mode") 下发（jni/limbo/vm-executor-jni.c）。
++ * 取值与 GTK 后端的 limbo_gtk_scale_mode 保持一致：
++ *   0 = 拉伸至全屏（忽略客户机宽高比，铺满窗口）
++ *   1 = 等比缩放（保持客户机宽高比，居中留边，默认）
++ *   2 = 1:1（按客户机原始分辨率居中显示，超出部分裁剪）
++ *  -1 = 尚未下发，按 1（等比缩放）处理。
++ * 必须保持为 dlsym 可见的非 static 符号，供 sdl2-2d.c / sdl2-gl.c 读取；
++ * 显式标 default visibility，保证它一定进 .dynsym（Java 侧用 dlsym 找它）。
++ */
++__attribute__((visibility("default")))
++int limbo_sdl_scale_mode = -1;
++#endif
++
++#ifdef __LIMBO__
++/*
++ * Limbo：SDL 显示后端的可变刷新率（VRR）。
++ * 由 Java 侧经 set_qemu_var("limbo_sdl_refresh_rate") 下发，单位为 Hz：
++ *   0  = 关闭，沿用 QEMU 原有的忙(10ms)/闲(30ms)节奏；
++ *   >0 = 目标刷新率（Hz，如 120），输出节奏与 Android 面板的
++ *        Surface.setFrameRate() 保持一致。
++ * 必须保持为 dlsym 可见的非 static 符号：Java 侧用 dlsym 找它。
++ */
++__attribute__((visibility("default")))
++int limbo_sdl_refresh_rate = 0;
++
++/*
++ * 把 VRR 目标频率换算成 dcl->update_interval（单位 ms，与
++ * GUI_REFRESH_INTERVAL_DEFAULT 一致）。
++ *
++ * 用户一旦显式选定了目标频率，输出节奏就必须严格按它来：QEMU 的
++ * gui_update() 取所有 display listener 里最小的 update_interval 作为
++ * 下一帧的间隔，所以这里只要有一次返回 30ms（原「空闲」节奏），
++ * 控制台定时器就被压到 33Hz —— 面板再高也只能画出约 30~40 fps，
++ * 这正是「选了高刷却固定在 40Hz」的原因。因此显式频率下不再做空闲
++ * 降频；只有关闭（<= 0）时才回落到 QEMU 原有的忙/闲常量。
++ */
++static int limbo_sdl_refresh_interval(bool idle)
++{
++    int interval;
++
++    if (limbo_sdl_refresh_rate <= 0) {
++        return idle ? GUI_REFRESH_INTERVAL_DEFAULT
++                     : SDL2_REFRESH_INTERVAL_BUSY;
++    }
++    interval = 1000 / limbo_sdl_refresh_rate;
++    if (interval < 1) {
++        interval = 1;
++    }
++    return interval;
++}
++#endif
++
+ /* introduced in SDL 2.0.10 */
+ #ifndef SDL_HINT_RENDER_BATCHING
+ #define SDL_HINT_RENDER_BATCHING "SDL_RENDER_BATCHING"

@@ -2,7 +2,16 @@
 export NDK_ROOT=/home/huang/android-ndk-r28c
 export PATH=$PATH:$NDK_ROOT
 export BUILD_THREADS=$(nproc --all)
-export BUILD_GUEST='x86_64-softmmu'
+# BUILD_HOST 是【设备】ABI（脚本名指的就是它），BUILD_GUEST 才是要打进 APK 的
+# 【模拟】引擎，两者没有关系。这里必须列出 App 真正要用的引擎：漏掉某一个并不会
+# 阻止它被打包——上一次构建遗留在 obj/local/<abi>/ 与 jniLibs/<abi>/ 里的旧引擎
+# 会被原样带上，而旧引擎缺少本次新增的功能。AGL 显示后端就是活生生的例子：App 照
+# 发 `-display agl`，旧引擎里没有 agl 这个 DisplayType，QEMU 直接以
+#   Parameter 'type' does not accept value 'agl'
+# 退出（gunyah/gzvm 客户机唯一的显示方式就废了）。所以 aarch64 与 x86_64 一起构建，
+# 保证两个引擎都跟当前源码同步（Makefile 的 INSTALL_QEMU_LIBS 也会把不在
+# BUILD_GUEST 里的旧引擎跳过并删除，不再打进包）。
+export BUILD_GUEST='x86_64-softmmu,aarch64-softmmu'
 export BUILD_HOST='arm64-v8a'
 export USE_GTK=true
 # 完整构建链

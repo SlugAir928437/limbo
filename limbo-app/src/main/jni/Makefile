@@ -86,10 +86,41 @@ INSTALL_PIXMAN_LIBS=cp -Lf pixman/build-android-$(APP_ABI)/pixman/libpixman-1.so
 # ArchManager 正是通过扫描 APK 内是否存在这些 libqemu-system-*.so 来判断某个
 # 模拟架构在当前安装包中是否可选，因此遗漏会直接导致该架构在“切换模拟架构”
 # 菜单里不可见。
+#
+# 【只部署本次构建真正产出的引擎】：换 BUILD_GUEST 重新构建【不会】清掉
+# qemu/build/qemu-system-<target>，obj/local/<abi>/ 与 jniLibs/<abi>/ 里也还留着
+# 上一次构建的 libqemu-system-<target>.so；无条件复制/打包就会把“上次构建的旧
+# 引擎”混进 APK，而旧引擎缺少这次新增的功能。AGL 显示后端就是活生生的例子：
+# App 按 UI 配置照发 `-display agl`，旧引擎的 qapi DisplayType 里没有 agl，QEMU
+# 直接以
+#   libqemu-system-aarch64.so: -display agl: Parameter 'type' does not accept value 'agl'
+# 退出，AGL 显示（gunyah/gzvm 客户机唯一的显示方式）永远起不来。
+# 判定标准是该客户机是否出现在本次的 $(BUILD_GUEST)（即 QEMU --target-list）里：
+# 不在其中的旧引擎一律跳过，并从 obj/local 与 jniLibs 里一并删除（否则
+# INSTALL_LIBS 的 `cp *.so` 与后续打包照样会把它带上）；确实需要它，就把它加进
+# BUILD_GUEST 重新构建。
 INSTALL_QEMU_LIBS=for target in x86_64 i386 arm aarch64 ia64; do \
-	if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
-		cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
-			"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \
+	if echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
+		if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
+			cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
+				"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \
+			case $$target in arm|aarch64) \
+				if ! grep -q agl_set_window "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; then \
+					echo ">> WARNING: libqemu-system-$$target.so 里没有 AGL 显示后端（缺 agl_set_window）。"; \
+					echo ">>          App 的 Config.enableAgl 仍会提供 AGL 显示并发 -display agl，QEMU 会拒绝它："; \
+					echo ">>          'Parameter type does not accept value agl'。请确认 AGL 补丁已应用、configure 带了 -Dagl=enabled，"; \
+					echo ">>          且 USE_GTK=true 提供的 epoxy 被找到（opengl 未找到时 AGL 不会编进去）。"; \
+				fi ;; \
+			esac; \
+		else \
+			echo ">> ERROR: BUILD_GUEST 含 $$target-softmmu，但没构建出 $(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target（QEMU 构建失败或未执行）"; \
+		fi; \
+	else \
+		rm -f "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so" \
+			"$(LIMBO_APP_LIBS)/jniLibs/$(APP_ABI_DIR)/libqemu-system-$$target.so"; \
+		echo ">> 跳过旧引擎 libqemu-system-$$target.so：$$target 不在本次 BUILD_GUEST=$(BUILD_GUEST) 里"; \
+		echo ">>   它来自上一次构建，可能缺少本次新增的功能（例如 AGL 显示后端 -display agl 会被 QEMU 拒绝），"; \
+		echo ">>   已从 obj/local 与 jniLibs 移除；确实需要它就把 $$target-softmmu 加进 BUILD_GUEST 重新构建。"; \
 	fi; \
 done
 

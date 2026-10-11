@@ -63,3 +63,24 @@ diff --git a/ui/sdl2.c b/ui/sdl2.c
  /* introduced in SDL 2.0.10 */
  #ifndef SDL_HINT_RENDER_BATCHING
  #define SDL_HINT_RENDER_BATCHING "SDL_RENDER_BATCHING"
+@@ -719,12 +774,20 @@
+         if (scon->idle_counter < SDL2_MAX_IDLE_COUNT) {
+             scon->idle_counter++;
+             if (scon->idle_counter >= SDL2_MAX_IDLE_COUNT) {
++#ifdef __LIMBO__
++                scon->dcl.update_interval = limbo_sdl_refresh_interval(true);
++#else
+                 scon->dcl.update_interval = GUI_REFRESH_INTERVAL_DEFAULT;
++#endif
+             }
+         }
+     } else {
+         scon->idle_counter = 0;
++#ifdef __LIMBO__
++        scon->dcl.update_interval = limbo_sdl_refresh_interval(false);
++#else
+         scon->dcl.update_interval = SDL2_REFRESH_INTERVAL_BUSY;
++#endif
+     }
+ }
+ 

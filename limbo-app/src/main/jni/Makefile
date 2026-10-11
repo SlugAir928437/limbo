@@ -798,8 +798,10 @@ EGL_APPLY           := yes
 # 不再出现「两个补丁抢同一行、git apply --check 静默失败」的老问题）。
 SDL_SCALE_2D_PATCH  := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-scale-sdl2-2d.patch
 SDL_SCALE_2D_APPLY  := yes
+SDL_SCALE_2D_DESC   := SDL 显示方式（缩放模式）补丁 ui/sdl2-2d.c
 SDL_SCALE_GL_PATCH  := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-scale-sdl2-gl.patch
 SDL_SCALE_GL_APPLY  := yes
+SDL_SCALE_GL_DESC   := SDL 显示方式（缩放模式）补丁 ui/sdl2-gl.c
 
 # SDL 显示补丁（ui/sdl2.c，缩放 + 可变刷新率一并）：加上 limbo_sdl_scale_mode
 # 与 limbo_sdl_refresh_rate（0=关闭 >0=目标刷新率 Hz），由 Java 侧经
@@ -808,6 +810,7 @@ SDL_SCALE_GL_APPLY  := yes
 # Surface.setFrameRate() 让面板切到同一刷新率。
 SDL_DISPLAY_PATCH   := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-sdl-display.patch
 SDL_DISPLAY_APPLY   := yes
+SDL_DISPLAY_DESC    := SDL 显示补丁 ui/sdl2.c（缩放模式 + 可变刷新率）
 
 # GTK 可变刷新率（VRR）补丁：给 ui/gtk.c 加上 limbo_gtk_refresh_rate
 # （0=关闭 >0=目标刷新率 Hz），由 Java 侧经 set_qemu_var() 与 SDL 后端一起下发。
@@ -817,6 +820,7 @@ SDL_DISPLAY_APPLY   := yes
 # ui/gtk.c 生成，必须排在主补丁之后应用。
 GTK_VRR_PATCH       := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-limbo-gtk-vrr.patch
 GTK_VRR_APPLY       := yes
+GTK_VRR_DESC        := GTK 可变刷新率（VRR）补丁
 
 # venus（Vulkan over VirGL）诊断补丁：在 hw/display/virtio-gpu-virgl.c 的
 # virgl_cmd_resource_create_blob() 里无条件打印一行 create_blob 的请求参数
@@ -828,14 +832,29 @@ GTK_VRR_APPLY       := yes
 # 只加日志、不改行为；定位完把 VIRGL_BLOB_LOG_APPLY 置空（或删掉本补丁）即可停用。
 VIRGL_BLOB_LOG_PATCH := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-virgl-blob-log.patch
 VIRGL_BLOB_LOG_APPLY := yes
+VIRGL_BLOB_LOG_DESC  := venus blob 请求诊断日志补丁
 
-# 给 QEMU 树打补丁的通用命令（recipe 里用 `$(PATCH_APPLY) <patch> "<说明>"` 调用）。
+# 给 QEMU 树打补丁的通用宏，recipe 里用
+#     $(call PATCH_APPLY,PATCH 变量,PATCH 说明)
+# 调用（参数的逗号由 call 用来分隔，所以说明文字写进 *_DESC 变量、不要直接内联）。
+#
 # 以前这里只写 `git apply --check ... 2>/dev/null && git apply ...`：补丁一旦因为
 # 上下文对不上而 --check 失败，整条命令静默变成空操作，功能就这么悄悄丢了（可变
 # 刷新率就是这样丢失的）。现在先看补丁是否已经打过（--reverse --check），
 # 已打过就跳过；既没打过又打不上则直接报错中断，不再静默跳过。
 define PATCH_APPLY
-p="$$1"; desc="$$2"; if [ ! -f "$$p" ]; then echo "ERROR: 补丁缺失: $$p"; exit 1; fi; if git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$$p" 2>/dev/null; then echo ">> 应用 $$desc"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$$p" || exit 1; elif git -C "$(LIMBO_JNI_ROOT)/qemu" apply --reverse --check "$$p" 2>/dev/null; then echo ">> $$desc：已应用，跳过"; else echo "ERROR: $$desc 无法应用（$$p）"; echo "       补丁与当前 QEMU 树不匹配：重新生成该补丁，或删掉 $(LIMBO_JNI_ROOT)/qemu 后重新 fetch。"; exit 1; fi
+p="$(1)"; desc="$(2)"; \
+if [ ! -f "$$p" ]; then echo "ERROR: 补丁缺失: $$p"; exit 1; fi; \
+if git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$$p" 2>/dev/null; then \
+	echo ">> 应用 $$desc"; \
+	git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$$p" || exit 1; \
+elif git -C "$(LIMBO_JNI_ROOT)/qemu" apply --reverse --check "$$p" 2>/dev/null; then \
+	echo ">> $$desc：已应用，跳过"; \
+else \
+	echo "ERROR: $$desc 无法应用（$$p）"; \
+	echo "       补丁与当前 QEMU 树不匹配：重新生成该补丁，或删掉 $(LIMBO_JNI_ROOT)/qemu 后重新 fetch。"; \
+	exit 1; \
+fi
 endef
 
 # 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
@@ -1150,11 +1169,11 @@ fetch-qemu:
 	$(if $(ACCEL_APPLY),@if [ -f "$(ACCEL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(ACCEL_PATCH)" 2>/dev/null; then echo ">> 应用 gunyah/gzvm 加速器合并补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(ACCEL_PATCH)"; fi;)
 	$(if $(AGL_APPLY),@if [ -f "$(AGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(AGL_PATCH)" 2>/dev/null; then echo ">> 应用 AGL 显示后端补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(AGL_PATCH)"; fi;)
 	$(if $(EGL_APPLY),@if [ -f "$(EGL_PATCH)" ] && git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(EGL_PATCH)" 2>/dev/null; then echo ">> 应用 Android EGL 初始化补丁"; git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(EGL_PATCH)"; fi;)
-	$(if $(SDL_SCALE_2D_APPLY),$(PATCH_APPLY) "$(SDL_SCALE_2D_PATCH)" "SDL 显示方式（缩放模式）补丁 ui/sdl2-2d.c")
-	$(if $(SDL_SCALE_GL_APPLY),$(PATCH_APPLY) "$(SDL_SCALE_GL_PATCH)" "SDL 显示方式（缩放模式）补丁 ui/sdl2-gl.c")
-	$(if $(SDL_DISPLAY_APPLY),$(PATCH_APPLY) "$(SDL_DISPLAY_PATCH)" "SDL 显示补丁 ui/sdl2.c（缩放模式 + 可变刷新率）")
-	$(if $(GTK_VRR_APPLY),$(PATCH_APPLY) "$(GTK_VRR_PATCH)" "GTK 可变刷新率（VRR）补丁")
-	$(if $(VIRGL_BLOB_LOG_APPLY),$(PATCH_APPLY) "$(VIRGL_BLOB_LOG_PATCH)" "venus blob 请求诊断日志补丁")
+	$(if $(SDL_SCALE_2D_APPLY),@$(call PATCH_APPLY,$(SDL_SCALE_2D_PATCH),$(SDL_SCALE_2D_DESC)))
+	$(if $(SDL_SCALE_GL_APPLY),@$(call PATCH_APPLY,$(SDL_SCALE_GL_PATCH),$(SDL_SCALE_GL_DESC)))
+	$(if $(SDL_DISPLAY_APPLY),@$(call PATCH_APPLY,$(SDL_DISPLAY_PATCH),$(SDL_DISPLAY_DESC)))
+	$(if $(GTK_VRR_APPLY),@$(call PATCH_APPLY,$(GTK_VRR_PATCH),$(GTK_VRR_DESC)))
+	$(if $(VIRGL_BLOB_LOG_APPLY),@$(call PATCH_APPLY,$(VIRGL_BLOB_LOG_PATCH),$(VIRGL_BLOB_LOG_DESC)))
 
 fetch-gtk4android:
 	@if [ ! -d "$(LIMBO_JNI_ROOT)/gtk4android/.git" ]; then \

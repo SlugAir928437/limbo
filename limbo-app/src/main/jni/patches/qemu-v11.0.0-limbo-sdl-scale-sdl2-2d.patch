@@ -1,10 +1,11 @@
 diff --git a/ui/sdl2-2d.c b/ui/sdl2-2d.c
 --- a/ui/sdl2-2d.c
 +++ b/ui/sdl2-2d.c
-@@ -28,6 +28,70 @@
+@@ -27,6 +27,70 @@
+ #include "ui/console.h"
  #include "ui/input.h"
  #include "ui/sdl2.h"
- 
++
 +#ifdef __LIMBO__
 +/* 定义在 ui/sdl2.c，0=拉伸至全屏 1=等比缩放 2=1:1，见那里的注释。 */
 +extern int limbo_sdl_scale_mode;
@@ -68,63 +69,6 @@ diff --git a/ui/sdl2-2d.c b/ui/sdl2-2d.c
 +    }
 +}
 +#endif
-+
+ 
  void sdl2_2d_update(DisplayChangeListener *dcl,
                      int x, int y, int w, int h)
- {
-@@ -51,8 +115,20 @@
-     SDL_UpdateTexture(scon->texture, &rect,
-                       surface_data(surf) + surface_data_offset,
-                       surface_stride(surf));
-+#ifdef __LIMBO__
-+    {
-+        SDL_Rect dst;
-+
-+        limbo_sdl_scale_dst_rect(scon, &dst);
-+        /* 先刷黑底，等比缩放 / 1:1 模式下四周留边才是黑的 */
-+        SDL_SetRenderDrawColor(scon->real_renderer, 0, 0, 0, 255);
-+        SDL_RenderClear(scon->real_renderer);
-+        SDL_RenderCopy(scon->real_renderer, scon->texture, NULL, &dst);
-+    }
-+#else
-     SDL_RenderClear(scon->real_renderer);
-     SDL_RenderCopy(scon->real_renderer, scon->texture, NULL, NULL);
-+#endif
-     SDL_RenderPresent(scon->real_renderer);
- }
- 
-@@ -85,9 +161,15 @@
-         sdl2_window_resize(scon);
-     }
- 
-+#ifdef __LIMBO__
-+    /* 缩放交给 limbo_sdl_scale_dst_rect()：关掉 SDL 的 logical size，
-+     * 否则 RenderCopy 的坐标还会被 SDL 再按 logical size 缩放一次。 */
-+    SDL_RenderSetLogicalSize(scon->real_renderer, 0, 0);
-+#else
-     SDL_RenderSetLogicalSize(scon->real_renderer,
-                              surface_width(new_surface),
-                              surface_height(new_surface));
-+#endif
- 
-     switch (surface_format(scon->surface)) {
-     case PIXMAN_x1r5g5b5:
-@@ -129,6 +211,18 @@
-     struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
- 
-     assert(!scon->opengl);
-+#ifdef __LIMBO__
-+    /* 用户在运行中切换缩放模式时，客户机不一定有脏区域，
-+     * 这里检测到模式变化就整屏重绘一次。 */
-+    {
-+        static int limbo_last_scale_mode = -2;
-+
-+        if (limbo_last_scale_mode != limbo_sdl_scale_mode) {
-+            limbo_last_scale_mode = limbo_sdl_scale_mode;
-+            sdl2_2d_redraw(scon);
-+        }
-+    }
-+#endif
-     graphic_hw_update(dcl->con);
-     sdl2_poll_events(scon);
- }

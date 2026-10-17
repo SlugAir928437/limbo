@@ -83,14 +83,14 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeMouseEvent(
             if(!relative){
                 SDL_SendMouseMotion(Android_Window, 0, 0, x, y);
             }
-            SDL_SendMouseButton(Android_Window, SDL_TOUCH_MOUSEID, SDL_PRESSED, button);
+            SDL_SendMouseButton(Android_Window, 0, SDL_PRESSED, button);
             break;
 
         case ACTION_UP:
             if(!relative){
                 SDL_SendMouseMotion(Android_Window, 0, 0, x, y);
             }
-            SDL_SendMouseButton(Android_Window, SDL_TOUCH_MOUSEID, SDL_RELEASED, button);
+            SDL_SendMouseButton(Android_Window, 0, SDL_RELEASED, button);
             break;
 
         case ACTION_MOVE:
@@ -99,7 +99,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeMouseEvent(
             break;
 
         case ACTION_SCROLL:
-            SDL_SendMouseWheel(Android_Window, SDL_TOUCH_MOUSEID, x, y, SDL_MOUSEWHEEL_NORMAL);
+            SDL_SendMouseWheel(Android_Window, 0, x, y, SDL_MOUSEWHEEL_NORMAL);
             break;
 
         default:

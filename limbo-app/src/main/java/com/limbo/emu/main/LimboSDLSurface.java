@@ -106,6 +106,19 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
     }
 
     public boolean onTouchProcess(View v, @NonNull MotionEvent event) {
+        /*
+         * 触摸屏模式下，把手指事件交给 SDL 的 Android 后端处理，而不是继续
+         * 走 Limbo 的鼠标模拟：
+         *   - SDL 会生成真正的 SDL_FINGER* 事件，QEMU 的 SDL 显示后端据此
+         *     产生多触点输入，客户机里的 virtio-multitouch 才能收到触摸；
+         *   - 在 SDL_HINT_ANDROID_SEPARATE_MOUSE_AND_TOUCH 关闭（默认）时，
+         *     SDL 同时合成绝对鼠标事件，usb-tablet/绝对指针客户机仍然可用。
+         */
+        if (LimboSDLActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN
+                && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER) {
+            return super.onTouch(v, event);
+        }
+
         int action = event.getActionMasked();
         mouseState.x = event.getX();
         mouseState.y = event.getY();

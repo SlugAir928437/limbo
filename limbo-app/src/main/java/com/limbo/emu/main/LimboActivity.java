@@ -1527,11 +1527,20 @@ public class LimboActivity extends AppCompatActivity implements
 
     public void updateGraphicsSummary(boolean clear) {
         String vga = getMachine() != null ? getMachine().getVga() : null;
-        // SPICE 模式下的本地显卡统一落到 qxl-vga（virtio-gpu* 保留用户选择，
-        // 由 egl-headless 提供 GL），见 VMExecutor#addGraphicsOptions。
-        if (getMachine() != null && "SPICE".equals(getMachine().getUI())
-                && (vga == null || !vga.startsWith("virtio-gpu")))
-            vga = "qxl";
+        // 旧引擎里可能残留当前 QEMU 没有的 qxl，与
+        // VMExecutor#addGraphicsOptions 一样按 std 显示。
+        if (getMachine() != null && !ArchDefinitions.isQxlAvailable() && "qxl".equals(vga))
+            vga = "std";
+        // 与 VMExecutor#addGraphicsOptions 保持一致：SPICE 下非 virtio-gpu
+        // 显卡落到 qxl-vga（x86/x86_64 与 arm/arm64 都带 QXL）。
+        if (getMachine() != null && "SPICE".equals(getMachine().getUI())) {
+            if (ArchDefinitions.isQxlAvailable()) {
+                if (vga == null || !vga.startsWith("virtio-gpu"))
+                    vga = "qxl";
+            } else if (vga == null || "Default".equals(vga) || "nographic".equals(vga)) {
+                vga = "std";
+            }
+        }
         uiState.setGraphicsSummary(clear || getMachine() == null || uiState.getMachineSel() < 2
                 ? "" : "Video Card: " + vga);
     }

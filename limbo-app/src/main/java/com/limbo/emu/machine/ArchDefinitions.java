@@ -65,6 +65,22 @@ public class ArchDefinitions {
         return networkCards;
     }
 
+    /**
+     * QXL (qxl-vga) 是否存在于当前架构的 QEMU 引擎中。
+     *
+     * <p>上游 QEMU 只在 i386 机器配置里 `imply QXL`（hw/i386/Kconfig），
+     * Limbo 通过 patches/qemu-arm-qxl.patch 给 arm-softmmu/aarch64-softmmu
+     * 打开了 CONFIG_QXL（Makefile 的 fetch-qemu 负责应用），所以 x86/x86_64
+     * 与 arm/arm64 都带 qxl 设备；IA-64 的 QEMU 以 --disable-spice 配置，
+     * 没有 SPICE/QXL。
+     */
+    public static boolean isQxlAvailable() {
+        return LimboApplication.arch == Config.Arch.x86
+                || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm
+                || LimboApplication.arch == Config.Arch.arm64;
+    }
+
     public static ArrayList<String> getVGAValues(Context context) {
         ArrayList<String> vgaValues = new ArrayList<>();
         // IA-64 客户机走 IA-64 QEMU fork，构建时跳过 VirGL/virtio-gpu 与 SPICE 两套
@@ -80,10 +96,11 @@ public class ArchDefinitions {
             // ATI VGA is available when libqemu-system-*.*.so was built with CONFIG_ATI_VGA;
             // this is an experimental PCI vga option and may not be supported by every board
             vgaValues.add("ati");
-            // QXL (qxl-vga) is a PCI VGA device that requires the SPICE stack
-            // (CONFIG_QXL); only offered when libqemu-system-*.*.so was built with spice.
-            // The IA-64 build skips spice (see jni/Makefile), so qxl is hidden there.
-            if (!isIa64) {
+            // QXL (qxl-vga) 只有 x86/x86_64 的 QEMU 编进去了：QEMU 的
+            // hw/i386/Kconfig 里 `imply QXL`，而 hw/arm 等其它 target 没有。
+            // 即使 ARM 构建启用了 SPICE（CONFIG_SPICE），也没有 qxl 设备，
+            // 选中后 QEMU 会直接报 "QXL VGA not available" 并退出。
+            if (isQxlAvailable()) {
                 vgaValues.add("qxl");
             }
         }

@@ -33,6 +33,7 @@ import androidx.annotation.Nullable;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limbo.emu.R;
 import com.limbo.emu.files.FileUtils;
+import com.limbo.emu.machine.ArchDefinitions;
 import com.limbo.emu.machine.Machine;
 import com.limbo.emu.machine.MachineAction;
 import com.limbo.emu.machine.MachineController;
@@ -390,14 +391,15 @@ public class VMExecutor extends MachineExecutor {
             paramsList.add("vc");
 
         } else if (spice) {
-            // SPICE 服务端输出：QEMU 的 spice server 自己就是一种显示后端
-            // （vl.c 把 -spice 记入 display_remote，因此不会再初始化默认的
-            // SDL/GTK 显示）。
+            // SPICE 服务端输出：QEMU 的 spice server 自己就是一种显示后端。
             //
-            // 额外显式初始化 egl-headless：它是无窗口的 EGL/GLES 显示后端，
-            // 与 -spice 配对后可让 VirGL（virtio-gpu-gl-pci）在后台服务里
-            // 也有 OpenGL 渲染目标，渲染结果再作为普通帧更新送给 SPICE。
-            // Android 上没有 render node，QEMU 的 EGL 适配会使用
+            // 同时显式初始化 egl-headless：它是无窗口的 EGL/GLES 显示后端，
+            // 在后台服务（没有 Activity/Surface）里也能给 VirGL
+            // （virtio-gpu-gl-pci）提供 OpenGL 渲染目标，渲染结果作为普通帧
+            // 更新送给 SPICE。普通 qxl/std 显卡不依赖它，但保留它可以让
+            // SPICE 后端与 GL 设备共用同一条启动路径。
+            //
+            // Android 没有 render node，QEMU 的 EGL 适配会使用
             // EGL_DEFAULT_DISPLAY + GLES3（见 qemu-v11.0.0-android-egl.patch），
             // 因此不需要 rendernode= 参数。
             paramsList.add("-display");
@@ -898,13 +900,27 @@ public class VMExecutor extends MachineExecutor {
         if (vga == null) {
             return;
         }
-        // SPICE 的显示通道只由 QXL 显卡原生提供（ui/spice-core.c 只接受
-        // QXLInstance）。但 virtio-gpu(-gl) 是另一条路径：SPICE 模式同时
-        // 打开了 egl-headless,gl=on，VirGL 渲染结果会作为普通帧更新送给
-        // SPICE，因此用户显式选择 virtio-gpu* 时保留其选择；其余本地显卡
-        // （Default/std/cirrus/ati/...）则统一落到 qxl-vga，避免客户端黑屏。
-        if ("SPICE".equals(getMachine().getUI()) && !vga.startsWith("virtio-gpu")) {
-            vga = "qxl";
+        // 旧引擎（没有应用 patches/qemu-arm-qxl.patch 的 ARM/AArch64 构建）
+        // 里没有 qxl 设备，机器配置中残留的 qxl 值会让 QEMU 报
+        // "QXL VGA not available" 并 exit(1)。这种架构上统一退回 std。
+        if (!ArchDefinitions.isQxlAvailable() && vga.equals("qxl")) {
+            vga = "std";
+        }
+        // SPICE 的显示通道由 QXL 显卡原生提供（ui/spice-core.c 只接受
+        // QXLInstance）；QXL 现在在 x86/x86_64 与 arm/arm64 里都编进来了
+        // （见 patches/qemu-arm-qxl.patch）。virtio-gpu(-gl) 走另一条路径：
+        // SPICE 模式会同时打开 egl-headless,gl=on，VirGL 渲染结果作为普通
+        // 帧更新送给 SPICE，因此用户显式选择 virtio-gpu* 时保留其选择；
+        // 其余本地显卡（Default/std/cirrus/ati/...）统一落到 qxl-vga。
+        if ("SPICE".equals(getMachine().getUI())) {
+            if (ArchDefinitions.isQxlAvailable()) {
+                if (!vga.startsWith("virtio-gpu")) {
+                    vga = "qxl";
+                }
+            } else if (!vga.startsWith("virtio-gpu")
+                    && (vga.equals("Default") || vga.equals("nographic"))) {
+                vga = "std";
+            }
         }
         if (vga.equals("Default")) {
             // 不做任何事

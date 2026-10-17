@@ -516,7 +516,7 @@ public class VMExecutor extends MachineExecutor {
             if (external) {
                 Log.w(TAG, "SPICE is bound to all interfaces without a password");
             }
-            spice.append(",disable-ticketing=on");
+            spice.append(",disable-ticketing=on,gl=on");
         }
 
         paramsList.add("-spice");

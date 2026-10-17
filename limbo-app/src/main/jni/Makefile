@@ -409,7 +409,7 @@ config-spice: ndk pkg-config-link ffi glib pixman
 	ninja -C "$(JPEG_BUILD_DIR)" -j $(BUILD_THREADS) && cmake --install "$(JPEG_BUILD_DIR)"
 	ninja -C "$(SPICE_PROTO_BUILD_DIR)" -j $(BUILD_THREADS)
 	DESTDIR= ninja -C "$(SPICE_PROTO_BUILD_DIR)" install
-	# spice-server 0.15.2 (static libspice-server.a, incl. spice-common subproject)
+	# spice-server 0.16.0 (static libspice-server.a, incl. spice-common subproject)
 	$(CREATE_SPICE_MESON_CROSS_FILE)
 	cd $(LIMBO_JNI_ROOT)/spice && rm -rf "$(SPICE_BUILD_DIR)" "$(SPICE_INSTALL_DIR)" && \
 	PKG_CONFIG_PATH="$(SPICE_PROTO_PKG_CONFIG_DIR):$(OPENSSL_PKG_CONFIG_DIR):$(JPEG_PKG_CONFIG_DIR):$(GLIB_PKG_CONFIG_DIR):$(PIXMAN_PKG_CONFIG_DIR):$(LIBFFI_PKG_CONFIG_DIR)" \
@@ -714,6 +714,9 @@ QEMU_FORK_URL          := https://github.com/FreshingAir/qemu-system-ia64.git
 QEMU_FORK_BRANCH    := main
 # IA-64 fork 仍缺的 Android 适配（fork 未合入）
 QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-android.patch
+# GTK/SPICE 的 Android gl=on 适配（GtkGLArea + 无 GBM 的 spice GL 扫描输出）。
+# 官方 QEMU 树克隆后按需应用；补丁已合入 fork 时 --check 失败即跳过。
+QEMU_GL_PATCH       := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gtk-spice-gl.patch
 
 AGL_MESON_FLAGS     := -Dagl=enabled
 
@@ -754,7 +757,12 @@ SLIRP_COMMIT         := 26be815b86e8d49add8c9a8b320239b9594ff03d
 OPENSSL_TGZ          := https://www.openssl.org/source/openssl-3.0.16.tar.gz
 LIBJPEG_TGZ          := https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.0.4/libjpeg-turbo-3.0.4.tar.gz
 SPICE_PROTO_TGZ      := https://www.spice-space.org/download/releases/spice-protocol-0.14.5.tar.xz
-SPICE_TGZ            := https://www.spice-space.org/download/releases/spice-0.15.2.tar.bz2
+SPICE_TGZ            := https://www.spice-space.org/download/releases/spice-0.16.0.tar.bz2
+# 0.16.0 is required for -spice gl=on with a TCP port: it is the first release
+# with the video-stream based GL scanout path (SPICE_DISPLAY_CAP_MULTI_CODEC)
+# that lets remote clients receive the GL frames.  Older 0.15.x only supports
+# local (unix socket) GL scanout.
+SPICE_VERSION        := 0.16.0
 
 QEMU_OFFICIAL_GUESTS := x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu
 QEMU_COMMA := ,
@@ -903,14 +911,15 @@ fetch-spice-protocol:
 	fi
 
 fetch-spice:
-	@if [ ! -f "$(LIMBO_JNI_ROOT)/spice/meson.build" ]; then \
-		echo ">> GET spice-server 0.15.2"; \
-		rm -f /tmp/spice-0.15.2.tar.bz2; \
-		wget --quiet --timeout=60 $(SPICE_TGZ) -O /tmp/spice-0.15.2.tar.bz2; \
-		rm -rf /tmp/spice-0.15.2; \
-		tar -xjf /tmp/spice-0.15.2.tar.bz2 -C /tmp && \
-		mv -f /tmp/spice-0.15.2 "$(LIMBO_JNI_ROOT)/spice"; \
-		cd $(LIMBO_JNI_ROOT)/spice && test -f .tarball-version || echo "0.15.2" > .tarball-version; \
+	@if [ ! -f "$(LIMBO_JNI_ROOT)/spice/meson.build" ] || \
+	    [ "`cat $(LIMBO_JNI_ROOT)/spice/.tarball-version 2>/dev/null`" != "$(SPICE_VERSION)" ]; then \
+		echo ">> GET spice-server $(SPICE_VERSION)"; \
+		rm -f /tmp/spice-$(SPICE_VERSION).tar.bz2; \
+		wget --quiet --timeout=60 $(SPICE_TGZ) -O /tmp/spice-$(SPICE_VERSION).tar.bz2; \
+		rm -rf /tmp/spice-$(SPICE_VERSION) "$(LIMBO_JNI_ROOT)/spice"; \
+		tar -xjf /tmp/spice-$(SPICE_VERSION).tar.bz2 -C /tmp && \
+		mv -f /tmp/spice-$(SPICE_VERSION) "$(LIMBO_JNI_ROOT)/spice"; \
+		cd $(LIMBO_JNI_ROOT)/spice && test -f .tarball-version || echo "$(SPICE_VERSION)" > .tarball-version; \
 		echo ">> Applying spice-android.patch"; \
 		patch -p1 -d $(LIMBO_JNI_ROOT)/spice < $(LIMBO_JNI_ROOT)/patches/spice-android.patch; \
 	else \
@@ -981,6 +990,12 @@ fetch-qemu:
 			git clone --depth 1 --branch $(QEMU_OFFICIAL_BRANCH) --single-branch $(QEMU_OFFICIAL_URL) "$(LIMBO_JNI_ROOT)/qemu"; \
 		else \
 			echo ">> 已打补丁的 QEMU 源码已存在，跳过"; \
+		fi; \
+		if git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(QEMU_GL_PATCH)" 2>/dev/null; then \
+			echo ">> qemu: 应用 GTK/SPICE gl=on 补丁"; \
+			git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(QEMU_GL_PATCH)"; \
+		else \
+			echo ">> qemu: GTK/SPICE gl=on 补丁已合入，跳过"; \
 		fi; \
 		echo ">> official qemu 就绪（补丁已包含在源码里）"; \
 	else \

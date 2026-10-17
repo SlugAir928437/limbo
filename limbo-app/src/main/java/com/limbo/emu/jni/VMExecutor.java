@@ -393,18 +393,28 @@ public class VMExecutor extends MachineExecutor {
         } else if (spice) {
             // SPICE 服务端输出：QEMU 的 spice server 自己就是一种显示后端。
             //
-            // 同时显式初始化 egl-headless：它是无窗口的 EGL/GLES 显示后端，
-            // 在后台服务（没有 Activity/Surface）里也能给 VirGL
-            // （virtio-gpu-gl-pci）提供 OpenGL 渲染目标，渲染结果作为普通帧
-            // 更新送给 SPICE。普通 qxl/std 显卡不依赖它，但保留它可以让
-            // SPICE 后端与 GL 设备共用同一条启动路径。
-            //
-            // Android 没有 render node，QEMU 的 EGL 适配会使用
-            // EGL_DEFAULT_DISPLAY + GLES3（见 qemu-v11.0.0-android-egl.patch），
-            // 因此不需要 rendernode= 参数。
+            // GL 有两条互斥路径：
+            //  * QXL（SPICE 模式默认显卡）：spice-server 自己进行 GL 扫描输出
+            //    （-spice gl=on，见 addSpiceOptions）。此时不能再挂第二个 GL
+            //    显示后端：egl-headless 和 spice 都会对同一个 console 调用
+            //    qemu_console_set_display_gl_ctx()，后注册的会覆盖前一个。
+            //  * virtio-gpu-gl：客户机 GL 由 egl-headless 渲染成普通帧后交给
+            //    SPICE，因此用 -display egl-headless,gl=on，-spice 不带 gl=on。
+            String vga = getMachine().getVga();
+            boolean virtioGpu = vga != null && vga.startsWith("virtio-gpu");
+            boolean glGpu = vga != null && vga.startsWith("virtio-gpu-gl");
             paramsList.add("-display");
-            paramsList.add("egl-headless,gl=on");
-            addSpiceOptions(context, paramsList);
+            if (glGpu) {
+                // Android 没有 render node，QEMU 的 EGL 适配会使用
+                // EGL_DEFAULT_DISPLAY + GLES3（见
+                // qemu-v11.0.0-android-egl.patch），因此不需要 rendernode=。
+                paramsList.add("egl-headless,gl=on");
+            } else {
+                // QXL 的 GL 由 -spice gl=on 自己提供；不指定 -display 时
+                // QEMU 会默认挑 GTK，从而在后台服务里多开一个窗口。
+                paramsList.add("none");
+            }
+            addSpiceOptions(context, paramsList, !virtioGpu);
             // 没有本地窗口，monitor/serial/parallel 通过 TCP 暴露给 nc 模块
             addConsoleTcpOptions(paramsList);
         } else {
@@ -500,8 +510,12 @@ public class VMExecutor extends MachineExecutor {
      * （remote-viewer / virt-viewer 等）。默认只监听 127.0.0.1，避免把未加密的
      * 远程控制端口暴露到局域网；只有用户在设置里打开“允许外部 SPICE 连接”
      * 时才绑定 0.0.0.0。密码是可选的 ticketing 认证，和 VNC 一样未加密。
+     *
+     * @param gl QXL 是否启用 GL 扫描输出（{@code gl=on}）。它与认证方式无关，
+     *           密码开关只影响 ticketing；virtio-gpu 场景由 egl-headless
+     *           负责 GL，这里必须传 false。
      */
-    private void addSpiceOptions(Context context, ArrayList<String> paramsList) {
+    private void addSpiceOptions(Context context, ArrayList<String> paramsList, boolean gl) {
         boolean external = LimboSettingsManager.getEnableExternalSPICE(context);
         boolean usePassword = LimboSettingsManager.getSPICEEnablePassword(context);
         String password = LimboSettingsManager.getSPICEPass(context);
@@ -516,7 +530,10 @@ public class VMExecutor extends MachineExecutor {
             if (external) {
                 Log.w(TAG, "SPICE is bound to all interfaces without a password");
             }
-            spice.append(",disable-ticketing=on,gl=on");
+            spice.append(",disable-ticketing=on");
+        }
+        if (gl) {
+            spice.append(",gl=on");
         }
 
         paramsList.add("-spice");

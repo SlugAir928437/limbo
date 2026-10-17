@@ -1,0 +1,233 @@
+diff --git a/include/ui/egl-helpers.h b/include/ui/egl-helpers.h
+index acf993fc..31ccbc2e 100644
+--- a/include/ui/egl-helpers.h
++++ b/include/ui/egl-helpers.h
+@@ -42,15 +42,19 @@ void egl_texture_blend(QemuGLShader *gls, egl_fb *dst, egl_fb *src, bool flip,
+ 
+ extern EGLContext qemu_egl_rn_ctx;
+ 
++/* EGL_GL_TEXTURE_2D -> dma-buf export.  Unlike the other dma-buf helpers it
++ * does not need GBM; Android uses it to hand the rendered frame to the SPICE
++ * server (ui/spice-display.c). */
++bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
++                               EGLint *stride, EGLint *fourcc, int *num_planes,
++                               EGLuint64KHR *modifier);
++
+ #ifdef CONFIG_GBM
+ 
+ extern int qemu_egl_rn_fd;
+ extern struct gbm_device *qemu_egl_rn_gbm_dev;
+ 
+ int egl_rendernode_init(const char *rendernode, DisplayGLMode mode);
+-bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
+-                               EGLint *stride, EGLint *fourcc, int *num_planes,
+-                               EGLuint64KHR *modifier);
+ 
+ void egl_dmabuf_import_texture(QemuDmaBuf *dmabuf);
+ void egl_dmabuf_release_texture(QemuDmaBuf *dmabuf);
+diff --git a/include/ui/spice-display.h b/include/ui/spice-display.h
+index a382553f..4674a403 100644
+--- a/include/ui/spice-display.h
++++ b/include/ui/spice-display.h
+@@ -27,7 +27,15 @@
+ #include "ui/qemu-pixman.h"
+ #include "ui/console.h"
+ 
+-#if defined(CONFIG_OPENGL) && defined(CONFIG_GBM)
++/*
++ * SPICE GL scanout only needs EGL plus a way to export the rendered texture
++ * as a dma-buf.  Upstream gates it on CONFIG_GBM because its renderers get
++ * the texture through a GBM device; Android has no GBM but the system EGL
++ * (reached through EGL_DEFAULT_DISPLAY, see the __ANDROID__ branch of
++ * egl_init()) provides the same EGL_GL_TEXTURE_2D -> dma-buf export via
++ * EGL_MESA_image_dma_buf_export, so enable the GL path there too.
++ */
++#if defined(CONFIG_OPENGL) && (defined(CONFIG_GBM) || defined(__ANDROID__))
+ #  define HAVE_SPICE_GL 1
+ #  include "ui/egl-helpers.h"
+ #  include "ui/egl-context.h"
+diff --git a/ui/egl-helpers.c b/ui/egl-helpers.c
+index 644a4c7c..f5fb1136 100644
+--- a/ui/egl-helpers.c
++++ b/ui/egl-helpers.c
+@@ -225,6 +225,45 @@ void egl_texture_blend(QemuGLShader *gls, egl_fb *dst, egl_fb *src, bool flip,
+ 
+ EGLContext qemu_egl_rn_ctx;
+ 
++/*
++ * Export a GL texture as a dma-buf.  This does not touch GBM: it only needs
++ * EGL_GL_TEXTURE_2D + EGL_MESA_image_dma_buf_export, so it is also compiled
++ * on Android where the SPICE GL scanout path (ui/spice-display.c) uses it.
++ */
++bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
++                               EGLint *stride, EGLint *fourcc, int *num_planes,
++                               EGLuint64KHR *modifier)
++{
++    EGLImageKHR image;
++    EGLuint64KHR modifiers[DMABUF_MAX_PLANES];
++    int i;
++
++    image = eglCreateImageKHR(qemu_egl_display, eglGetCurrentContext(),
++                              EGL_GL_TEXTURE_2D_KHR,
++                              (EGLClientBuffer)(unsigned long)tex_id,
++                              NULL);
++    if (!image) {
++        return false;
++    }
++
++    eglExportDMABUFImageQueryMESA(qemu_egl_display, image, fourcc,
++                                  num_planes, modifiers);
++    eglExportDMABUFImageMESA(qemu_egl_display, image, fd, stride, offset);
++    eglDestroyImageKHR(qemu_egl_display, image);
++
++    /* Only first modifier matters. */
++    if (modifier) {
++        *modifier = modifiers[0];
++    }
++
++    for (i = 0; i < *num_planes; i++) {
++        if (fd[i] < 0) {
++            return false;
++        }
++    }
++    return true;
++}
++
+ #ifdef CONFIG_GBM
+ 
+ int qemu_egl_rn_fd;
+@@ -289,40 +328,6 @@ err:
+     return -1;
+ }
+ 
+-bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
+-                               EGLint *stride, EGLint *fourcc, int *num_planes,
+-                               EGLuint64KHR *modifier)
+-{
+-    EGLImageKHR image;
+-    EGLuint64KHR modifiers[DMABUF_MAX_PLANES];
+-    int i;
+-
+-    image = eglCreateImageKHR(qemu_egl_display, eglGetCurrentContext(),
+-                              EGL_GL_TEXTURE_2D_KHR,
+-                              (EGLClientBuffer)(unsigned long)tex_id,
+-                              NULL);
+-    if (!image) {
+-        return false;
+-    }
+-
+-    eglExportDMABUFImageQueryMESA(qemu_egl_display, image, fourcc,
+-                                  num_planes, modifiers);
+-    eglExportDMABUFImageMESA(qemu_egl_display, image, fd, stride, offset);
+-    eglDestroyImageKHR(qemu_egl_display, image);
+-
+-    /* Only first modifier matters. */
+-    if (modifier) {
+-        *modifier = modifiers[0];
+-    }
+-
+-    for (i = 0; i < *num_planes; i++) {
+-        if (fd[i] < 0) {
+-            return false;
+-        }
+-    }
+-    return true;
+-}
+-
+ void egl_dmabuf_import_texture(QemuDmaBuf *dmabuf)
+ {
+     EGLImageKHR image = EGL_NO_IMAGE_KHR;
+diff --git a/ui/gtk.c b/ui/gtk.c
+index 56ece996..fa46b980 100644
+--- a/ui/gtk.c
++++ b/ui/gtk.c
+@@ -2512,6 +2512,21 @@ static void early_gtk_display_init(DisplayOptions *opts)
+     assert(opts->type == DISPLAY_TYPE_GTK);
+     if (opts->has_gl && opts->gl != DISPLAY_GL_MODE_OFF) {
+ #if defined(CONFIG_OPENGL)
++#ifdef GDK_WINDOWING_ANDROID
++        /*
++         * Android has no X11/EGL window system: the GTK4 Android backend
++         * implements GdkGLContext on top of the app's ANativeWindow, so
++         * gl=on must use a GtkGLArea (like Wayland/Win32) instead of the
++         * X11 gtk-egl path.  Without this branch gtk_use_gl_area stays
++         * false and display_opengl is never set, which makes
++         * virtio-gpu-gl-pci fail to realize with "The display backend
++         * does not have OpenGL support enabled".
++         */
++        if (GDK_IS_ANDROID_DISPLAY(gdk_display_get_default())) {
++            gtk_use_gl_area = true;
++            gtk_gl_area_init();
++        } else
++#endif
+ #if defined(GDK_WINDOWING_WAYLAND)
+         if (GDK_IS_WAYLAND_DISPLAY(gdk_display_get_default())) {
+             gtk_use_gl_area = true;
+diff --git a/ui/spice-core.c b/ui/spice-core.c
+index ef1c0013..7714f204 100644
+--- a/ui/spice-core.c
++++ b/ui/spice-core.c
+@@ -849,6 +849,8 @@ static void qemu_spice_init(void)
+ 
+ #ifdef HAVE_SPICE_GL
+     if (qemu_opt_get_bool(opts, "gl", 0)) {
++        bool enable_gl = true;
++
+         if ((port != 0) || (tls_port != 0)) {
+ #if SPICE_SERVER_VERSION >= 0x000f03 /* release 0.15.3 */
+             const char *video_codec = NULL;
+@@ -862,17 +864,47 @@ static void qemu_spice_init(void)
+             }
+             if (spice_server_set_video_codecs(spice_server,
+                                               enc_codec ?: "gstreamer:h264")) {
+-                error_report("invalid video codec");
+-                exit(1);
++                /*
++                 * The build may not have gstreamer (the Android spice-server
++                 * is built with -Dgstreamer=no).  The built-in MJPEG encoder
++                 * can stream the GL scanout to remote clients as well, so
++                 * fall back to it instead of refusing to start.
++                 */
++                warn_report("spice: gstreamer codec is unavailable, "
++                            "using the built-in MJPEG encoder");
++                if (spice_server_set_video_codecs(spice_server,
++                                                  "spice:mjpeg")) {
++                    error_report("invalid video codec");
++                    exit(1);
++                }
+             }
+ #else
+-            error_report("SPICE GL support is local-only for now and "
+-                         "incompatible with -spice port/tls-port");
+-            exit(1);
++            warn_report("spice: GL with a TCP port needs spice-server >= "
++                        "0.15.3, using the 2D display path");
++            enable_gl = false;
++#endif
++        }
++        if (enable_gl) {
++            egl_init(qemu_opt_get(opts, "rendernode"),
++                     DISPLAY_GL_MODE_ON, &error_fatal);
++#ifdef __ANDROID__
++            /*
++             * Android has no GBM: the GL scanout reaches spice-server by
++             * exporting the rendered texture as a dma-buf.  If the system
++             * EGL driver cannot export, keep the regular 2D QXL path rather
++             * than ending up with a blank display.
++             */
++            if (!epoxy_has_egl_extension(qemu_egl_display,
++                                         "EGL_MESA_image_dma_buf_export")) {
++                warn_report("spice: EGL dma-buf export is not supported, "
++                            "disabling GL scanout");
++                enable_gl = false;
++            }
+ #endif
+         }
+-        egl_init(qemu_opt_get(opts, "rendernode"), DISPLAY_GL_MODE_ON, &error_fatal);
+-        spice_opengl = 1;
++        if (enable_gl) {
++            spice_opengl = 1;
++        }
+     }
+ #endif
+ }

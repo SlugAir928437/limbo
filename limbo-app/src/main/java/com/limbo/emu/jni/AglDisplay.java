@@ -53,6 +53,21 @@ public final class AglDisplay {
 
     private static final String TAG = "AglDisplay";
 
+    static {
+        // 系统可能在进程被回收后直接重建 LimboAglActivity（不经过
+        // MainActivity.setupNativeLibs()），此时 SurfaceView 的第一次布局就会
+        // 调到 setSurface()。把加载放在类初始化里，任何入口（AGL Activity、
+        // VmExecutorService、隔离进程）都不会再因为 native 库未加载而抛
+        // UnsatisfiedLinkError。已加载过的库重复调用是空操作。
+        for (String lib : new String[]{"compat-limbo", "compat-musl", "glib-2.0", "limbo"}) {
+            try {
+                System.loadLibrary(lib);
+            } catch (Throwable t) {
+                Log.e(TAG, "Could not load " + lib, t);
+            }
+        }
+    }
+
     /**
      * AGL 后端的入口符号名。
      *

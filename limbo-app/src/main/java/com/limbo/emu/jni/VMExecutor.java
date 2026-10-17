@@ -424,8 +424,10 @@ public class VMExecutor extends MachineExecutor {
             }
             paramsList.add("-display");
             if (gtk) {
-                // GTK4 Android 后端（由 activity 侧的 LimboGtk 初始化）
-                paramsList.add("gtk" + getDisplayGLOption());
+                // GTK4 Android 后端（由 activity 侧的 LimboGtk 初始化）。
+                // 默认全屏铺满整个屏幕，并按等比缩放铺满可用区域（zoom-to-fit）。
+                paramsList.add("gtk" + getDisplayGLOption()
+                        + ",full-screen=on,zoom-to-fit=on");
             } else if (agl) {
                 // AGL (Android Graphics Layer): LimboAglActivity hands its
                 // Surface to the backend through nativeAglSetSurface(), and the

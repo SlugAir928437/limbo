@@ -73,11 +73,13 @@
     <string name="mttcgHelp">MTTCG Help</string>
     <string name="failToCreateMachineDirError">Could not create internal machine directory</string>
     <string name="externalVNCWarning">VNC connections are Unencrypted therefore NOT secure. Make sure you\'re on a trusted network!\n</string>
+    <string name="externalSPICEWarning">SPICE connections are Unencrypted therefore NOT secure. Make sure you\'re on a trusted network!\n</string>
     <string name="Password">Password</string>
     <string name="passwordCannotBeEmpty">Password cannot be empty!</string>
     <string name="chooseDirToCreateImage">Choose a directory to create your image</string>
     <string name="ImageCreated">Image Created</string>
     <string name="vncServer">VNC Server</string>
+    <string name="spiceServer">SPICE Server</string>
     <string name="ImportMachines">Import Machines</string>
     <string name="DeleteVM">Delete VM</string>
     <string name="deleteVMWarning">Delete VM? Only machine definition and state will be deleted, disk images files will not be deleted</string>
@@ -168,6 +170,9 @@
     <string name="VNCPasswordMissing">VNC Password is missing in Settings!</string>
     <string name="VNCPasswordNotEnabledWarning">VNC Password is not enabled! Any application on your device can view and control your Virtual Machine! Make sure you trust your apps on your device otherwise set a password in settings. Continue?</string>
     <string name="ExternalVNCEnabledWarning">You have enabled External VNC. Anyone on the same network could read your VNC password and control your virtual machine! Make sure you trust your network. Continue?</string>
+    <string name="SPICEPasswordMissing">SPICE Password is missing in Settings!</string>
+    <string name="SPICEPasswordNotEnabledWarning">SPICE Password is not enabled! Any application on your device can view and control your Virtual Machine! Make sure you trust your apps on your device otherwise set a password in settings. Continue?</string>
+    <string name="ExternalSPICEEnabledWarning">You have enabled External SPICE. Anyone on the same network could control your virtual machine! Make sure you trust your network. Continue?</string>
     <string name="EnableKVMWarning">Warning! You will need an Android Device with the same architecture as the emulated Guest. Make sure you have installed an Android kernel with KVM support. If you do not know what this is press Cancel now.\n\nIf you experience crashes disable this option. Do you want to continue?</string>
     <string name="EnableKVM">Enable KVM</string>
     <string name="server">Server</string>
@@ -229,6 +234,11 @@
     <string name="EnableQMPForChangingDrives">Enable QMP in settings to change removable drives</string>
     <string name="SetVNCPassword">Set VNC Password</string>
     <string name="EnableVNCPassword">Enable VNC Password (recommended)</string>
+    <string name="SPICEPassword">SPICE password</string>
+    <string name="SetSPICEPassword">Set SPICE Password</string>
+    <string name="EnableSPICEPassword">Enable SPICE Password (recommended)</string>
+    <string name="AllowExternalSPICEConnections">Allow External SPICE Connections</string>
+    <string name="AllowExternalSPICESummary">Allow external SPICE clients. SPICE connections (including passwords) are not encrypted so only use in a private network that you trust!</string>
     <string name="ImmersiveMode">Immersive Mode</string>
     <string name="EnableImmersiveMode">Enable Immersive Mode</string>
     <string name="UsingKeyMapper">Using Key Mapper</string>
@@ -311,7 +321,6 @@
     <string name="root_vm_already_running">The VM is already running in a root process</string>
     <string name="root_vm_exited_unexpectedly">The VM running in the root process exited unexpectedly</string>
     <string name="agl_root_fallback">KernelSU did not grant root, so the AGL display cannot run the VM in this process. The VM was started in a separate root process without a display: switch the display to VNC, or grant root to this app in KernelSU.</string>
-    <string name="agl_backend_missing">This QEMU engine was built without the AGL display backend, so the AGL display cannot be used. The VM was started without a display: switch the display to VNC (or SDL), or rebuild the QEMU engine with the AGL patch and -Dagl=enabled.</string>
     <string name="label_disable_hpet">Disable HPET</string>
     <string name="label_disable_tsc">Disable TSC</string>
     <string name="label_disable_acpi">Disable ACPI</string>
@@ -334,6 +343,7 @@
     <string name="pref_title_advanced">Advanced</string>
     <string name="pref_title_qmp">QMP</string>
     <string name="pref_title_vnc">VNC</string>
+    <string name="pref_title_spice">SPICE</string>
     <string name="pref_title_disk">Disk</string>
     <string name="pref_title_updates">Updates</string>
     <string name="pref_title_audio">Audio</string>
@@ -377,5 +387,4 @@
     <string name="kvm_root_dialog_normal">Normal start</string>
     <string name="kvm_relax_failed">/dev/kvm could not be made usable. Starting the VM in a root process instead (no GPU acceleration).</string>
 
-    <string name="storage_not_mounted">Internal storage is not mounted (the emulated volume was removed by the system, so all external paths resolve to /dev/null/...). Remounting it with root failed too. Reboot the phone or remount the volume, then start the VM again.</string>
 </resources>

@@ -19,7 +19,6 @@ edk2/edk2-*
 
 # 临时构建物
 build_arm64-v8a
-qemu_gtk4_rollback.patch
 
 # 自生成配置
 android-config/*.ini

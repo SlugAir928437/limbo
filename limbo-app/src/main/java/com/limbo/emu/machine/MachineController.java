@@ -285,7 +285,8 @@ public class MachineController {
     }
 
     public boolean isPaused() {
-        return machineExecutor.getMachine().getPaused() == 1;
+        Machine machine = machineExecutor.getMachine();
+        return machine != null && machine.getPaused() == 1;
     }
 
     public int getSdlRefreshRate(boolean idle) {

@@ -212,6 +212,10 @@ public class Config {
     //It seems that new versions of qemu expect a relative number
     //  so we stop using absolute port numbers
     public static final int defaultVNCPort = 1;
+    // SPICE Defaults
+    // Unlike VNC, SPICE takes a real TCP port (no display-number offset).
+    public static String defaultSPICEHost = "127.0.0.1";
+    public static final int defaultSPICEPort = 5930;
 
     //Keyboard Layout
     public static String defaultKeyboardLayout = "en-us";

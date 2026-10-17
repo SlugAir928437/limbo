@@ -251,6 +251,29 @@ public class LimboSettingsManager extends PreferenceActivity {
         return prefs.getBoolean("enableExternalVNC", false);
     }
 
+    // SPICE
+    public static boolean getSPICEEnablePassword(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("enableSPICEPassword", false);
+    }
+
+    public static String getSPICEPass(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getString("spicePass", "");
+    }
+
+    public static void setSPICEPass(Context context, String value) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor edit = prefs.edit();
+        edit.putString("spicePass", value);
+        edit.apply();
+    }
+
+    public static boolean getEnableExternalSPICE(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("enableExternalSPICE", false);
+    }
+
     // QMP
     public static boolean getEnableQmp(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
@@ -306,6 +329,17 @@ public class LimboSettingsManager extends PreferenceActivity {
                     promptVNCPass(LimboSettingsManager.this);
                     return true;
                 });
+        getPreferenceManager().findPreference("enableSPICEPassword").setOnPreferenceChangeListener(
+                (preference, newValue) -> {
+                    if ((boolean) newValue)
+                        promptSPICEPass(LimboSettingsManager.this);
+                    return true;
+                });
+        getPreferenceManager().findPreference("spicePass").setOnPreferenceClickListener(
+                preference -> {
+                    promptSPICEPass(LimboSettingsManager.this);
+                    return true;
+                });
 
     }
 
@@ -320,15 +354,33 @@ public class LimboSettingsManager extends PreferenceActivity {
     }
 
     public void promptVNCPass(final Activity activity) {
+        promptConsolePass(activity, R.string.VNCPassword,
+                getString(R.string.vncServer) + ": " + NetworkUtils.getVNCAddress(activity)
+                        + ":" + Config.defaultVNCPort + "\n" + getString(R.string.externalVNCWarning),
+                value -> setVNCPass(activity, value));
+    }
+
+    public void promptSPICEPass(final Activity activity) {
+        promptConsolePass(activity, R.string.SPICEPassword,
+                getString(R.string.spiceServer) + ": " + NetworkUtils.getSPICEAddress(activity)
+                        + ":" + Config.defaultSPICEPort + "\n" + getString(R.string.externalSPICEWarning),
+                value -> setSPICEPass(activity, value));
+    }
+
+    /**
+     * 显示远程控制台（VNC/SPICE）的密码输入对话框。两者的交互完全一样，
+     * 只有标题、服务器地址与保存位置不同。
+     */
+    private void promptConsolePass(final Activity activity, int titleRes, String serverInfo,
+                                   final java.util.function.Consumer<String> setter) {
         final AlertDialog alertDialog;
         alertDialog = new AlertDialog.Builder(activity).create();
-        alertDialog.setTitle(getString(R.string.VNCPassword));
+        alertDialog.setTitle(getString(titleRes));
 
         TextView textView = new TextView(activity);
         textView.setVisibility(View.VISIBLE);
         textView.setPadding(20, 20, 20, 20);
-        textView.setText(getString(R.string.vncServer) + ": " + NetworkUtils.getVNCAddress(activity)
-                + ":" + Config.defaultVNCPort + "\n" + getString(R.string.externalVNCWarning));
+        textView.setText(serverInfo);
 
         final EditText passwdView = new EditText(activity);
         passwdView.setInputType(InputType.TYPE_CLASS_TEXT |
@@ -361,13 +413,13 @@ public class LimboSettingsManager extends PreferenceActivity {
                 if (passwdView.getText().toString().trim().isEmpty()) {
                     ToastUtils.toastShort(getApplicationContext(), getString(R.string.passwordCannotBeEmpty));
                 } else {
-                    LimboSettingsManager.setVNCPass(activity, passwdView.getText().toString());
+                    setter.accept(passwdView.getText().toString());
                 }
             }
         });
         alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, getString(R.string.Cancel), new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int which) {
-                LimboSettingsManager.setVNCPass(activity, null);
+                setter.accept(null);
             }
         });
 
@@ -375,7 +427,7 @@ public class LimboSettingsManager extends PreferenceActivity {
         alertDialog.setOnCancelListener(new DialogInterface.OnCancelListener() {
             @Override
             public void onCancel(DialogInterface dialog) {
-                LimboSettingsManager.setVNCPass(activity, null);
+                setter.accept(null);
             }
         });
         alertDialog.show();

@@ -368,6 +368,7 @@ public class VMExecutor extends MachineExecutor {
         String ui = getMachine().getUI();
         boolean gtk = "GTK".equals(ui);
         boolean agl = "AGL".equals(ui);
+        boolean spice = "SPICE".equals(ui);
         if (MachineController.getInstance().isVNCEnabled() && !gtk) {
             paramsList.add("-vnc");
             String vncParam = "";
@@ -388,20 +389,26 @@ public class VMExecutor extends MachineExecutor {
             paramsList.add("-monitor");
             paramsList.add("vc");
 
+        } else if (spice) {
+            // SPICE 服务端输出：QEMU 的 spice server 自己就是一种显示后端
+            // （vl.c 把 -spice 记入 display_remote，因此不会再初始化默认的
+            // SDL/GTK 显示）。
+            //
+            // 额外显式初始化 egl-headless：它是无窗口的 EGL/GLES 显示后端，
+            // 与 -spice 配对后可让 VirGL（virtio-gpu-gl-pci）在后台服务里
+            // 也有 OpenGL 渲染目标，渲染结果再作为普通帧更新送给 SPICE。
+            // Android 上没有 render node，QEMU 的 EGL 适配会使用
+            // EGL_DEFAULT_DISPLAY + GLES3（见 qemu-v11.0.0-android-egl.patch），
+            // 因此不需要 rendernode= 参数。
+            paramsList.add("-display");
+            paramsList.add("egl-headless,gl=on");
+            addSpiceOptions(context, paramsList);
+            // 没有本地窗口，monitor/serial/parallel 通过 TCP 暴露给 nc 模块
+            addConsoleTcpOptions(paramsList);
         } else {
             // gtk 允许多窗口
             if (!gtk) {
-                // 通过 TCP (server,nowait) 暴露 monitor/serial/parallel，
-                // 这样 nc 模块可以连接查看控制台。使用 raw tcp（非 telnet）
-                // 不会打开 SDL 窗口，避免 SDL 多窗口限制。
-                paramsList.add("-monitor");
-                paramsList.add("tcp:127.0.0.1:" + Config.monitorPort + ",server,nowait");
-
-                paramsList.add("-serial");
-                paramsList.add("tcp:127.0.0.1:" + Config.serialPort + ",server,nowait");
-
-                paramsList.add("-parallel");
-                paramsList.add("tcp:127.0.0.1:" + Config.parallelPort + ",server,nowait");
+                addConsoleTcpOptions(paramsList);
             }
             paramsList.add("-display");
             if (gtk) {
@@ -466,6 +473,52 @@ public class VMExecutor extends MachineExecutor {
         // 会被 usb-tablet “忽略”，故而找不到控制器
         // 挪到前面，让 usb-tablet 识别
         addUSBController(paramsList);
+    }
+
+    /**
+     * 通过 TCP (server,nowait) 暴露 monitor/serial/parallel，这样 nc 模块可以
+     * 连接查看控制台。使用 raw tcp（非 telnet）不会打开 SDL 窗口，避免 SDL
+     * 多窗口限制。
+     */
+    private void addConsoleTcpOptions(ArrayList<String> paramsList) {
+        paramsList.add("-monitor");
+        paramsList.add("tcp:127.0.0.1:" + Config.monitorPort + ",server,nowait");
+
+        paramsList.add("-serial");
+        paramsList.add("tcp:127.0.0.1:" + Config.serialPort + ",server,nowait");
+
+        paramsList.add("-parallel");
+        paramsList.add("tcp:127.0.0.1:" + Config.parallelPort + ",server,nowait");
+    }
+
+    /**
+     * SPICE 服务端输出（{@code -spice}）。
+     *
+     * <p>spice-server 会把 QXL 显卡的帧缓冲编码后发给 SPICE 客户端
+     * （remote-viewer / virt-viewer 等）。默认只监听 127.0.0.1，避免把未加密的
+     * 远程控制端口暴露到局域网；只有用户在设置里打开“允许外部 SPICE 连接”
+     * 时才绑定 0.0.0.0。密码是可选的 ticketing 认证，和 VNC 一样未加密。
+     */
+    private void addSpiceOptions(Context context, ArrayList<String> paramsList) {
+        boolean external = LimboSettingsManager.getEnableExternalSPICE(context);
+        boolean usePassword = LimboSettingsManager.getSPICEEnablePassword(context);
+        String password = LimboSettingsManager.getSPICEPass(context);
+
+        StringBuilder spice = new StringBuilder();
+        spice.append("port=").append(Config.defaultSPICEPort);
+        spice.append(",addr=").append(external ? "0.0.0.0" : Config.defaultSPICEHost);
+        if (usePassword && password != null && !password.isEmpty()) {
+            // ticketing 认证：客户端可填任意用户名 + 该密码
+            spice.append(",password=").append(password);
+        } else {
+            if (external) {
+                Log.w(TAG, "SPICE is bound to all interfaces without a password");
+            }
+            spice.append(",disable-ticketing=on");
+        }
+
+        paramsList.add("-spice");
+        paramsList.add(spice.toString());
     }
 
     /**
@@ -844,6 +897,14 @@ public class VMExecutor extends MachineExecutor {
         String vga = getMachine().getVga();
         if (vga == null) {
             return;
+        }
+        // SPICE 的显示通道只由 QXL 显卡原生提供（ui/spice-core.c 只接受
+        // QXLInstance）。但 virtio-gpu(-gl) 是另一条路径：SPICE 模式同时
+        // 打开了 egl-headless,gl=on，VirGL 渲染结果会作为普通帧更新送给
+        // SPICE，因此用户显式选择 virtio-gpu* 时保留其选择；其余本地显卡
+        // （Default/std/cirrus/ati/...）则统一落到 qxl-vga，避免客户端黑屏。
+        if ("SPICE".equals(getMachine().getUI()) && !vga.startsWith("virtio-gpu")) {
+            vga = "qxl";
         }
         if (vga.equals("Default")) {
             // 不做任何事
@@ -1400,34 +1461,8 @@ public class VMExecutor extends MachineExecutor {
     public String start() {
         String res = null;
         try {
-            // 内部储存被摘掉时（emulated 卷被 vold 卸载），所有外部储存路径都会
-            // 变成 /dev/null/... ：磁盘镜像、内核、日志全部打不开。先确认卷还在，
-            // 必要时用 root 重新挂回来，而不是让 QEMU 抛一个看不懂的错误。
-            if (!ExternalStorage.isMounted() && !ExternalStorage.repair()) {
-                Log.e(TAG, "External storage unavailable, aborting VM start");
-                return LimboApplication.getInstance().getString(R.string.storage_not_mounted);
-            }
-
             String[] params = prepareParams(LimboApplication.getInstance());
             printParams(params);
-
-            // AGL 显示要求引擎真的编进了 AGL 后端（AGL 补丁 + -Dagl=enabled）：
-            // 引擎里没有 agl_set_window 时 `-display agl` 会被 QEMU 当成非法显示
-            // 类型当场拒绝
-            //   libqemu-system-*.so: -display agl: Parameter 'type' does not accept value 'agl'
-            // 于是虚拟机连启动都做不到（画面还没起来就退出了）。在进入任何启动
-            // 路径【之前】把参数退回无画面：-display none，并把只有在有 OpenGL
-            // 后端时才能 realize 的 virtio-gpu-gl 一起降级（复用 root 子进程那套
-            // headlessParams），同时把原因和出路告诉用户。AGL 相关的 root 判定
-            // （isAglDisplay）不受影响，gunyah/gzvm 照旧要求进程内提权。
-            if (isAglDisplay() && !AglDisplay.isBackendPresent()) {
-                Log.w(TAG, "AGL display requested but " + getQemuLibrary()
-                        + " has no AGL backend (agl_set_window missing);"
-                        + " falling back to a headless display");
-                ToastUtils.toastLong(LimboApplication.getInstance(),
-                        LimboApplication.getInstance().getString(R.string.agl_backend_missing));
-                params = headlessParams(params);
-            }
 
             // gunyah/gzvm 会打开 /dev/gunyah 或 /dev/gzvm，在目标设备上
             // 这是 root-only 的：除非当前进程已经是 root，
@@ -1477,8 +1512,9 @@ public class VMExecutor extends MachineExecutor {
                 // KVM_CHOICE_NORMAL：继续走进程内路径，让 QEMU 自己报权限错误
             }
 
-            // XXX: 对于 VNC，我们需要在合理时间后手动恢复
-            if (getMachine().getPaused() == 1 && MachineController.getInstance().isVNCEnabled()) {
+            // XXX: 对于远程显示（VNC/SPICE），没有 Activity 会替我们把 VM
+            // 从 -incoming 的暂停状态里唤醒，因此需要手动恢复。
+            if (getMachine().getPaused() == 1 && getMachine().isRemoteDisplay()) {
                 continueVM(5000);
             }
 
@@ -1896,14 +1932,14 @@ public class VMExecutor extends MachineExecutor {
     }
 
     // SDL/GTK 窗口只存在于 app 进程中；root 子进程必须以 headless 运行。
-    // 当配置了 VNC 时，VNC 仍由子进程提供服务。
+    // 当配置了 VNC 或 SPICE 时，显示由子进程里的 QEMU 自己通过网络提供。
     private static String[] headlessParams(@NonNull String[] params) {
-        boolean hasVnc = false;
+        boolean hasRemoteDisplay = false;
         int displayIdx = -1;
         for (int i = 0; i < params.length; i++) {
             String p = params[i];
-            if ("-vnc".equals(p)) {
-                hasVnc = true;
+            if ("-vnc".equals(p) || "-spice".equals(p)) {
+                hasRemoteDisplay = true;
             } else if ("-display".equals(p) && i + 1 < params.length) {
                 displayIdx = i;
             }
@@ -1912,7 +1948,9 @@ public class VMExecutor extends MachineExecutor {
         if (displayIdx >= 0) {
             out = params.clone();
             out[displayIdx + 1] = "none";
-        } else if (hasVnc) {
+        } else if (hasRemoteDisplay) {
+            // -vnc / -spice 已经让 QEMU 跳过默认显示（display_remote），
+            // 不能再补 -display none，否则远程显示通道不会初始化。
             out = params;
         } else {
             out = Arrays.copyOf(params, params.length + 2);

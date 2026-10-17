@@ -107,6 +107,28 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="@string/pref_title_spice">
+
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:key="enableSPICEPassword"
+            android:summary="@string/EnableSPICEPassword"
+            android:title="@string/EnableSPICEPassword" />
+
+        <Preference
+            android:dependency="enableSPICEPassword"
+            android:key="spicePass"
+            android:summary="@string/SetSPICEPassword"
+            android:title="@string/SetSPICEPassword" />
+
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:key="enableExternalSPICE"
+            android:summary="@string/AllowExternalSPICESummary"
+            android:title="@string/AllowExternalSPICEConnections" />
+
+    </PreferenceCategory>
+
     <PreferenceCategory android:title="@string/pref_title_disk">
         <ListPreference
             android:defaultValue="@string/Default"

@@ -42,10 +42,8 @@ import java.nio.charset.StandardCharsets;
  * 后果是磁盘镜像打不开、日志写不进去，App 甚至会在 Application 初始化阶段直接闪退
  * —— 也就是"内部储存被取消挂载"之后看到的一连串现象。
  *
- * <p>所以这里提供两件事：
+ * <p>所以这里提供：
  * <ul>
- *   <li>{@link #isMounted()} / {@link #repair()}：判断卷是否真的可用，并用 root
- *       通过 {@code sm mount} 把它挂回来，省掉"储存掉了只能重启手机"；</li>
  *   <li>{@link #remapForRoot(String[])}：让 root 子进程绕开 FUSE，直接走底层目录
  *       {@code /data/media/<user>}，从源头上减少"root 进程读写 /sdcard"这一类故障。</li>
  * </ul>
@@ -86,66 +84,6 @@ public final class ExternalStorage {
         } catch (Throwable t) {
             Log.w(TAG, "Could not resolve external storage root", t);
             return null;
-        }
-    }
-
-    /**
-     * 外部储存当前是否真的可用。
-     *
-     * <p>不只依赖 {@link Environment#getExternalStorageState()}：卷被摘掉后状态确实会
-     * 变成 unmounted/removed，但日志里出现过"状态看着正常、路径却已经是
-     * {@code /dev/null/...}"的情况，因此两个条件都满足才算可用。
-     */
-    public static boolean isMounted() {
-        try {
-            if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-                return false;
-            }
-        } catch (Throwable t) {
-            return false;
-        }
-        return root() != null;
-    }
-
-    /**
-     * 尝试把被摘掉的内部储存卷重新挂回来（需要 root）。
-     *
-     * <p>用 {@code sm}（StorageManagerService 的 shell 客户端）：先直接 mount；
-     * 如果卷处于"还挂着但已经没人服务"的坏状态，先 unmount 再 mount。
-     * 这两条都不做任何破坏性操作：卷本来就没挂载时，unmount 只是返回一个错误。
-     *
-     * @return 修复后外部储存是否可用
-     */
-    public static boolean repair() {
-        if (isMounted()) {
-            return true;
-        }
-        if (!RootUtils.isRoot() && !RootUtils.hasSu()) {
-            Log.w(TAG, "External storage is not mounted and su is unavailable");
-            return false;
-        }
-        final String volId = "emulated;" + userId();
-        Log.w(TAG, "External storage is not mounted, trying to mount " + volId);
-        execSu("sm mount '" + volId + "'");
-        if (isMounted()) {
-            return true;
-        }
-        // 坏状态兜底：先摘干净再挂，否则 mount 会直接失败
-        execSu("sm unmount '" + volId + "'; sm mount '" + volId + "'");
-        boolean mounted = isMounted();
-        if (!mounted) {
-            Log.e(TAG, "Could not remount external storage " + volId);
-        }
-        return mounted;
-    }
-
-    /** 当前用户 id（就是卷 id "emulated;&lt;userId&gt;" 里的那一段）。 */
-    private static int userId() {
-        try {
-            // 等价于 UserHandle.myUserId()，但不依赖 API 版本
-            return Process.myUid() / 100000;
-        } catch (Throwable t) {
-            return 0;
         }
     }
 

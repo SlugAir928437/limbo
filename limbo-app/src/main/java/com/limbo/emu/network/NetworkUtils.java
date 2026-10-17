@@ -59,6 +59,16 @@ public class NetworkUtils {
         return addr;
     }
 
+    /** SPICE 客户端应连接的地址（外部访问关闭时只监听 localhost）。 */
+    public static String getSPICEAddress(Context context) {
+        String addr = null;
+        if (LimboSettingsManager.getEnableExternalSPICE(context))
+            addr = getExternalIpAddress();
+        if (addr == null)
+            return Config.defaultSPICEHost;
+        return addr;
+    }
+
     public static String getLocalIpAddress() {
         return Config.defaultVNCHost;
     }

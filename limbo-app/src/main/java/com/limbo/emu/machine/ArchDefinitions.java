@@ -248,6 +248,15 @@ public class ArchDefinitions {
     public static ArrayList<String> getUIValues() {
         ArrayList<String> arrList = new ArrayList<>();
         arrList.add("VNC");
+        // SPICE server output ("-spice" + qxl-vga): the guest display is
+        // exported over the SPICE protocol and rendered by an external SPICE
+        // client (remote-viewer / virt-viewer / an Android SPICE viewer).
+        // The QEMU engine must be built with CONFIG_SPICE; the IA-64 fork is
+        // configured with --disable-spice (see jni/Makefile), so the option is
+        // hidden there to avoid starting a VM with an unknown -spice option.
+        if (LimboApplication.arch != Config.Arch.ia64
+                && LimboApplication.arch != Config.Arch.ia64w)
+            arrList.add("SPICE");
         if (Config.enable_SDL)
             arrList.add("SDL");
         // The GTK4 backend (gtk4android) is cross-compiled against API 31 and

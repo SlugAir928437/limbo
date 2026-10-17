@@ -145,12 +145,23 @@ public class Machine extends Observable {
     }
 
     /**
-     * Display backend for this machine: "SDL", "VNC" or "GTK".
+     * Display backend for this machine: "SDL", "VNC", "SPICE", "GTK" or "AGL".
      */
     public String getUI() {
         if (ui != null)
             return ui;
         return enableVNC == 1 ? "VNC" : "SDL";
+    }
+
+    /**
+     * True when the guest display is exported over the network (VNC or SPICE)
+     * instead of being rendered into a local, Activity-owned surface.  Remote
+     * displays run the VM headless from {@code MachineService}, so there is no
+     * SDL/GTK window to attach to.
+     */
+    public boolean isRemoteDisplay() {
+        String ui = getUI();
+        return "VNC".equals(ui) || "SPICE".equals(ui);
     }
 
     void setUI(String ui) {

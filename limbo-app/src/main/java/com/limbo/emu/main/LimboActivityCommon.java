@@ -154,17 +154,34 @@ public class LimboActivityCommon {
     }
 
     public static void promptVNCServer(final Context context, final String msg, final ViewListener viewListener) {
+        promptRemoteServer(context, R.string.vncServer,
+                context.getString(R.string.vncServer) + ": "
+                        + NetworkUtils.getVNCAddress(context) + ":" + Config.defaultVNCPort,
+                msg, viewListener);
+    }
+
+    public static void promptSpiceServer(final Context context, final String msg, final ViewListener viewListener) {
+        promptRemoteServer(context, R.string.spiceServer,
+                context.getString(R.string.spiceServer) + ": "
+                        + NetworkUtils.getSPICEAddress(context) + ":" + Config.defaultSPICEPort,
+                msg, viewListener);
+    }
+
+    /**
+     * 远程控制台（VNC/SPICE）启动前的提示对话框：显示客户端应连接的地址，
+     * 并在用户确认后再启动 VM。
+     */
+    private static void promptRemoteServer(final Context context, final int titleRes,
+                                           final String serverInfo, final String msg,
+                                           final ViewListener viewListener) {
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
             public void run() {
                 final AlertDialog alertDialog;
                 alertDialog = new AlertDialog.Builder(context).create();
-                alertDialog.setTitle(context.getString(R.string.vncServer));
+                alertDialog.setTitle(context.getString(titleRes));
 
-                alertDialog.setMessage(context.getString(R.string.vncServer) + ": "
-                        + NetworkUtils.getVNCAddress(context)
-                        + ":" + Config.defaultVNCPort + "\n"
-                        + "\n" + msg);
+                alertDialog.setMessage(serverInfo + "\n" + "\n" + msg);
 
                 alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, context.getString(android.R.string.ok),
                         new DialogInterface.OnClickListener() {

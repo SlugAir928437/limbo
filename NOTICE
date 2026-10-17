@@ -120,10 +120,7 @@ qemu-v11.0.0-agl-display.patch 与 qemu-v11.0.0-android-egl.patch 中；
 GPLv3 第 5(a)、5(b) 条保留原有声明。各补丁文件首部另附来源前言，说明上游
 来源、原版权与 limbo 侧修改者及日期。
 
-自本次调整起，QEMU 的补丁不再在构建时应用：上述三个补丁连同其余 Limbo 补丁
-（qemu-v11.0.0.patch、qemu-v11.0.0-android-egl.patch、
-qemu-v11.0.0-limbo-sdl-display.patch、qemu-v11.0.0-limbo-gtk-vrr.patch、
-qemu-v11.0.0-virgl-blob-log.patch 等）的最终结果已固化到独立仓库
+上述三个补丁连同其余 Limbo 补丁的最终结果已固化到独立仓库
 https://github.com/SlugAir928437/QEMU （分支 main），构建时由
 limbo-app/src/main/jni/Makefile 的 fetch-qemu 目标直接克隆该仓库。
 limbo-app/src/main/jni/patches/ 下的同名补丁仅作为来源与许可追溯保留。

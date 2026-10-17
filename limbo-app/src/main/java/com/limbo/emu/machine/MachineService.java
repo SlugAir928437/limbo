@@ -88,9 +88,13 @@ public class MachineService extends Service {
                 return START_NOT_STICKY;
 
             String text = MachineController.getInstance().getMachine().getName() + ": VM Running";
-            if (MachineController.getInstance().isVNCEnabled()) {
+            String ui = MachineController.getInstance().getMachine().getUI();
+            if ("VNC".equals(ui)) {
                 text += " - " + service.getString(R.string.vncServer);
                 text += ": " + NetworkUtils.getVNCAddress(service) + ":" + Config.defaultVNCPort;
+            } else if ("SPICE".equals(ui)) {
+                text += " - " + service.getString(R.string.spiceServer);
+                text += ": " + NetworkUtils.getSPICEAddress(service) + ":" + Config.defaultSPICEPort;
             }
             // we need to start the service in the foreground
             setUpAsForeground(text);

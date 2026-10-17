@@ -227,8 +227,8 @@ public class LimboActivity extends AppCompatActivity implements
         runOnUiThread(() -> {
             if (MachineController.getInstance().isRunning() || statusChanged == MachineStatus.Running) {
                 uiState.setStatusRunning(true);
-                if (uiState.getUiSel() == 0) {
-                    // VNC
+                if (isRemoteDisplay()) {
+                    // VNC/SPICE：VM 在后台服务里 headless 运行，没有本地窗口
                     uiState.setStatusText(getString(R.string.Running));
                     uiState.setStatusKind(1);
                     enableRemovableDiskValues(true);
@@ -695,7 +695,7 @@ public class LimboActivity extends AppCompatActivity implements
 
         // audio
         if (Config.enableSDLSound && getMachine() != null
-                && getMachine().getEnableVNC() != 1
+                && !isRemoteDisplay()
                 && getMachine().getPaused() == 0)
             uiState.setSoundEnabled(flag);
         else
@@ -1391,7 +1391,7 @@ public class LimboActivity extends AppCompatActivity implements
         enableRemovableDeviceOptions(!MachineController.getInstance().isRunning());
 
         if (Config.enableSDLSound) {
-            uiState.setSoundEnabled(getMachine() != null && getMachine().getEnableVNC() != 1 && getMachine().getPaused() == 0);
+            uiState.setSoundEnabled(getMachine() != null && !isRemoteDisplay() && getMachine().getPaused() == 0);
         } else
             uiState.setSoundEnabled(false);
 
@@ -1439,6 +1439,9 @@ public class LimboActivity extends AppCompatActivity implements
         if ("VNC".equals(ui)) {
             text += ", " + getString(R.string.server);
             text += ": " + NetworkUtils.getVNCAddress(this) + ":" + Config.defaultVNCPort;
+        } else if ("SPICE".equals(ui)) {
+            text += ", " + getString(R.string.server);
+            text += ": " + NetworkUtils.getSPICEAddress(this) + ":" + Config.defaultSPICEPort;
         }
         if (getMachine().getKeyboard() != null) {
             text += ", " + getString(R.string.keyboard) + ": " + getMachine().getKeyboard();
@@ -1523,8 +1526,14 @@ public class LimboActivity extends AppCompatActivity implements
     }
 
     public void updateGraphicsSummary(boolean clear) {
+        String vga = getMachine() != null ? getMachine().getVga() : null;
+        // SPICE 模式下的本地显卡统一落到 qxl-vga（virtio-gpu* 保留用户选择，
+        // 由 egl-headless 提供 GL），见 VMExecutor#addGraphicsOptions。
+        if (getMachine() != null && "SPICE".equals(getMachine().getUI())
+                && (vga == null || !vga.startsWith("virtio-gpu")))
+            vga = "qxl";
         uiState.setGraphicsSummary(clear || getMachine() == null || uiState.getMachineSel() < 2
-                ? "" : "Video Card: " + getMachine().getVga());
+                ? "" : "Video Card: " + vga);
     }
 
     public void updateAudioSummary(boolean clear) {
@@ -1602,11 +1611,19 @@ public class LimboActivity extends AppCompatActivity implements
             startGtk();
         } else if ("AGL".equals(ui)) {
             startAgl();
+        } else if ("SPICE".equals(ui)) {
+            startSpice();
         } else if (getMachine().getEnableVNC() == 1) {
             startVNC();
         } else {
             startSDL();
         }
+    }
+
+    /** 当前机型是否使用远程显示（VNC/SPICE，VM 在后台服务里 headless 运行）。 */
+    private boolean isRemoteDisplay() {
+        Machine machine = getMachine();
+        return machine != null && machine.isRemoteDisplay();
     }
 
     /** 当前机型是否使用 AGL 显示（画面直接绘制在 App 的 Surface 上）。 */
@@ -1667,6 +1684,29 @@ public class LimboActivity extends AppCompatActivity implements
         }
     }
 
+    /**
+     * Start the vm with SPICE server output via the Controller.
+     *
+     * <p>SPICE 与 VNC 一样是远程控制台：VM 在后台服务里 headless 启动，
+     * QEMU 用 {@code -spice} 把 QXL 画面发给外部 SPICE 客户端。
+     */
+    public void startSpice() {
+        boolean external = LimboSettingsManager.getEnableExternalSPICE(this);
+        boolean passwordEnabled = LimboSettingsManager.getSPICEEnablePassword(this);
+        String password = LimboSettingsManager.getSPICEPass(this);
+        if (external) {
+            LimboActivityCommon.promptSpiceServer(this,
+                    getString(R.string.ExternalSPICEEnabledWarning), viewListener);
+        } else if (!passwordEnabled) {
+            LimboActivityCommon.promptSpiceServer(this,
+                    getString(R.string.SPICEPasswordNotEnabledWarning), viewListener);
+        } else if (password == null || password.isEmpty()) {
+            ToastUtils.toastShort(this, getString(R.string.SPICEPasswordMissing));
+        } else {
+            notifyAction(MachineAction.START_VM, null);
+        }
+    }
+
     private boolean validateFiles() {
         return FileUtils.fileValid(getMachine() != null ? getMachine().getHdaImagePath() : null)
                 && FileUtils.fileValid(getMachine() != null ? getMachine().getHdbImagePath() : null)
@@ -1683,7 +1723,7 @@ public class LimboActivity extends AppCompatActivity implements
     private void onStopButton(boolean exitApp) {
         KeyboardUtils.hideKeyboard(this, parent);
         if (MachineController.getInstance().isRunning()) {
-            if (MachineController.getInstance().isVNCEnabled())
+            if (isRemoteDisplay())
                 LimboActivityCommon.promptStopVM(this, viewListener);
             else if (isAglDisplay()) {
                 LimboAglActivity.pendingStop = true;
@@ -1704,7 +1744,7 @@ public class LimboActivity extends AppCompatActivity implements
 
     private void onPauseButton() {
         if (MachineController.getInstance().isRunning()) {
-            if (MachineController.getInstance().isVNCEnabled())
+            if (isRemoteDisplay())
                 LimboActivityCommon.promptPause(this, viewListener);
             else if (isAglDisplay()) {
                 LimboAglActivity.pendingPause = true;

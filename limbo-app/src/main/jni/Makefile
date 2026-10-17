@@ -73,71 +73,13 @@ INSTALL_PIXMAN_LIBS=cp -Lf pixman/build-android-$(APP_ABI)/pixman/libpixman-1.so
         $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/ ; \
     fi
 
-# QEMU 引擎库：把 qemu/build/qemu-system-<target> 重命名部署为
-# obj/local/<abi>/libqemu-system-<target>.so，随后由 INSTALL_LIBS 一并复制进
-# src/main/jniLibs（即最终打进 APK 的那份）。
-# 这里必须列出 App 支持的全部客户机架构，漏掉某一项该引擎就不会进包：
-#   x86_64 -> libqemu-system-x86_64.so   （64 位 x86 客户机）
-#   i386   -> libqemu-system-i386.so     （32 位 x86 客户机）
-#   arm    -> libqemu-system-arm.so      （32 位 ARM 客户机）
-#   aarch64-> libqemu-system-aarch64.so  （64 位 ARM 客户机）
-#   ia64   -> libqemu-system-ia64.so     （IA-64 fork）
-# 命名需与 VMExecutor#getQemuLibrary / ArchManager#libName 保持一致；
-# ArchManager 正是通过扫描 APK 内是否存在这些 libqemu-system-*.so 来判断某个
-# 模拟架构在当前安装包中是否可选，因此遗漏会直接导致该架构在“切换模拟架构”
-# 菜单里不可见。
-#
-# 【只部署本次构建真正产出的引擎】：换 BUILD_GUEST 重新构建【不会】清掉
-# qemu/build/qemu-system-<target>，obj/local/<abi>/ 与 jniLibs/<abi>/ 里也还留着
-# 上一次构建的 libqemu-system-<target>.so；无条件复制/打包就会把“上次构建的旧
-# 引擎”混进 APK，而旧引擎缺少这次新增的功能。AGL 显示后端就是活生生的例子：
-# App 按 UI 配置照发 `-display agl`，旧引擎的 qapi DisplayType 里没有 agl，QEMU
-# 直接以
-#   libqemu-system-aarch64.so: -display agl: Parameter 'type' does not accept value 'agl'
-# 退出，AGL 显示（gunyah/gzvm 客户机唯一的显示方式）永远起不来。
-# 判定标准是该客户机是否出现在本次的 $(BUILD_GUEST)（即 QEMU --target-list）里。
-# 所以这里拆成两件事，并且【两个调用点都要走一遍】：
-#   PRUNE_QEMU_LIBS - 把不在 BUILD_GUEST 里的旧引擎从 obj/local 与 jniLibs 删掉
-#                     （否则 INSTALL_LIBS 的 `cp *.so`、gradle 打包会原样带上）；
-#   QEMU_AGL_CHECK  - 即将打包的 arm/aarch64 引擎里必须真的有 AGL 后端（AGL 补丁
-#                     + -Dagl=enabled），缺了就在构建日志里点名告警。
-# 调用点：_build-qemu（刚构建完、复制引擎之后）与 install-common（把 obj/local
-# 同步进 jniLibs、即进 APK 之前，只跑 `make install` 时也会执行）。
 QEMU_TARGETS := x86_64 i386 arm aarch64 ia64
 
-PRUNE_QEMU_LIBS=for target in $(QEMU_TARGETS); do \
-	if ! echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
-		rm -f "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so" \
-			"$(LIMBO_APP_LIBS)/jniLibs/$(APP_ABI_DIR)/libqemu-system-$$target.so"; \
-		echo ">> 跳过旧引擎 libqemu-system-$$target.so：$$target 不在本次 BUILD_GUEST=$(BUILD_GUEST) 里"; \
-		echo ">>   它来自上一次构建，可能缺少本次新增的功能（例如 AGL 显示后端 -display agl 会被 QEMU 拒绝），"; \
-		echo ">>   已从 obj/local 与 jniLibs 移除；确实需要它就把 $$target-softmmu 加进 BUILD_GUEST 重新构建。"; \
-	fi; \
-done
-
-# $(1) 是要体检的目录：obj/local/<abi>（刚复制好）或 jniLibs/<abi>（即将打包）。
-define QEMU_AGL_CHECK
-for target in arm aarch64; do \
-	if echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
-		lib="$(1)/libqemu-system-$$target.so"; \
-		if [ -f "$$lib" ] && ! grep -q agl_set_window "$$lib"; then \
-			echo ">> WARNING: $$lib 里没有 AGL 显示后端（缺 agl_set_window）。"; \
-			echo ">>          App 的 Config.enableAgl 会提供 AGL 显示并发 -display agl，QEMU 只会以"; \
-			echo ">>          'Parameter type does not accept value agl' 拒绝它（虚拟机起不来）。"; \
-			echo ">>          请确认 AGL 补丁已应用、configure 带上了 -Dagl=enabled，且 USE_GTK=true 提供的"; \
-			echo ">>          epoxy 被找到（opengl 没找到时 AGL 不会编进去），或者重新构建这个引擎。"; \
-		fi; \
-	fi; \
-done
-endef
-
 INSTALL_QEMU_LIBS=for target in $(QEMU_TARGETS); do \
-	if echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
+    if echo ",$(BUILD_GUEST)," | grep -q ",$$target-softmmu,"; then \
 		if [ -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" ]; then \
 			cp -f "$(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target" \
 				"$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libqemu-system-$$target.so"; \
-		else \
-			echo ">> ERROR: BUILD_GUEST 含 $$target-softmmu，但没构建出 $(LIMBO_JNI_ROOT)/qemu/build/qemu-system-$$target（QEMU 构建失败或未执行）"; \
 		fi; \
 	fi; \
 done
@@ -673,9 +615,7 @@ deps: ndk glib pixman slirp $(SPICE_DEPS_TARGET) $(if $(USE_GTK),gtk)
 
 _build-qemu: ndk 
 	make _qemu
-	$(PRUNE_QEMU_LIBS)
 	$(INSTALL_QEMU_LIBS)
-	$(call QEMU_AGL_CHECK,$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI))
 	$(INSTALL_LIBS)
 	$(RENAME_TUNCTL)
 	$(RENAME_PARPROUTED)
@@ -723,9 +663,7 @@ clean-symbols:
 
 install-common:
 	$(CREATE_LIBSDIR)
-	$(PRUNE_QEMU_LIBS)
 	$(INSTALL_LIBS)
-	$(call QEMU_AGL_CHECK,$(LIMBO_APP_LIBS)/jniLibs/$(APP_ABI_DIR))
 	$(STRIP_LIBS)
 	$(COLLECT_SYMBOLS)
 
@@ -770,75 +708,17 @@ endif
 #          应用它自己的 Android 适配补丁。
 # gtk4android 亦由此处克隆（不再以 git submodule 形式存在于仓库）。
 # ---------------------------------------------------------------------------
-# 已打补丁的官方 QEMU 源码仓库（专门存放 patch 后的代码）。
-#   - 克隆走 HTTPS：CI runner 里没有任何 SSH 私钥，用 git@github.com: 会直接失败；
-#     仓库是公开的，HTTPS 匿名克隆即可（与以前从 gitlab.com 匿名克隆官方树一样）。
-#   - 推送（维护这份源码时）才需要 SSH：QEMU_OFFICIAL_PUSH_URL。
-# 同步维护方式：在本地 qemu/ 打完补丁 -> git commit -> push 到 PUSH_URL。
 QEMU_OFFICIAL_URL      := https://github.com/SlugAir928437/QEMU.git
-QEMU_OFFICIAL_PUSH_URL := git@github.com:SlugAir928437/QEMU.git
 QEMU_OFFICIAL_BRANCH   := main
 QEMU_FORK_URL          := https://github.com/FreshingAir/qemu-system-ia64.git
+QEMU_FORK_BRANCH    := main
+# IA-64 fork 仍缺的 Android 适配（fork 未合入）
+QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-android.patch
 
-# gzvm / gunyah 加速器（合并版，AnyLaySys 上游移植到 QEMU 11.0.0）。
-# 源码已固化在 QEMU_OFFICIAL_URL（accel/gunyah、accel/gzvm、hw/arm/virt-gzvm.c、
-# hw/intc/arm_gicv3_{gunyah,gzvm}.c、target/arm/{gunyah,gzvm}.c 等），
-# 构建时只剩下面的 ACCEL_MESON_FLAGS 需要下发。补丁原件见
-# patches/qemu-v11.0.0-gunyah-gzvm-accel.patch（仅供追溯）。
-
-# AGL（Android Graphics Layer）显示后端：gunyah/gzvm 加速的 aarch64 虚拟机
-# 必须把画面画到 App 自己的 Surface 上（-display agl），而独立 root 子进程拿不到
-# Surface，因此还需要配合进程内提权（见 RootUtils.grantRoot）。该后端依赖
-# epoxy/EGL，即 USE_GTK/USE_VIRGL 提供的 OpenGL 栈。源码固化同上
-# （ui/agl.c、ui/agl-input.c、include/ui/agl.h、qapi/ui.json 等）。
 AGL_MESON_FLAGS     := -Dagl=enabled
 
-# Android EGL 初始化：把系统 libEGL 的 surfaceless GLES3 上下文接进
-# ui/egl-helpers.c，供 USE_VIRGL=true（-Dopengl=enabled -Dvirglrenderer=enabled）
-# 时的 virtio-gpu-gl / virglrenderer 使用。源码固化在 QEMU_OFFICIAL_URL
-# （IA-64 fork 关闭 VirGL/OpenGL，用不到这份改动）。补丁原件见
-# patches/qemu-v11.0.0-android-egl.patch（仅供追溯）。
-
-# SDL 显示方式（缩放模式）：给 ui/sdl2-2d.c / ui/sdl2-gl.c 加上
-# limbo_sdl_scale_mode（0=拉伸至全屏 1=等比缩放 2=1:1），由 Java 侧经
-# set_qemu_var() 下发，取值与 GTK 后端的 limbo_gtk_scale_mode 一致。
-# 源码固化在 QEMU_OFFICIAL_URL。补丁原件见
-# patches/qemu-v11.0.0-limbo-sdl-scale-sdl2-2d.patch / -sdl2-gl.patch（仅供追溯）。
-
-# SDL 显示（ui/sdl2.c，缩放 + 可变刷新率一并）：limbo_sdl_scale_mode
-# 与 limbo_sdl_refresh_rate（0=关闭 >0=目标刷新率 Hz），由 Java 侧经
-# set_qemu_var() 下发。VRR 生效后 SDL 后端的 dcl->update_interval 严格按目标
-# 频率重算（1000/hz ms，不再有空闲降频到 30ms 的钳制），配合 Android 侧
-# Surface.setFrameRate() 让面板切到同一刷新率。
-# 源码固化在 QEMU_OFFICIAL_URL。补丁原件见
-# patches/qemu-v11.0.0-limbo-sdl-display.patch（仅供追溯）。
-
-# GTK 可变刷新率（VRR）：ui/gtk.c 的 limbo_gtk_refresh_rate
-# （0=关闭 >0=目标刷新率 Hz），由 Java 侧经 set_qemu_var() 与 SDL 后端一起下发。
-# gd_update_monitor_refresh_rate() 在 GDK 报不出刷新率（Android 上常见为 0）时
-# 会用该值覆盖，并把 dcl->update_interval 严格按 1000/hz ms 设置（原先还被
-# MIN(..., GUI_REFRESH_INTERVAL_DEFAULT) 钳在 33Hz）。
-# 源码固化在 QEMU_OFFICIAL_URL。补丁原件见
-# patches/qemu-v11.0.0-limbo-gtk-vrr.patch（仅供追溯）。
-
-# venus（Vulkan over VirGL）诊断日志：hw/display/virtio-gpu-virgl.c 的
-# virgl_cmd_resource_create_blob() 里无条件打印一行 create_blob 的请求参数
-# （res / ctx_id / blob_mem / blob_flags / blob_id / size / nr_entries）。
-# 用途：客户机里 "venus 起不来"（vkmark/vkcube 报 vkCreateInstance failed
-# with ERROR_OUT_OF_HOST_MEMORY）时，QEMU 只会打印
-# "virgl blob create error: <errno>"，看不到它到底收到了什么参数；有这一行
-# 就能直接判断是哪个字段不被 virglrenderer 接受。
-# 只加日志、不改行为。源码固化在 QEMU_OFFICIAL_URL；要停用就删掉那行打印并
-# 重新提交该仓库（补丁原件 patches/qemu-v11.0.0-virgl-blob-log.patch 仅供追溯）。
-#
-# 说明：以上补丁在 QEMU_OFFICIAL_URL 里的落地顺序就是下面变量的排列顺序
-# （主补丁 -> 加速器 -> AGL -> EGL -> SDL -> GTK VRR -> blob 日志），
-# 其中 GTK VRR 针对【已打完主补丁的】ui/gtk.c 生成，调换顺序会使补丁原件失效。
-
-# 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过
-#  export BUILD_ACCEL=gunyah / gzvm / both / none 覆盖）
+# 是否构建并启用 gzvm / gunyah 加速器（默认开启；可通过 export BUILD_ACCEL 覆盖）
 # 映射成 config-qemu 里传给 ./configure 的 -Dgunyah/-Dgzvm meson 特性。
-# 补丁已在 QEMU_OFFICIAL_URL 里打好，这里不再有对应的 *_APPLY 开关。
 ifeq ($(BUILD_ACCEL), none)
 ACCEL_MESON_FLAGS    :=
 else ifeq ($(BUILD_ACCEL), gunyah)
@@ -848,15 +728,6 @@ ACCEL_MESON_FLAGS    := -Dgunyah=disabled -Dgzvm=enabled
 else
 ACCEL_MESON_FLAGS    := -Dgunyah=enabled -Dgzvm=enabled
 endif
-QEMU_FORK_BRANCH    := main
-# IA-64 fork 仍缺的 Android 适配（官方树的 qemu-v11.0.0.patch 已有、fork 未合入）：
-#   - 强制 HAVE_COPY_FILE_RANGE，让 block/file-posix.c 走 limbo_compat_stubs.c
-#     的实现而不是自己编一份 static copy_file_range()（会与 limbo_compat.h 的
-#     原型冲突）
-#   - spice-server >=0.15 是 C++ 静态库，必须显式链接 NDK libc++ 运行时，否则
-#     libspice-server.a 的 __cxxabiv1::* / __cxa_pure_virtual 无人解析
-#   - Android 交叉构建跳过整个 tests/：宿主测试二进制既不能在设备上运行，也编不过
-QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-android.patch
 # virglrenderer (host side of QEMU's virtio-gpu-gl-pci / CONFIG_VIRGL).
 # Override the tag with e.g. export VIRGL_TAG=1.1.1 to follow upstream.
 VIRGL_TAG           ?= 1.1.0
@@ -885,16 +756,6 @@ LIBJPEG_TGZ          := https://github.com/libjpeg-turbo/libjpeg-turbo/releases/
 SPICE_PROTO_TGZ      := https://www.spice-space.org/download/releases/spice-protocol-0.14.5.tar.xz
 SPICE_TGZ            := https://www.spice-space.org/download/releases/spice-0.15.2.tar.bz2
 
-# x86/arm（非 ia64）guest 使用官方 QEMU；其余（或未设置）用 IA-64 fork。
-#
-# 注意 BUILD_GUEST 是【逗号分隔】的客户机列表：CI 的官方架构任务把
-# x86_64/i386/arm/aarch64 合并成一条构建（见 .github/workflows/build.yml 的
-# matrix.guest），make all 的 EXPORT_GUEST_ALL 同理。而 $(filter)/$(filter-out)
-# 只按【空白】分词，把逗号列表原样交给它时整个列表会被当成一个词、永远匹配不上，
-# 官方架构的构建于是被误判成 IA-64 fork —— 下面那个 ifneq 会立刻把 AGL /
-# Android EGL / gunyah-gzvm 的补丁与配置开关（含 -Dagl=enabled）一起清掉，打出来
-# 的 libqemu-system-*.so 里就没有 AGL 后端（只留下 QEMU_AGL_CHECK 的一句告警，
-# AGL 显示永远起不来）。所以先按逗号拆成空白分隔，再判断列表里是否全是官方架构。
 QEMU_OFFICIAL_GUESTS := x86_64-softmmu i386-softmmu arm-softmmu aarch64-softmmu
 QEMU_COMMA := ,
 QEMU_EMPTY :=
@@ -911,9 +772,7 @@ QEMU_USE_OFFICIAL := no
 endif
 
 # gzvm / gunyah 加速器与 Android EGL 初始化仅适用于官方 QEMU 11.0.0 树
-# （即 QEMU_OFFICIAL_URL 那份已打补丁的源码）：IA-64 fork 无对应 meson 选项，
-# 传入 -Dgunyah/-Dgzvm 会导致 "Unknown option" 配置失败。补丁不再就地应用，
-# 所以这里只需要清掉 meson 开关（AGL 的 -Dagl=enabled 同理清掉）。
+# IA-64 fork 无对应 meson 选项，默认关闭。
 ifneq ($(QEMU_USE_OFFICIAL), yes)
 ACCEL_MESON_FLAGS    :=
 AGL_MESON_FLAGS      :=
@@ -934,21 +793,9 @@ VIRGL_MESON_FLAGS = $(if $(filter true,$(USE_VIRGL)),$(shell if grep -q virglren
 
 # ---------------------------------------------------------------------------
 # EDK2（TianoCore）客户机 UEFI 固件
-#
-# 为各客户机架构产出 QEMU 可直接 -bios 使用的 UEFI 固件，部署到 assets/roms/：
-#   x86(IA32)   -> edk2-i386-code.fd      x86_64(X64)      -> edk2-x86_64-code.fd
-#   Arm(ARM)    -> edk2-arm-code.fd       Aarch64(AARCH64) -> edk2-aarch64-code.fd
-#
-# 标签固定 edk2-stable202508（理由详见 edk2/make_edk2.sh 头部说明）：它是最后一
-# 个同时保留【纯 32 位 x86 的 OvmfPkgIa32.dsc】与【32 位 ARM 支持（ArmVirtQemu
-# 的 SUPPORTED_ARCHITECTURES 含 ARM）】的稳定版；202511 起上游已先后移除二者。
-#
-# 不构建 IA64：上游 edk2 已于 2019 年移除 IPF，且仍含 IPF 的 edk2-stable201808
-# 与 UDK2018 也没有任何可构建的 IA64 平台（同样详见 edk2/make_edk2.sh 头部说明）。
-# 因此 ia64-softmmu 客户机的 EDK2_ARCHS 为空，edk2 目标整体跳过。
-#
-# 固件与 BUILD_HOST 无关、只与客户机架构有关。默认【不编译 EDK2】（USE_EDK2=false，
-# 见 android-limbo-config.mak）；启用后只构建当前 BUILD_GUEST 对应的那一个架构，
+# Tag 固定在 edk2-stable202508
+# 不构建 IA64：ia64-softmmu 客户机的 EDK2_ARCHS 为空，edk2 目标整体跳过。
+# 默认【不编译 EDK2】，启用后只构建当前 BUILD_GUEST 对应的那一个架构。
 # 需要一次构建全部时用 EDK2_ARCHS="IA32 X64 ARM AARCH64"。
 # ---------------------------------------------------------------------------
 EDK2_DIR          := $(LIMBO_JNI_ROOT)/edk2

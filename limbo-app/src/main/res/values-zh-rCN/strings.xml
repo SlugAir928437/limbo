@@ -72,11 +72,13 @@
     <string name="mttcgHelp">MTTCG 帮助</string>
     <string name="failToCreateMachineDirError">无法创建内部虚拟机目录</string>
     <string name="externalVNCWarning">VNC 连接未加密，因此不安全。请确保您在可信任的网络中！\n</string>
+    <string name="externalSPICEWarning">SPICE 连接未加密，因此不安全。请确保您在可信任的网络中！\n</string>
     <string name="Password">密码</string>
     <string name="passwordCannotBeEmpty">密码不能为空！</string>
     <string name="chooseDirToCreateImage">选择一个目录来创建镜像</string>
     <string name="ImageCreated">镜像已创建</string>
     <string name="vncServer">VNC 服务器</string>
+    <string name="spiceServer">SPICE 服务器</string>
     <string name="ImportMachines">导入虚拟机</string>
     <string name="DeleteVM">删除虚拟机</string>
     <string name="deleteVMWarning">是否删除虚拟机？仅删除虚拟机定义和状态，磁盘镜像文件不会被删除</string>
@@ -167,6 +169,9 @@
     <string name="VNCPasswordMissing">设置中缺少 VNC 密码！</string>
     <string name="VNCPasswordNotEnabledWarning">VNC 密码未启用！设备上的任何应用都可以查看和控制您的虚拟机！请确保您信任设备上的应用，否则请在设置中设置密码。是否继续？</string>
     <string name="ExternalVNCEnabledWarning">您已启用外部 VNC。同一网络上的任何人都可以读取您的 VNC 密码并控制您的虚拟机！请确保您信任您的网络。是否继续？</string>
+    <string name="SPICEPasswordMissing">设置中缺少 SPICE 密码！</string>
+    <string name="SPICEPasswordNotEnabledWarning">SPICE 密码未启用！设备上的任何应用都可以查看和控制您的虚拟机！请确保您信任设备上的应用，否则请在设置中设置密码。是否继续？</string>
+    <string name="ExternalSPICEEnabledWarning">您已启用外部 SPICE。同一网络上的任何人都可以控制您的虚拟机！请确保您信任您的网络。是否继续？</string>
     <string name="EnableKVMWarning">警告！您需要一台与模拟的客户操作系统架构相同的 Android 设备。请确保已安装支持 KVM 的 Android 内核。如果您不了解这是什么，请立即按取消。\n\n如果遇到崩溃，请禁用此选项。是否继续？</string>
     <string name="EnableKVM">启用 KVM</string>
     <string name="server">服务器</string>
@@ -228,6 +233,11 @@
     <string name="EnableQMPForChangingDrives">在设置中启用 QMP 以更改可移动驱动器</string>
     <string name="SetVNCPassword">设置 VNC 密码</string>
     <string name="EnableVNCPassword">启用 VNC 密码（推荐）</string>
+    <string name="SPICEPassword">SPICE 密码</string>
+    <string name="SetSPICEPassword">设置 SPICE 密码</string>
+    <string name="EnableSPICEPassword">启用 SPICE 密码（推荐）</string>
+    <string name="AllowExternalSPICEConnections">允许外部 SPICE 连接</string>
+    <string name="AllowExternalSPICESummary">允许外部 SPICE 客户端连接。SPICE 连接（包括密码）未加密，请仅在您信任的私有网络中使用！</string>
     <string name="ImmersiveMode">沉浸式模式</string>
     <string name="EnableImmersiveMode">启用沉浸式模式</string>
     <string name="UsingKeyMapper">正在使用按键映射</string>
@@ -304,12 +314,11 @@
     <string name="accel_kvm">KVM</string>
     <string name="accel_gunyah">Gunyah</string>
     <string name="accel_gzvm">Gzvm</string>
-    <string name="root_vm_no_su">未检测到 su。Gunyah/Gzvm 加速需要已 root 的设备：虚拟机必须在 root 进程中运行。</string>
+    <string name="root_vm_no_su">未检测到 su。</string>
     <string name="root_vm_start_failed">以 root 进程启动虚拟机失败</string>
     <string name="root_vm_already_running">虚拟机已在 root 进程中运行</string>
     <string name="root_vm_exited_unexpectedly">以 root 进程运行的虚拟机异常退出</string>
-    <string name="agl_root_fallback">KernelSU 未授予 root，AGL 显示无法在本进程内运行虚拟机，已回退到无画面的独立 root 子进程。请把显示方式改为 VNC，或在 KernelSU 中为本应用授予 root 权限。</string>
-    <string name="agl_backend_missing">当前 QEMU 引擎没有编入 AGL 显示后端，AGL 显示无法使用。已回退到无画面启动：请把显示方式改为 VNC（或 SDL），或用带 AGL 补丁、-Dagl=enabled 的配置重新构建这个 QEMU 引擎。</string>
+    <string name="agl_root_fallback">KernelSU 未授予 root，AGL 显示无法在本进程内运行虚拟机，已回退到无画面的独立 root 子进程。请把显示方式改为其他，或在 KernelSU 中为本应用授予 root 权限。</string>
     <string name="label_disable_hpet">禁用 HPET</string>
     <string name="label_disable_tsc">禁用 TSC</string>
     <string name="label_disable_acpi">禁用 ACPI</string>
@@ -332,6 +341,7 @@
     <string name="pref_title_advanced">高级</string>
     <string name="pref_title_qmp">QMP</string>
     <string name="pref_title_vnc">VNC</string>
+    <string name="pref_title_spice">SPICE</string>
     <string name="pref_title_disk">磁盘</string>
     <string name="pref_title_updates">更新</string>
     <string name="pref_title_audio">音频</string>
@@ -346,7 +356,7 @@
 
     <!-- 模拟架构切换 -->
     <string name="SwitchArchitecture">切换模拟架构</string>
-    <string name="switchArchWarning">确定将模拟架构切换为 %1$s？\n\n应用将自动重启。每个模拟架构各自保存独立的虚拟机，切换后虚拟机列表也会随之变化。请先停止正在运行的虚拟机。</string>
+    <string name="switchArchWarning">确定将模拟架构切换为 %1$s？\n\n应用将自动重启。请先停止正在运行的虚拟机。</string>
     <string name="NoAlternativeArch">当前版本未内置其他可用的模拟架构</string>
     <string name="arch_current">模拟架构：%1$s</string>
     <string name="arch_x86_64">x86_64 (amd64)</string>
@@ -365,5 +375,4 @@
     <string name="kvm_root_dialog_normal">普通启动</string>
     <string name="kvm_relax_failed">无法让 /dev/kvm 变得可用，改为在 root 子进程中启动虚拟机（没有 GPU 加速）。</string>
 
-    <string name="storage_not_mounted">内部储存未挂载（emulated 卷被系统摘掉了，所有外部储存路径都会变成 /dev/null/...），用 root 重新挂载也失败了。请重启手机或手动重新挂载该卷后再启动虚拟机。</string>
 </resources>

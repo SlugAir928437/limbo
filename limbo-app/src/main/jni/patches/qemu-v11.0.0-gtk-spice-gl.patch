@@ -1,30 +1,42 @@
 diff --git a/include/ui/egl-helpers.h b/include/ui/egl-helpers.h
-index acf993fc..31ccbc2e 100644
+index acf993fc..83d4551d 100644
 --- a/include/ui/egl-helpers.h
 +++ b/include/ui/egl-helpers.h
-@@ -42,15 +42,19 @@ void egl_texture_blend(QemuGLShader *gls, egl_fb *dst, egl_fb *src, bool flip,
+@@ -42,12 +42,13 @@ void egl_texture_blend(QemuGLShader *gls, egl_fb *dst, egl_fb *src, bool flip,
  
  extern EGLContext qemu_egl_rn_ctx;
  
-+/* EGL_GL_TEXTURE_2D -> dma-buf export.  Unlike the other dma-buf helpers it
-+ * does not need GBM; Android uses it to hand the rendered frame to the SPICE
-+ * server (ui/spice-display.c). */
-+bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
-+                               EGLint *stride, EGLint *fourcc, int *num_planes,
-+                               EGLuint64KHR *modifier);
+-#ifdef CONFIG_GBM
+-
+-extern int qemu_egl_rn_fd;
+-extern struct gbm_device *qemu_egl_rn_gbm_dev;
++/*
++ * dma-buf helpers that only need EGL.  Unlike the render-node code below
++ * they do not touch GBM, so they are also available on Android where the
++ * SPICE GL scanout path (ui/spice-display.c) uses them.
++ */
++#if defined(CONFIG_GBM) || defined(__ANDROID__)
+ 
+-int egl_rendernode_init(const char *rendernode, DisplayGLMode mode);
+ bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
+                                EGLint *stride, EGLint *fourcc, int *num_planes,
+                                EGLuint64KHR *modifier);
+@@ -57,6 +58,15 @@ void egl_dmabuf_release_texture(QemuDmaBuf *dmabuf);
+ void egl_dmabuf_create_sync(QemuDmaBuf *dmabuf);
+ void egl_dmabuf_create_fence(QemuDmaBuf *dmabuf);
+ 
++#endif /* CONFIG_GBM || __ANDROID__ */
 +
- #ifdef CONFIG_GBM
++#ifdef CONFIG_GBM
++
++extern int qemu_egl_rn_fd;
++extern struct gbm_device *qemu_egl_rn_gbm_dev;
++
++int egl_rendernode_init(const char *rendernode, DisplayGLMode mode);
++
+ #endif
  
- extern int qemu_egl_rn_fd;
- extern struct gbm_device *qemu_egl_rn_gbm_dev;
- 
- int egl_rendernode_init(const char *rendernode, DisplayGLMode mode);
--bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
--                               EGLint *stride, EGLint *fourcc, int *num_planes,
--                               EGLuint64KHR *modifier);
- 
- void egl_dmabuf_import_texture(QemuDmaBuf *dmabuf);
- void egl_dmabuf_release_texture(QemuDmaBuf *dmabuf);
+ EGLSurface qemu_egl_init_surface_x11(EGLContext ectx, EGLNativeWindowType win);
 diff --git a/include/ui/spice-display.h b/include/ui/spice-display.h
 index a382553f..4674a403 100644
 --- a/include/ui/spice-display.h
@@ -47,13 +59,15 @@ index a382553f..4674a403 100644
  #  include "ui/egl-helpers.h"
  #  include "ui/egl-context.h"
 diff --git a/ui/egl-helpers.c b/ui/egl-helpers.c
-index 644a4c7c..f5fb1136 100644
+index 644a4c7c..757ef4c5 100644
 --- a/ui/egl-helpers.c
 +++ b/ui/egl-helpers.c
-@@ -225,6 +225,45 @@ void egl_texture_blend(QemuGLShader *gls, egl_fb *dst, egl_fb *src, bool flip,
+@@ -225,6 +225,49 @@ void egl_texture_blend(QemuGLShader *gls, egl_fb *dst, egl_fb *src, bool flip,
  
  EGLContext qemu_egl_rn_ctx;
  
++#if defined(CONFIG_GBM) || defined(__ANDROID__)
++
 +/*
 + * Export a GL texture as a dma-buf.  This does not touch GBM: it only needs
 + * EGL_GL_TEXTURE_2D + EGL_MESA_image_dma_buf_export, so it is also compiled
@@ -93,10 +107,12 @@ index 644a4c7c..f5fb1136 100644
 +    return true;
 +}
 +
++#endif /* CONFIG_GBM || __ANDROID__ */
++
  #ifdef CONFIG_GBM
  
  int qemu_egl_rn_fd;
-@@ -289,40 +328,6 @@ err:
+@@ -289,39 +332,13 @@ err:
      return -1;
  }
  
@@ -125,7 +141,8 @@ index 644a4c7c..f5fb1136 100644
 -    if (modifier) {
 -        *modifier = modifiers[0];
 -    }
--
++#endif /* CONFIG_GBM */
+ 
 -    for (i = 0; i < *num_planes; i++) {
 -        if (fd[i] < 0) {
 -            return false;
@@ -133,10 +150,23 @@ index 644a4c7c..f5fb1136 100644
 -    }
 -    return true;
 -}
--
++/*
++ * dma-buf texture helpers.  These only use EGL (no GBM), so they are also
++ * used by the Android SPICE GL scanout path in ui/spice-display.c.
++ */
++#if defined(CONFIG_GBM) || defined(__ANDROID__)
+ 
  void egl_dmabuf_import_texture(QemuDmaBuf *dmabuf)
  {
-     EGLImageKHR image = EGL_NO_IMAGE_KHR;
+@@ -462,7 +479,7 @@ void egl_dmabuf_create_fence(QemuDmaBuf *dmabuf)
+     }
+ }
+ 
+-#endif /* CONFIG_GBM */
++#endif /* CONFIG_GBM || __ANDROID__ */
+ 
+ /* ---------------------------------------------------------------------- */
+ 
 diff --git a/ui/gtk.c b/ui/gtk.c
 index 56ece996..fa46b980 100644
 --- a/ui/gtk.c

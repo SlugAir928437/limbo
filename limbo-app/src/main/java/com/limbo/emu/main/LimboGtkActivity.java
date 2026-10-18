@@ -11,6 +11,7 @@ import android.media.AudioManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Display;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -70,6 +71,7 @@ public class LimboGtkActivity extends ToplevelActivity
     private boolean keyboardShown;
     private boolean backKeyDown;
     private PopupMenu vmMenu;
+    private View menuAnchor;
     public DrivesDialogBox drives = null;
 
     @Override
@@ -77,6 +79,14 @@ public class LimboGtkActivity extends ToplevelActivity
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
+
+        // 运行期菜单的锚点：屏幕右上角一个 1x1 的空视图。直接用铺满全屏的
+        // ToplevelView 当锚点会把 PopupMenu 定位到屏幕外（看不见）。
+        menuAnchor = new View(this);
+        LinearLayout.LayoutParams anchorParams =
+                new LinearLayout.LayoutParams(1, 1);
+        anchorParams.gravity = Gravity.END;
+        root.addView(menuAnchor, anchorParams);
 
         root.addView(getGtkView(), new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -186,7 +196,7 @@ public class LimboGtkActivity extends ToplevelActivity
     }
 
     private void showVMMenu() {
-        View anchor = getGtkView();
+        View anchor = menuAnchor != null ? menuAnchor : getGtkView();
         PopupMenu popup = new PopupMenu(this, anchor);
         Menu menu = popup.getMenu();
         getMenuInflater().inflate(R.menu.gtkactivitymenu, menu);

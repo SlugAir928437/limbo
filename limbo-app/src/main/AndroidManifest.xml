@@ -53,7 +53,7 @@
         <activity
             android:name=".main.LimboGtkActivity"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"
-            android:enableOnBackInvokedCallback="false"
+            android:enableOnBackInvokedCallback="true"
             android:launchMode="singleTask"
             android:exported="false"
             android:theme="@style/AppTheme.NoActionBar" />

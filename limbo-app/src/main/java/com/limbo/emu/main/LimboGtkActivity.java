@@ -5,10 +5,13 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.Surface;
@@ -65,12 +68,15 @@ public class LimboGtkActivity extends ToplevelActivity
     private AudioManager am;
     protected int maxVolume;
     private boolean keyboardShown;
+    private boolean backKeyDown;
+    private PopupMenu vmMenu;
     public DrivesDialogBox drives = null;
 
     @Override
     protected View createContentView() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.BLACK);
 
         root.addView(getGtkView(), new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -94,6 +100,7 @@ public class LimboGtkActivity extends ToplevelActivity
         gtkAutoActivate = false;
         super.onCreate(savedInstanceState);
 
+        getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         LimboGtk.init(this);
         setupListeners();
@@ -189,7 +196,46 @@ public class LimboGtkActivity extends ToplevelActivity
         }
         RefreshRateUtils.syncMenu(menu, LimboSettingsManager.getSDLRefreshRate(this));
         popup.setOnMenuItemClickListener(this::onMenuItemSelected);
+        popup.setOnDismissListener(p -> vmMenu = null);
         popup.show();
+        vmMenu = popup;
+    }
+
+    /**
+     * 返回键统一在这里处理：菜单已展开时先收起菜单，否则弹出运行期菜单。
+     */
+    private void handleBack() {
+        if (vmMenu != null) {
+            vmMenu.dismiss();
+            return;
+        }
+        showVMMenu();
+    }
+
+    /**
+     * 在 Activity 分发阶段最先截获返回键。
+     *
+     * <p>GTK 的 SurfaceView 持有输入焦点，返回键会被它当作 Escape 交给 GTK
+     * （GTK 的窗口/菜单会消费该按键），导致活动层的 {@code onBackPressed()}
+     * 收不到事件、运行期菜单打不开。这里直接消费返回键，松手时再弹菜单。
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                backKeyDown = true;
+                return true;
+            }
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                boolean handled = backKeyDown && !event.isCanceled();
+                backKeyDown = false;
+                if (handled) {
+                    handleBack();
+                }
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     private boolean onMenuItemSelected(@NonNull MenuItem item) {
@@ -232,10 +278,15 @@ public class LimboGtkActivity extends ToplevelActivity
 
     @Override
     public void onBackPressed() {
-        // There is no persistent top toolbar; the back button brings up the
-        // VM action menu (the original toolbar's items). Pressing back while
-        // the popup is open dismisses it (handled by the popup window).
-        showVMMenu();
+        // Gesture/legacy back also routes here; the physical back key is
+        // intercepted in dispatchKeyEvent() before GTK can consume it.
+        handleBack();
+    }
+
+    @Override
+    public void postWindowConfiguration(int color, boolean fullscreen) {
+        // GTK 上报的窗口背景色来自 GTK 主题（默认浅色）；显示区域统一用黑色底色。
+        super.postWindowConfiguration(Color.BLACK, fullscreen);
     }
 
     @Override

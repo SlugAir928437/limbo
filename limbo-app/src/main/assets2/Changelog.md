@@ -2,7 +2,8 @@
 ## 新增了什么？
 - 新增 ia64 架构模拟
 - 新增 GTK 显示
-- 新增 gzvm 和 gunyah 加速
+- 新增 Gzvm 和 Gunyah 加速
+- 新增 OVMF 固件
 
 ## 优化了什么？
 - 重写 UI 界面

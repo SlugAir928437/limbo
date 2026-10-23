@@ -9,15 +9,22 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.media.AudioManager;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.text.InputType;
 import android.util.Log;
 import android.view.Display;
 import android.view.Gravity;
+import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.Surface;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.inputmethod.BaseInputConnection;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
@@ -72,6 +79,9 @@ public class LimboGtkActivity extends ToplevelActivity
     private boolean backKeyDown;
     private PopupMenu vmMenu;
     private View menuAnchor;
+    private GtkImeView imeView;
+    private InputMethodManager imm;
+    private boolean imeWasVisible;
     public DrivesDialogBox drives = null;
 
     @Override
@@ -88,6 +98,13 @@ public class LimboGtkActivity extends ToplevelActivity
         anchorParams.gravity = Gravity.END;
         root.addView(menuAnchor, anchorParams);
 
+        // GTK 窗口没有可编辑控件，GDK 的 InputConnection 永远不会激活，
+        // 系统输入法无法挂到 GTK Surface 上。用这个 1x1 的不可见文本编辑器
+        // 承接软键盘输入，再转成按键事件喂给 GTK。
+        imeView = new GtkImeView(this);
+        imeView.setAlpha(0.01f);
+        root.addView(imeView, new LinearLayout.LayoutParams(1, 1));
+
         root.addView(getGtkView(), new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -97,6 +114,18 @@ public class LimboGtkActivity extends ToplevelActivity
             WindowInsetsCompat compat = WindowInsetsCompat.toWindowInsetsCompat(windowInsets, v);
             Insets bars = compat.getInsets(WindowInsetsCompat.Type.systemBars()
                     | WindowInsetsCompat.Type.displayCutout());
+            // 输入法被系统/用户收起后，把焦点还给 GTK 画面并更新状态。
+            int imeBottom = compat.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+            if (imeBottom > 0) {
+                imeWasVisible = true;
+            } else if (keyboardShown && imeWasVisible) {
+                imeWasVisible = false;
+                keyboardShown = false;
+                ToplevelView gtk = getGtkView();
+                if (gtk != null && gtk.toplevel != null) {
+                    gtk.toplevel.post(gtk.toplevel::requestFocus);
+                }
+            }
             return compat.inset(Insets.of(0, bars.top, 0, 0)).toWindowInsets();
         });
         return root;
@@ -112,6 +141,7 @@ public class LimboGtkActivity extends ToplevelActivity
 
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         LimboGtk.init(this);
         setupListeners();
         setupAudio();
@@ -212,9 +242,15 @@ public class LimboGtkActivity extends ToplevelActivity
     }
 
     /**
-     * 返回键统一在这里处理：菜单已展开时先收起菜单，否则弹出运行期菜单。
+     * 返回键统一在这里处理：软键盘展开时先收起键盘，菜单已展开时收起菜单，
+     * 否则弹出运行期菜单。
      */
     private void handleBack() {
+        if (keyboardShown) {
+            keyboardShown = false;
+            hideImeKeyboard();
+            return;
+        }
         if (vmMenu != null) {
             vmMenu.dismiss();
             return;
@@ -283,7 +319,162 @@ public class LimboGtkActivity extends ToplevelActivity
 
     private void toggleKeyboard() {
         keyboardShown = !keyboardShown;
-        setImeKeyboardState(keyboardShown);
+        if (keyboardShown) {
+            showImeKeyboard();
+        } else {
+            hideImeKeyboard();
+        }
+    }
+
+    private void showImeKeyboard() {
+        if (imeView == null) {
+            return;
+        }
+        imeView.requestFocus();
+        imeView.post(() -> {
+            if (imm != null) {
+                imm.showSoftInput(imeView, InputMethodManager.SHOW_FORCED);
+            }
+        });
+    }
+
+    private void hideImeKeyboard() {
+        if (imeView == null) {
+            return;
+        }
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(imeView.getWindowToken(), 0);
+        }
+        // 把按键焦点还给 GTK 画面，否则硬件键盘事件会继续落在 IME 视图上。
+        ToplevelView view = getGtkView();
+        if (view != null && view.toplevel != null) {
+            view.toplevel.requestFocus();
+        }
+    }
+
+    /**
+     * 把软键盘提交的文本/按键转成 Android KeyEvent，再交给 GTK Surface 的
+     * 按键通道（notifyKeyEvent），最终由 QEMU 送入客户机。
+     */
+    private void sendTextToGtk(CharSequence text) {
+        if (text == null) {
+            return;
+        }
+        ToplevelView view = getGtkView();
+        if (view == null || view.toplevel == null) {
+            return;
+        }
+        KeyCharacterMap map = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD);
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\n' || c == '\r') {
+                sendKeyToGtk(KeyEvent.KEYCODE_ENTER, 0);
+                continue;
+            }
+            KeyEvent[] events = map.getEvents(new char[]{c});
+            if (events == null) {
+                continue;
+            }
+            for (KeyEvent event : events) {
+                long now = SystemClock.uptimeMillis();
+                KeyEvent copy = new KeyEvent(now, now, event.getAction(),
+                        event.getKeyCode(), 0, event.getMetaState());
+                if (copy.getAction() == KeyEvent.ACTION_DOWN) {
+                    view.toplevel.onKeyDown(copy.getKeyCode(), copy);
+                } else if (copy.getAction() == KeyEvent.ACTION_UP) {
+                    view.toplevel.onKeyUp(copy.getKeyCode(), copy);
+                }
+            }
+        }
+    }
+
+    private void sendKeyToGtk(int keyCode, int metaState) {
+        ToplevelView view = getGtkView();
+        if (view == null || view.toplevel == null) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        view.toplevel.onKeyDown(keyCode,
+                new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState));
+        view.toplevel.onKeyUp(keyCode,
+                new KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, metaState));
+    }
+
+    /**
+     * 不可见的文本编辑器：只为让系统输入法有可挂载的 InputConnection。
+     * IME 提交的字符和按键都在这里转给 GTK。
+     */
+    private final class GtkImeView extends View {
+        GtkImeView(Context context) {
+            super(context);
+            setFocusable(true);
+            setFocusableInTouchMode(true);
+            setBackgroundColor(Color.TRANSPARENT);
+        }
+
+        @Override
+        public boolean onCheckIsTextEditor() {
+            return true;
+        }
+
+        @Override
+        public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+            outAttrs.inputType = InputType.TYPE_CLASS_TEXT
+                    | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                    | EditorInfo.IME_FLAG_NO_FULLSCREEN
+                    | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
+            return new BaseInputConnection(this, true) {
+                @Override
+                public boolean commitText(CharSequence text, int newCursorPosition) {
+                    sendTextToGtk(text);
+                    return true;
+                }
+
+                @Override
+                public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                    // 禁止联想/组合输入，直接按已提交文本处理。
+                    return true;
+                }
+
+                @Override
+                public boolean sendKeyEvent(KeyEvent event) {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                        sendKeyToGtk(event.getKeyCode(), event.getMetaState());
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+                    for (int i = 0; i < beforeLength; i++) {
+                        sendKeyToGtk(KeyEvent.KEYCODE_DEL, 0);
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean performEditorAction(int actionCode) {
+                    sendKeyToGtk(KeyEvent.KEYCODE_ENTER, 0);
+                    return true;
+                }
+            };
+        }
+
+        @Override
+        public boolean onKeyDown(int keyCode, KeyEvent event) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                return false;
+            }
+            sendKeyToGtk(keyCode, event.getMetaState());
+            return true;
+        }
+
+        @Override
+        public boolean onKeyUp(int keyCode, KeyEvent event) {
+            return keyCode != KeyEvent.KEYCODE_BACK;
+        }
     }
 
     @Override
@@ -297,6 +488,16 @@ public class LimboGtkActivity extends ToplevelActivity
     public void postWindowConfiguration(int color, boolean fullscreen) {
         // GTK 上报的窗口背景色来自 GTK 主题（默认浅色）；显示区域统一用黑色底色。
         super.postWindowConfiguration(Color.BLACK, fullscreen);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // 父类在重新获得窗口焦点时会把焦点交还给 GTK Surface；软键盘展开期间
+        // 必须保持 IME 视图的焦点，否则输入法会立刻失去输入目标而收起。
+        if (hasFocus && keyboardShown && imeView != null) {
+            imeView.post(imeView::requestFocus);
+        }
     }
 
     @Override

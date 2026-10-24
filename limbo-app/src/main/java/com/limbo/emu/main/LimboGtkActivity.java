@@ -82,6 +82,7 @@ public class LimboGtkActivity extends ToplevelActivity
     private GtkImeView imeView;
     private InputMethodManager imm;
     private boolean imeWasVisible;
+    private int imeShowAttempts;
     public DrivesDialogBox drives = null;
 
     @Override
@@ -330,12 +331,26 @@ public class LimboGtkActivity extends ToplevelActivity
         if (imeView == null) {
             return;
         }
+        imeShowAttempts = 0;
+        imeWasVisible = false;
         imeView.requestFocus();
-        imeView.post(() -> {
-            if (imm != null) {
-                imm.showSoftInput(imeView, InputMethodManager.SHOW_FORCED);
-            }
-        });
+        // 菜单项回调发生在 PopupMenu 收起之前，此时活动窗口还没有焦点，
+        // 立刻 showSoftInput 会被 InputMethodManager 以 "view is not served"
+        // 拒绝。等菜单窗口销毁后再请求，并轮询直到输入法真正出现。
+        imeView.postDelayed(this::tryShowImeKeyboard, 200);
+    }
+
+    private void tryShowImeKeyboard() {
+        if (!keyboardShown || imeView == null || imm == null) {
+            return;
+        }
+        if (!imeView.isFocused()) {
+            imeView.requestFocus();
+        }
+        imm.showSoftInput(imeView, InputMethodManager.SHOW_FORCED);
+        if (!imeWasVisible && imeShowAttempts++ < 8) {
+            imeView.postDelayed(this::tryShowImeKeyboard, 200);
+        }
     }
 
     private void hideImeKeyboard() {

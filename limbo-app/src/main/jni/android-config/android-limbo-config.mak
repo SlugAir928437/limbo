@@ -146,7 +146,7 @@ USE_VIRGL ?= true
 # virgl_renderer_init() and advertise VIRTIO_GPU_CAPSET_VENUS; a renderer built
 # without venus rejects that and the device fails to realize.
 #
-# Enabling it needs three Android adaptations, all handled by the build:
+# Enabling it needs four Android adaptations, all handled by the build:
 #   * the Vulkan loader is looked up with dependency('vulkan'), satisfied by the
 #     vulkan.pc shim over the NDK's libvulkan.so (CREATE_EGL_PC);
 #   * venus makes meson require libdrm, which Android does not ship (and whose
@@ -156,7 +156,13 @@ USE_VIRGL ?= true
 #     native-context renderers, which stay disabled;
 #   * the render server worker is forced to 'thread', because venus turns the
 #     render server on and its default 'process' mode fork+execs
-#     virgl_render_server, which does not exist inside the app sandbox.
+#     virgl_render_server, which does not exist inside the app sandbox;
+#   * the guest blobs are backed by AHardwareBuffers instead of dma-buf
+#     exports: Android's vendor Vulkan drivers cannot export dma-bufs, so the
+#     same patch makes venus allocate an AHardwareBuffer, import it through
+#     VK_ANDROID_external_memory_android_hardware_buffer and hand its dma-buf
+#     fd to QEMU (without this the guest fails to create its ring shmem with
+#     VK_ERROR_OUT_OF_HOST_MEMORY).
 #
 # Set to false to go back to a venus-less renderer (and drop ,venus=on from the
 # virtio-gpu-gl-pci device).

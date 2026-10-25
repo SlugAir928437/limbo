@@ -463,11 +463,12 @@ public class VMExecutor extends MachineExecutor {
             String mouseDevice = getMachine().getMouse();
             if (mouseDevice.startsWith("virtio-")) {
                 // VirtIO 输入设备位于 virtio 总线上，因此不能添加 -usb。
-                // 单独的 virtio-tablet-pci 会让 guest 没有键盘，
-                // 所以与 virtio-keyboard-pci 配对。
+                // 单独的 virtio-tablet-pci / virtio-multitouch-pci 会让 guest
+                // 没有键盘，所以与 virtio-keyboard-pci 配对。
                 paramsList.add("-device");
                 paramsList.add(mouseDevice);
-                if (mouseDevice.startsWith("virtio-tablet-pci")) {
+                if (mouseDevice.startsWith("virtio-tablet-pci")
+                        || mouseDevice.startsWith("virtio-multitouch-pci")) {
                     paramsList.add("-device");
                     paramsList.add("virtio-keyboard-pci");
                 }

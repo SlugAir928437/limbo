@@ -213,6 +213,11 @@ public class ArchDefinitions {
         // VMExecutor#addUIOptions). Both devices need a libqemu-system-*.so
         // built with CONFIG_VIRTIO_INPUT / CONFIG_VIRTIO_PCI.
         arrList.add("virtio-tablet-pci");
+        // VirtIO input: multi-touch touchscreen (INPUT_PROP_DIRECT + ABS_MT_*).
+        // 必须使用带 PCI 传输的 -pci 名字：QEMU 的 "virtio-multitouch-device"
+        // 是没有传输层的设备，在 PCI 机器上会被静默挂到其它 virtio 代理内部
+        // 的总线，客户机（Debian/Windows）根本看不到该设备。
+        arrList.add("virtio-multitouch-pci");
         return arrList;
     }
 

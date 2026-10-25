@@ -714,6 +714,11 @@ QEMU_FORK_URL          := https://github.com/FreshingAir/qemu-system-ia64.git
 QEMU_FORK_BRANCH    := main
 # IA-64 fork 仍缺的 Android 适配（fork 未合入）
 QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-android.patch
+# IA-64 fork 的 ui/gtk.c 已经调用 qemu_input_is_multitouch()，但 fork 的
+# include/ui/input.h / ui/input.c 还没有这个辅助函数，GTK 构建会因隐式声明
+# 报错（-Wimplicit-function-declaration 在 C99 下是 error）。fork 合入后
+# --check 失败会自动跳过。
+QEMU_FORK_MT_PATCH  := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-multitouch.patch
 # GTK/SPICE 的 Android gl=on 适配（GtkGLArea + 无 GBM 的 spice GL 扫描输出）。
 # 官方 QEMU 树克隆后按需应用；补丁已合入 fork 时 --check 失败即跳过。
 QEMU_GL_PATCH       := $(LIMBO_JNI_ROOT)/patches/qemu-v11.0.0-gtk-spice-gl.patch
@@ -1014,6 +1019,12 @@ fetch-qemu:
 			git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(QEMU_FORK_PATCH)"; \
 		else \
 			echo ">> qemu fork: copy_file_range 补丁已应用或无需应用"; \
+		fi; \
+		if git -C "$(LIMBO_JNI_ROOT)/qemu" apply --check "$(QEMU_FORK_MT_PATCH)" 2>/dev/null; then \
+			echo ">> qemu fork: 应用 qemu_input_is_multitouch 声明补丁"; \
+			git -C "$(LIMBO_JNI_ROOT)/qemu" apply "$(QEMU_FORK_MT_PATCH)"; \
+		else \
+			echo ">> qemu fork: qemu_input_is_multitouch 补丁已应用或无需应用"; \
 		fi; \
 	fi
 

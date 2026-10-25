@@ -2354,16 +2354,32 @@ public class VMExecutor extends MachineExecutor {
         if (mouse != null
                 && (mouse.startsWith("usb-tablet") || mouse.startsWith("virtio-tablet-pci"))
                 && vm_width > 0 && vm_height > 0) {
-            // 计算带黑边的（保持宽高比的）显示区域，方式与
-            // QEMU SDL 后端相同（scale = MIN(w/vm_w, h/vm_h)，居中），
-            // 这样鼠标边界始终与屏幕上的 guest 图像匹配。
-            double scale = Math.min((double) width / vm_width, (double) height / vm_height);
-            double dispW = vm_width * scale;
-            double dispH = vm_height * scale;
-            int xmin = (int) Math.round((width - dispW) / 2.0);
-            int xmax = (int) Math.round((width + dispW) / 2.0);
-            int ymin = (int) Math.round((height - dispH) / 2.0);
-            int ymax = (int) Math.round((height + dispH) / 2.0);
+            // 计算 guest 图像在窗口内的实际显示矩形，方式与
+            // QEMU ui/sdl2.c::limbo_compute_letterbox 完全一致。
+            int mode = LimboSettingsManager.getSDLScaleMode(LimboApplication.getInstance());
+            int dispW = width, dispH = height, xmin = 0, ymin = 0;
+            switch (mode) {
+                case Config.SDL_SCALE_STRETCH:
+                    break;
+                case Config.SDL_SCALE_NATIVE: {
+                    dispW = Math.min(vm_width, width);
+                    dispH = Math.min(vm_height, height);
+                    xmin = (width - dispW) / 2;
+                    ymin = (height - dispH) / 2;
+                    break;
+                }
+                default: { /* SDL_SCALE_ASPECT — 等比居中（默认） */
+                    double scale = Math.min((double) width / vm_width,
+                                            (double) height / vm_height);
+                    dispW = (int) Math.round(vm_width * scale);
+                    dispH = (int) Math.round(vm_height * scale);
+                    xmin = (width - dispW) / 2;
+                    ymin = (height - dispH) / 2;
+                    break;
+                }
+            }
+            int xmax = xmin + dispW;
+            int ymax = ymin + dispH;
             nativeMouseBounds(xmin, xmax, ymin, ymax);
         }
     }

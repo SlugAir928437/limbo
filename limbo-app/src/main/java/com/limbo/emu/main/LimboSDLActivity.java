@@ -297,11 +297,18 @@ public class LimboSDLActivity extends SDLActivity
 
     /**
      * 应用显示方式（缩放模式）：记住用户的选择，并下发给 QEMU 的 SDL/GTK 显示后端。
-     * 运行中切换会由 native 侧整屏重绘一次，立刻生效。
+     * 运行中切换会由 native 侧整屏重绘一次，立刻生效；同时重新计算
+     * nativeMouseBounds，让 Java 侧绝对坐标夹取与新的 letterbox 一致。
      */
     private void applyScaleMode(int mode) {
         LimboSettingsManager.setSDLScaleMode(this, mode);
         VMExecutor.setSdlScaleMode(mode);
+        // native 侧 limbo_sdl_scale_mode 改了，QEMU 输入路径的 letterbox 映射
+        // 立刻生效；Java 侧 nativeMouseBounds 也得按新 mode 重算一次，让
+        // SDL_limbomouse.c 的夹取矩形与显示区域保持一致。
+        if (mSurface instanceof LimboSDLSurface) {
+            ((LimboSDLSurface) mSurface).refreshSurfaceView();
+        }
     }
 
     /**

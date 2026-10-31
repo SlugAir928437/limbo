@@ -36,6 +36,45 @@ index 10be099..a7dba4d 100644
           have_egl = true
        else
           if libdrm_dep.found()
+diff --git a/src/mesa/util/anon_file.c b/src/mesa/util/anon_file.c
+index d4faa2f..6f41293 100644
+--- a/src/mesa/util/anon_file.c
++++ b/src/mesa/util/anon_file.c
+@@ -36,14 +36,14 @@
+ 
+ #if defined(HAVE_MEMFD_CREATE) || defined(__FreeBSD__) || defined(__OpenBSD__)
+ #include <sys/mman.h>
+-#elif defined(ANDROID)
++#elif defined(__ANDROID__)
+ #include <sys/syscall.h>
+ #include <linux/memfd.h>
+ #else
+ #include <stdio.h>
+ #endif
+ 
+-#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(HAVE_MKOSTEMP) || defined(ANDROID))
++#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(HAVE_MKOSTEMP) || defined(__ANDROID__))
+ static int
+ set_cloexec_or_close(int fd)
+ {
+@@ -67,7 +67,7 @@ err:
+ }
+ #endif
+ 
+-#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(ANDROID))
++#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(__ANDROID__))
+ static int
+ create_tmpfile_cloexec(char *tmpname)
+ {
+@@ -118,7 +118,7 @@ os_create_anonymous_file(off_t size, const char *debug_name)
+    if (!debug_name)
+       debug_name = "mesa-shared";
+    fd = memfd_create(debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
+-#elif defined(ANDROID)
++#elif defined(__ANDROID__)
+    if (!debug_name)
+       debug_name = "mesa-shared";
+    fd = syscall(SYS_memfd_create, debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
 diff --git a/src/venus/vkr_buffer.c b/src/venus/vkr_buffer.c
 index 9e466f8..1b10068 100644
 --- a/src/venus/vkr_buffer.c
@@ -564,3 +603,31 @@ index 5c4c23b..5e667c1 100644
     vn_replace_vkGetPhysicalDeviceImageFormatProperties2_args_handle(args);
     args->ret = vkGetPhysicalDeviceImageFormatProperties2(
        args->physicalDevice, args->pImageFormatInfo, args->pImageFormatProperties);
+diff --git a/src/vrend_renderer.c b/src/vrend_renderer.c
+--- a/src/vrend_renderer.c
++++ b/src/vrend_renderer.c
+@@ -7628,8 +7628,22 @@ int vrend_renderer_init(const struct vrend_if_cbs *cbs, uint32_t flags)
+    if (!gl_context) {
+       virgl_error("Unable to create %s context >= 3.0\n",
+                   flags & VREND_USE_GLES ? "GLES" : "OpenGL");
+       goto fail;
+    }
+ 
+-   vrend_clicbs->make_current(gl_context);
++   if (vrend_clicbs->make_current(gl_context) != 0) {
++      /*
++       * libepoxy resolves the GL entry points lazily and only while a
++       * context is current on the calling thread; a failed resolution is
++       * cached as NULL, and the next call branches to address zero - the
++       * pc=0 SIGSEGV seen on Android in the virgl_renderer_init ->
++       * vrend_renderer_init -> vrend_build_format_list_common ->
++       * vrend_add_formats stack.  eglMakeCurrent() does fail on Android
++       * once the Surface is gone (EGL_BAD_ACCESS / EGL_BAD_DISPLAY), so
++       * never probe the format list on a context that is not current.
++       */
++      virgl_error("Unable to make the GL context current\n");
++      vrend_clicbs->destroy_gl_context(gl_context);
++      goto fail;
++   }
+    gl_ver = epoxy_gl_version();
+

@@ -44,7 +44,8 @@
 #define MSG_BUFSIZE 1024
 #define MAX_STRING_LEN 1024
 
-static int started = 0;
+/* volatile：亲和性看门狗线程靠它判断 VM 是否还在跑，必须每次重新读内存。 */
+static volatile int started = 0;
 void * handle = 0;
 
 /* Limbo：显示方式（缩放模式），0=拉伸至全屏 1=等比缩放 2=原始 1:1，-1=未设置。
@@ -283,10 +284,27 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *pvt) {
 	return JNI_VERSION_1_2;
 }
 
+/*
+ * 请求一次全屏重绘（Java 侧 setFullscreen() 在切换全屏后调用）。
+ *
+ * 老 Limbo 的 QEMU 在 hw/display/vga.c 里导出过 limbo_vga_full_update，VGA
+ * 刷新时据此把 s->full_update_gfx 置位，从而整屏重画。上游重写 vga.c 之后
+ * 这个全局就没有了：无条件 set_qemu_var() 会每次打一条
+ *   Cannot load symbol limbo_vga_full_update: undefined symbol
+ * 然后什么也不做。日志里每次切全屏/重建 Surface 都会出现这条错误。
+ *
+ * 这里先 dlsym 探测：只有真的导出了该符号的 QEMU 树（例如老的 IA-64 fork）
+ * 才下发，上游树则安静跳过。SDL/GTK 后端在 Surface 变化时本来就会重新
+ * layout 并重绘，不依赖这个开关。
+ */
 JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeRefreshScreen(
                 JNIEnv* env, jobject thiz, jint jvalue) {
-    if(handle == NULL) {
-    	return;
+    if (handle == NULL) {
+        return;
+    }
+    dlerror();
+    if (dlsym(handle, "limbo_vga_full_update") == NULL) {
+        return;
     }
     set_qemu_var(env, thiz, "limbo_vga_full_update", jvalue);
 }
@@ -1107,13 +1125,27 @@ static void limbo_verify_affinity(const char *when) {
  * 一次性 pin 挡不住 Android 的 cpuset 迁移：进程被挪进另一个 cpuset 时，内核
  * 会把该组线程的掩码重置成 cpuset 的集合，实测 qemu_init() 期间就会发生
  * （日志 "outside the pinned cpus, now [4-7]"），于是 vCPU 又可能跑到异构核上，
- * 触发 KVM 写回 demux CCSIDR 失败。所以这里起一个有界的小线程：在 VM 头几秒
- * 里盯着本线程和 QEMU 的 vCPU 线程（线程名 "CPU <n>/KVM"），发现跑出簇外就收
- * 回来，跑完自动退出，不常驻。
+ * 触发 KVM 写回 demux CCSIDR 失败。
+ *
+ * 这个迁移不是只在启动时发生：App 前后台切换 / 打开文件选择器 / 息屏都会让
+ * Android 把进程挪进别的 cpuset。早先的实现只在开头跑 30 x 300ms（约 9s）就
+ * 退出，于是 vCPU 在之后随时可能跑到 prime 核上；日志里那句
+ *   Could not set register demuxed reg ... / Failed to put registers after reset
+ * 都出现在 "cpu affinity watchdog: done" 几分钟之后（guest 重启或 vCPU reset
+ * 时才写回 ID 寄存器），就是看门狗已经不在的表现。
+ *
+ * 所以现在让它跟着 VM 的生命周期跑：前 30 轮保持 300ms（qemu_init() 里创建
+ * vCPU 并回写 ID 寄存器的那几秒最脆弱），之后放慢到 2s，避免整场运行都在高频
+ * 扫 /proc。started 归零（stop / 关库）后线程自行退出。
  * ------------------------------------------------------------------------- */
 
-#define LIMBO_WATCHDOG_ROUNDS       30
-#define LIMBO_WATCHDOG_INTERVAL_MS  300
+#define LIMBO_WATCHDOG_FAST_ROUNDS  30
+#define LIMBO_WATCHDOG_FAST_MS      300
+#define LIMBO_WATCHDOG_SLOW_MS      2000
+
+/* 同一时刻只允许一个看门狗：VM 重启时上一次的线程可能还在 sleep，
+ * 它醒来看到 started 又变成 1 就会继续干活，不需要再起一个。 */
+static volatile int limbo_watchdog_running = 0;
 
 /* 把已存在的 vCPU 线程收回簇内，返回被改动的线程数。 */
 static int limbo_pin_vcpu_threads(const struct limbo_cpu_mask *mask) {
@@ -1171,13 +1203,18 @@ static void *limbo_affinity_watchdog(void *unused) {
 	int round;
 
 	(void) unused;
-	interval.tv_sec = LIMBO_WATCHDOG_INTERVAL_MS / 1000;
-	interval.tv_nsec = (LIMBO_WATCHDOG_INTERVAL_MS % 1000) * 1000000L;
 
-	for (round = 0; round < LIMBO_WATCHDOG_ROUNDS; round++) {
+	for (round = 0; started; round++) {
 		struct limbo_cpu_mask now;
+		long ms = round < LIMBO_WATCHDOG_FAST_ROUNDS ?
+				LIMBO_WATCHDOG_FAST_MS : LIMBO_WATCHDOG_SLOW_MS;
 
+		interval.tv_sec = ms / 1000;
+		interval.tv_nsec = (ms % 1000) * 1000000L;
 		nanosleep(&interval, NULL);
+
+		if (!started)
+			break;
 
 		if (limbo_get_affinity(&now) == 0 &&
 				!limbo_mask_subset(&now, &limbo_pin_mask) &&
@@ -1195,18 +1232,20 @@ static void *limbo_affinity_watchdog(void *unused) {
 	}
 
 	LOGV("cpu affinity watchdog: done");
+	limbo_watchdog_running = 0;
 	return NULL;
 }
 
 static void limbo_pin_watchdog_start(void) {
 	pthread_t thread;
 
-	if (limbo_pin_cpus == 0)
+	if (limbo_pin_cpus == 0 || limbo_watchdog_running)
 		return;
 	if (pthread_create(&thread, NULL, limbo_affinity_watchdog, NULL) == 0) {
+		limbo_watchdog_running = 1;
 		pthread_detach(thread);
-		LOGV("cpu affinity watchdog: started (%d x %dms)",
-				LIMBO_WATCHDOG_ROUNDS, LIMBO_WATCHDOG_INTERVAL_MS);
+		LOGV("cpu affinity watchdog: started (VM lifetime, %dms then %dms)",
+				LIMBO_WATCHDOG_FAST_MS, LIMBO_WATCHDOG_SLOW_MS);
 	} else {
 		LOGW("cpu affinity watchdog: pthread_create failed");
 	}

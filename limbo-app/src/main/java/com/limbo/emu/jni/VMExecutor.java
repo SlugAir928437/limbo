@@ -450,7 +450,16 @@ public class VMExecutor extends MachineExecutor {
                 // Android 自己的指针始终可见（该选项自 QEMU 6.0 起替代已删除的
                 // -show-cursor，见 qemu-options.hx 的 "sdl[,gl=on|core|es|off]"
                 // "[,grab-mod=<mod>][,show-cursor=on|off]"）。
-                paramsList.add("sdl" + getDisplayGLOption() + ",show-cursor=on");
+                //
+                // GL 显式要 ES profile（gl=es）：Android 的 libEGL 只有 GLES，
+                // 而 gl=on 会让 SDL 先按桌面 CORE profile + 版本 4.6 建上下文。
+                // 驱动通常直接回 EGL_BAD_MATCH，SDK 只能逐级退化；一旦退化出的
+                // 上下文与 vrend 的假设不一致，vrend 在 vrend_add_formats()
+                // 探测格式时拿到的 epoxy GL 入口就是 NULL，blr 到地址 0
+                // （logcat 里 libvirglrenderer.so 的 pc=0 SIGSEGV，栈为
+                // virgl_renderer_init -> vrend_renderer_init ->
+                // vrend_build_format_list_common -> vrend_add_formats）。
+                paramsList.add("sdl" + getSDLDisplayGLOption() + ",show-cursor=on");
             }
         }
 
@@ -555,6 +564,21 @@ public class VMExecutor extends MachineExecutor {
     @NonNull private String getDisplayGLOption() {
         String vga = getMachine().getVga();
         return (vga != null && vga.startsWith("virtio-gpu-gl")) ? ",gl=on" : "";
+    }
+
+    /**
+     * SDL 后端的 GL 选项。与 GTK（自己用 Android 适配的 egl_init() 建 GLES3
+     * 上下文）不同，SDL 会按这里给的 profile 去建上下文，所以 Android 上必须
+     * 显式要 ES profile：{@code gl=on} 先请求桌面 CORE profile + 4.6，Android
+     * 的 libEGL 没有桌面 GL，只能 EGL_BAD_MATCH 再逐级退化；退化出的上下文和
+     * vrend 的假设不一致时，vrend 探测格式拿到的 epoxy GL 入口为 NULL，blr
+     * 到地址 0（libvirglrenderer.so 里 pc=0 的 SIGSEGV）。
+     *
+     * @return 当机器使用 VirGL (GL) virtio-gpu 设备时返回 ",gl=es"，否则返回空字符串
+     */
+    @NonNull private String getSDLDisplayGLOption() {
+        String vga = getMachine().getVga();
+        return (vga != null && vga.startsWith("virtio-gpu-gl")) ? ",gl=es" : "";
     }
 
     /**

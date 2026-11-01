@@ -749,7 +749,11 @@ GLIB_COMMIT         := ed3abf0b5221d613a333ed5b118b2f2acc66acd3
 LIBFFI_TGZ          := https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz
 PIXMAN_TGZ          := https://www.cairographics.org/releases/pixman-0.43.4.tar.gz
 PIXMAN_TGZ_ALT      := https://github.com/mesonbuild/wrapdb/releases/download/pixman_0.43.4-1/pixman-0.43.4.tar.gz
-SDL2_TGZ            := https://www.libsdl.org/release/SDL2-2.0.8.tar.gz
+# SDL 官方发布已迁移到 GitHub Releases；www.libsdl.org 的直链偶发截断，
+# 会导致 gzip: unexpected end of file → tar 失败。GitHub 作为主源，官网作备用。
+SDL2_VERSION        := 2.0.8
+SDL2_TGZ            := https://github.com/libsdl-org/SDL/releases/download/release-$(SDL2_VERSION)/SDL2-$(SDL2_VERSION).tar.gz
+SDL2_TGZ_ALT        := https://www.libsdl.org/release/SDL2-$(SDL2_VERSION).tar.gz
 SLIRP_URL            := https://gitlab.freedesktop.org/slirp/libslirp.git
 # revision pinned in qemu/subprojects/slirp.wrap (libslirp 4.7.0)
 SLIRP_COMMIT         := 26be815b86e8d49add8c9a8b320239b9594ff03d
@@ -967,15 +971,30 @@ fetch-pixman:
 
 fetch-sdl2:
 	@if [ ! -f "$(LIMBO_JNI_ROOT)/SDL2/configure" ]; then \
-		echo ">> GET SDL2 2.0.8"; \
-		rm -f /tmp/SDL2-2.0.8.tar.gz; \
-		wget --quiet --timeout=60 $(SDL2_TGZ) -O /tmp/SDL2-2.0.8.tar.gz || \
-			wget --quiet --timeout=60 $(SDL2_TGZ) -O /tmp/SDL2-2.0.8.tar.gz; \
-		rm -rf /tmp/SDL2-2.0.8; \
-		tar -xzf /tmp/SDL2-2.0.8.tar.gz -C /tmp && \
-		mv -f /tmp/SDL2-2.0.8 "$(LIMBO_JNI_ROOT)/SDL2" && \
-		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8-android.patch" ) && \
-		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-2.0.8-android-silent-capture.patch" ); \
+		echo ">> GET SDL2 $(SDL2_VERSION)"; \
+		rm -rf /tmp/SDL2-$(SDL2_VERSION) "$(LIMBO_JNI_ROOT)/SDL2"; \
+		ok=0; \
+		for url in $(SDL2_TGZ) $(SDL2_TGZ_ALT); do \
+			for try in 1 2 3; do \
+				rm -f /tmp/SDL2-$(SDL2_VERSION).tar.gz; \
+				echo ">> SDL2 下载 $$url (第 $$try 次)"; \
+				if wget --quiet --tries=1 --timeout=60 -O /tmp/SDL2-$(SDL2_VERSION).tar.gz "$$url" && \
+				   gzip -t /tmp/SDL2-$(SDL2_VERSION).tar.gz 2>/dev/null; then \
+					ok=1; break 2; \
+				fi; \
+				echo ">> SDL2 下载失败或文件不完整（gzip 校验未通过），重试"; \
+				sleep 3; \
+			done; \
+		done; \
+		if [ $$ok -ne 1 ]; then \
+			echo "ERROR: SDL2 $(SDL2_VERSION) 下载失败或压缩包损坏"; \
+			rm -f /tmp/SDL2-$(SDL2_VERSION).tar.gz; \
+			exit 1; \
+		fi; \
+		tar -xzf /tmp/SDL2-$(SDL2_VERSION).tar.gz -C /tmp && \
+		mv -f /tmp/SDL2-$(SDL2_VERSION) "$(LIMBO_JNI_ROOT)/SDL2" && \
+		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-$(SDL2_VERSION)-android.patch" ) && \
+		( cd "$(LIMBO_JNI_ROOT)/SDL2" && patch -p1 < "$(LIMBO_JNI_ROOT)/patches/sdl2-$(SDL2_VERSION)-android-silent-capture.patch" ); \
 	else \
 		echo ">> SDL2 已存在，跳过"; \
 	fi

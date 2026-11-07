@@ -96,20 +96,61 @@ static char limbo_pending_angle_dir[MAX_STRING_LEN] = { 0 };
 /* -1 = 还没尝试过；0 = 已生效；其他 = 失败原因（不重复尝试） */
 static int limbo_gl_backend_applied = -1;
 
-static int limbo_dir_has_angle(const char *dir) {
-    char path[MAX_STRING_LEN + 32];
+/*
+ * 实测 dir 下某个 ANGLE 库能不能加载。只看文件在不在（access()）是不够的：
+ * Android 的 linker 命名空间默认不允许 app 直接 dlopen /system/lib64 下没列进
+ * public.libraries.txt 的私有库，logcat 里只会留一行
+ *
+ *   library "/system/lib64/libEGL_angle.so" ... is not accessible for the
+ *   namespace: [name="clns-9", ...]
+ *
+ * 而 libepoxy 的 dlopen 一旦失败就直接 abort() 掉整个进程（
+ * dispatch_common.c::epoxy_load_library 的 exit_on_fail 分支），于是 SDL 建窗
+ * 口时变成 SIGABRT。所以这里必须真的 dlopen 一次。
+ *
+ * 加载成功故意不 dlclose：epoxy 之后 dlopen 同一路径拿到的是同一个 handle，
+ * 既省一次加载，也保证它不会拿到 NULL。
+ */
+static int limbo_angle_lib_loadable(const char *dir, const char *name) {
+    char path[MAX_STRING_LEN + 64];
+    void *h = NULL;
+
     if (dir == NULL || dir[0] == '\0') {
         return 0;
     }
-    snprintf(path, sizeof(path), "%s/libEGL_angle.so", dir);
-    return access(path, R_OK) == 0;
+    snprintf(path, sizeof(path), "%s/%s", dir, name);
+    dlerror();
+    h = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+    if (h == NULL) {
+        LOGD("VirGL 后端：%s 不可加载: %s", path, dlerror());
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * 判断 dir 下是不是一整套能用的 ANGLE。
+ * libEGL_angle.so 和 libGLESv2_angle.so 都必须能加载：epoxy 是分别 dlopen 的，
+ * 少了任何一个都会在第一次 GL 调用时 abort。libGLESv1_CM_angle.so 只有 GLES1
+ * 入口才会用到，QEMU/virgl 不走那条路，缺了不算失败。
+ */
+static int limbo_dir_has_angle(const char *dir) {
+    if (!limbo_angle_lib_loadable(dir, "libEGL_angle.so")) {
+        return 0;
+    }
+    if (!limbo_angle_lib_loadable(dir, "libGLESv2_angle.so")) {
+        return 0;
+    }
+    limbo_angle_lib_loadable(dir, "libGLESv1_CM_angle.so");
+    return 1;
 }
 
 /*
  * 找到一套可用的 ANGLE 库目录。
  * 首选 Java 侧传进来的目录（通常是 APK 的 nativeLibraryDir，把 ANGLE 随包
  * 分发时就是它），其次是设备自带的系统 ANGLE（Android 15 起部分机型在
- * /system/lib64 下带 libEGL_angle.so）。找不到就返回 0。
+ * /system/lib64 下带 libEGL_angle.so）。候选目录必须真的能 dlopen 才算数
+ * （见 limbo_dir_has_angle），都不行就返回 0，让调用方回退系统 GLES。
  */
 static int limbo_resolve_angle_dir(const char *hint, char *out, size_t out_size) {
     const char *candidates[] = {
@@ -151,8 +192,10 @@ static int limbo_apply_gl_backend(void) {
 
     if (!limbo_resolve_angle_dir(limbo_pending_angle_dir, angle_dir,
                                  sizeof(angle_dir))) {
-        LOGE("VirGL 后端：选了 ANGLE，但没找到 libEGL_angle.so（看过 APK 的 "
-             "nativeLibraryDir 与 /system/lib64、/vendor/lib64），回退系统 GLES");
+        LOGE("VirGL 后端：选了 ANGLE，但 APK 的 nativeLibraryDir 与 "
+             "/system/lib64、/vendor/lib64 里都没有可加载的 libEGL_angle.so + "
+             "libGLESv2_angle.so（文件在≠能加载：app 的 linker 命名空间不允许 "
+             "dlopen 系统私有库），回退系统 GLES");
         limbo_gl_backend_applied = -2;
         return -2;
     }

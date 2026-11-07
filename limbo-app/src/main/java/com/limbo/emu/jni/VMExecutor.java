@@ -270,12 +270,113 @@ public class VMExecutor extends MachineExecutor {
         }
     }
 
-    /** 按设置里的选择下发渲染后端；在 {@code start()} 里、native 启动之前调用。 */
+    /** ANGLE 的 dlopen 入口库。 */
+    private static final String ANGLE_EGL_LIB = "libEGL_angle.so";
+    /** epoxy 之后一定会单独 dlopen 的那一个（virgl 全走 ES2/ES3）。 */
+    private static final String ANGLE_GLES2_LIB = "libGLESv2_angle.so";
+    /** 只有走 GLES1 入口才会用到，QEMU/virgl 不走，缺了不算失败。 */
+    private static final String ANGLE_GLES1_LIB = "libGLESv1_CM_angle.so";
+
+    /** ANGLE 不可用的提示每个进程只弹一次，免得每次开虚拟机都弹。 */
+    private static boolean sAngleFallbackNotified;
+
+    /**
+     * 按设置里的选择下发渲染后端；在 {@code start()} 里、native 启动之前调用。
+     *
+     * <p>选 ANGLE 时先在 Java 侧实测一遍能不能加载（见
+     * {@link #resolveLoadableAngleDir}），不行就回退系统 GLES：libepoxy 的
+     * dlopen 失败不是返回错误，而是直接 {@code abort()} 掉整个进程（SDL 建窗口
+     * 时表现为 SIGABRT），必须挡在它前面。
+     */
     private void applyVirglRenderBackend() {
-        int backend = LimboSettingsManager.getVirglRenderBackend(
-                LimboApplication.getInstance());
-        String angleDir = FileUtils.getNativeLibSearchDir(LimboApplication.getInstance());
+        Context context = LimboApplication.getInstance();
+        int backend = LimboSettingsManager.getVirglRenderBackend(context);
+        String angleDir = FileUtils.getNativeLibSearchDir(context);
+
+        if (backend == GL_BACKEND_ANGLE) {
+            String usableDir = resolveLoadableAngleDir(angleDir);
+            if (usableDir != null) {
+                angleDir = usableDir;
+            } else {
+                Log.w(TAG, "选了 ANGLE 渲染后端，但本进程的 linker 命名空间里没有一套"
+                        + " libEGL_angle.so + libGLESv2_angle.so 能被 dlopen（APK 没随包"
+                        + "分发 ANGLE，设备 /system/lib64 里那份又不允许 app 直接加载），"
+                        + "本次改用系统 GLES");
+                backend = GL_BACKEND_GLES;
+                angleDir = null;
+                notifyAngleFallback(context);
+            }
+        }
         setVirglRenderBackend(backend, angleDir);
+    }
+
+    /**
+     * 找出本进程真的能加载的 ANGLE 库目录。
+     *
+     * <p>native 侧原来只用 {@code access()} 判断文件在不在，但“文件在”不等于
+     * “能加载”：Android 的 linker 命名空间默认禁止 app dlopen {@code /system}
+     * 下没列进 {@code public.libraries.txt} 的私有库，logcat 里只会留一行
+     * {@code library ".../libEGL_angle.so" ... is not accessible for the
+     * namespace}。这里用 {@link System#load} 真加载一遍——它和 epoxy 走同一个
+     * linker 命名空间，结论一致。
+     *
+     * <p>加载成功的库不卸载：epoxy 之后 dlopen 同一路径拿到的是同一个 handle。
+     *
+     * @param hint 优先尝试的目录，可能是 {@code .../base.apk!/lib/arm64-v8a}
+     *             这种 APK 内路径（linker 支持按 zip 内路径加载）
+     * @return 可用的目录；一套都加载不了时返回 null
+     */
+    @Nullable
+    private static String resolveLoadableAngleDir(@Nullable String hint) {
+        String[] candidates = {
+                hint,
+                "/system/lib64",
+                "/system/lib",
+                "/vendor/lib64",
+                "/vendor/lib",
+        };
+        for (String dir : candidates) {
+            if (dir == null || dir.isEmpty()) {
+                continue;
+            }
+            if (!loadAngleLib(dir, ANGLE_EGL_LIB)) {
+                continue;
+            }
+            if (!loadAngleLib(dir, ANGLE_GLES2_LIB)) {
+                continue;
+            }
+            loadAngleLib(dir, ANGLE_GLES1_LIB);
+            return dir;
+        }
+        return null;
+    }
+
+    /** 试加载 {@code dir/libName}，返回是否成功。 */
+    private static boolean loadAngleLib(String dir, String libName) {
+        String path = dir + "/" + libName;
+        try {
+            System.load(path);
+            Log.i(TAG, "ANGLE 后端可用: " + path);
+            return true;
+        } catch (Throwable t) {
+            // 被 linker 命名空间挡住时抛的是 UnsatisfiedLinkError（Error，不是
+            // Exception），所以这里接 Throwable。
+            Log.d(TAG, "ANGLE 候选不可用: " + path + " (" + t + ")");
+            return false;
+        }
+    }
+
+    /** 提示一次“ANGLE 不可用，已回退系统 GLES”。 */
+    private static void notifyAngleFallback(Context context) {
+        if (sAngleFallbackNotified || context == null) {
+            return;
+        }
+        sAngleFallbackNotified = true;
+        try {
+            ToastUtils.toastLong(context, context.getString(R.string.virglAngleUnavailable));
+        } catch (Throwable t) {
+            Log.w(TAG, "提示 ANGLE 回退失败: " + t);
+        }
     }
 
     private native void nativeSetVirglRenderBackend(int backend, String angleDir);

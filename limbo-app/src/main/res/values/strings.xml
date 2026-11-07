@@ -392,5 +392,6 @@
     <string name="virglBackendAngle">ANGLE (GLES on Vulkan)</string>
     <string name="virglBackend">VirGL render backend</string>
     <string name="virglBackendSummary">EGL/GLES implementation used by QEMU + virglrenderer. Switch to ANGLE when the vendor GL driver refuses the ES context that vrend asks for.</string>
+    <string name="virglAngleUnavailable">ANGLE is not usable on this device (its libraries cannot be loaded by the app), so system GLES is used for this VM.</string>
 
 </resources>

@@ -471,6 +471,27 @@ clean-spice:
 # GTK4 (gtk4android) display stack, only built when USE_GTK=true
 # gtk builds against the jni shared libs (glib/pixman/libffi), so they must
 # be built (and their .pc files generated) before we can configure GTK.
+#
+# libepoxy 是 gtk4android 的 meson wrap（anholt/libepoxy）：wrap 源码只有在
+# `meson setup` 时才会下载/解压到 gtk4android/subprojects/libepoxy。ANGLE 后端
+# 补丁（epoxy_set_library_path，见 patches/epoxy-android-angle-backend.patch）
+# 因此必须排在 setup 之后、首次 ninja 之前；放在 setup 之前时目录还不存在，
+# 补丁会被静默跳过，最终产出没有 epoxy_set_library_path() 的 libepoxy.so
+# （ANGLE 渲染后端运行时直接不可用）。打不上直接失败，不再只警告。
+EPOXY_WRAP_SRC := $(LIMBO_JNI_ROOT)/gtk4android/subprojects/libepoxy
+PATCH_EPOXY = \
+	if [ ! -f "$(EPOXY_WRAP_SRC)/src/dispatch_common.c" ]; then \
+		echo 'ERROR: libepoxy wrap 源码不存在，无法应用 ANGLE 后端补丁'; \
+		exit 1; \
+	fi; \
+	if grep -q epoxy_set_library_path "$(EPOXY_WRAP_SRC)/src/dispatch_common.c"; then \
+		echo ">> libepoxy: ANGLE 后端补丁已应用"; \
+	else \
+		echo ">> libepoxy: 应用 ANGLE 后端补丁"; \
+		patch -p1 -d "$(EPOXY_WRAP_SRC)" --forward < "$(EPOXY_ANGLE_PATCH)" \
+			|| { echo 'ERROR: libepoxy ANGLE 补丁没打上'; exit 1; }; \
+	fi
+
 config-gtk: ndk pkg-config-link ffi glib pixman
 	$(CREATE_GTK_MESON_CROSS_FILE)
 	# apply the required glib hack patch (meson skips diff_files for pre-existing
@@ -482,19 +503,6 @@ config-gtk: ndk pkg-config-link ffi glib pixman
 		cd $(LIMBO_JNI_ROOT)/gtk4android/subprojects/glib && \
 		git apply ../packagefiles/glib/hack.patch || { echo 'ERROR: failed to apply glib hack.patch'; exit 1; }; \
 	fi
-	# libepoxy：给 Android 分支加 epoxy_set_library_path()，让 EGL/GLES 能在
-	# “设备厂商 GLES ↔ ANGLE”之间运行时切换（显卡渲染后端开关，见
-	# patches/epoxy-android-angle-backend.patch）。与 glib hack 一样，wrap
-	# 源码不随仓库下发时跳过，ANGLE 后端只是在运行时不可用，不影响构建。
-	@for d in "$(LIMBO_JNI_ROOT)/gtk4android/subprojects/libepoxy" \
-	          "$(GTK_BUILD_DIR)/subprojects/libepoxy"; do \
-		if [ -f "$$d/src/dispatch_common.c" ] && \
-		   ! grep -q epoxy_set_library_path "$$d/src/dispatch_common.c"; then \
-			echo ">> libepoxy: 应用 ANGLE 后端补丁"; \
-			patch -p1 -d "$$d" --forward < "$(EPOXY_ANGLE_PATCH)" || \
-				echo ">> WARNING: libepoxy ANGLE 补丁没打上，ANGLE 后端将不可用"; \
-		fi; \
-	done
 	# keep the downloaded subproject sources across reconfigures
 	@if [ -d "$(GTK_BUILD_DIR).subprojects-save" ]; then \
 		rm -rf "$(GTK_BUILD_DIR).subprojects-save"; \
@@ -543,8 +551,12 @@ config-gtk: ndk pkg-config-link ffi glib pixman
 		-Dbuild-tests=false \
 		-Dbuild-testsuite=false \
 		-Dvulkan=disabled
+	# 补丁必须在 meson setup 之后应用（wrap 源码是 setup 时才下载的）
+	$(PATCH_EPOXY)
 
 gtk: ffi glib pixman
+	# 再确认一次：config-gtk 之后源码树可能被重新解压/覆盖，补丁是幂等的
+	$(PATCH_EPOXY)
 	ninja -C "$(GTK_BUILD_DIR)" -j $(BUILD_THREADS)
 	ninja -C "$(GTK_BUILD_DIR)" install
 	# deploy the GTK4 shared libraries into the APK jniLibs so the app can load them
@@ -799,7 +811,8 @@ VIRGL_PATCH         := $(LIMBO_JNI_ROOT)/patches/virglrenderer-android-egl.patch
 # libGLESv2_angle.so（做法抄自 termux-packages 的 virglrenderer-android
 # 0003-use-angle.patch；调用方见 limbo/vm-executor-jni.c 的
 # Java_com_limbo_emu_jni_VMExecutor_nativeSetVirglRenderBackend）。
-# epoxy 是 gtk4android 的 meson 子工程，补丁在 config-gtk 里应用。
+# epoxy 是 gtk4android 的 meson wrap，源码在 config-gtk 的 meson setup 才
+# 下载，所以补丁也在那之后应用（见 PATCH_EPOXY）。
 EPOXY_ANGLE_PATCH   := $(LIMBO_JNI_ROOT)/patches/epoxy-android-angle-backend.patch
 GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
 GTK4_BRANCH         := master

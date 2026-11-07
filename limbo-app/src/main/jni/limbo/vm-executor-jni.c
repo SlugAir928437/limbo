@@ -1528,7 +1528,7 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
      *   1) libqemu 已经 dlopen，libepoxy 已经在进程里，能 dlsym 到
      *      epoxy_set_library_path()；
      *   2) 还没走到 qemu_init()，epoxy 的 EGL/GL 入口都还没第一次解析，
-     *      改了库名才会被后续所有的 egl*/gl* 调用采用。
+     *      改了库名才会被后续所有的 eglxxx / glxxx 调用采用。
      * 失败只记日志（例如选 ANGLE 但设备上没有 ANGLE 库），不拦启动。 */
     limbo_apply_gl_backend();
 

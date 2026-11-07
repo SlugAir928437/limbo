@@ -492,6 +492,34 @@ PATCH_EPOXY = \
 			|| { echo 'ERROR: libepoxy ANGLE 补丁没打上'; exit 1; }; \
 	fi
 
+# pango 也是 gtk4android 的 meson wrap（GNOME/pango，revision = main，同样在
+# `meson setup` 时才 clone 到 gtk4android/subprojects/pango），跟着上游 main 走。
+#
+# 上游给新枚举值加的标注宏在“版本不够”那一支写成了
+#   # define PANGO_AVAILABLE_ENUMERATOR_IN_1_60  PANGO_UNAVAILABLE (1, 60)
+# 而 PANGO_UNAVAILABLE() 展开成 `G_UNAVAILABLE(...) _PANGO_EXTERN`，也就是
+# `__attribute__((deprecated)) extern`：用在函数声明上没问题，放进枚举体里
+# clang 直接报
+#   pango-glyph.h:245: error: expected '= constant-expression' or end of
+#   enumerator definition
+# GTK 4.23 只声明支持到 pango 1.59（编译命令里是
+# -DPANGO_VERSION_MAX_ALLOWED=G_ENCODE_VERSION(1,59)），所以必然会走到这一支，
+# `make gtk` 编不过。枚举值本来就没有“不可用”的语义（宏在可用分支下就是空的），
+# 这里把所有 PANGO_AVAILABLE_ENUMERATOR_IN_* 的不可用分支同样清空，对上游之后
+# 新增的 1.6x 版本一样生效。pango 源码树不存在时跳过（非 fallback 构建）。
+PANGO_WRAP_SRC := $(LIMBO_JNI_ROOT)/gtk4android/subprojects/pango
+PATCH_PANGO = \
+	if [ -f "$(PANGO_WRAP_SRC)/pango/pango-version-macros.h" ]; then \
+		if grep -qE 'PANGO_AVAILABLE_ENUMERATOR_IN_[0-9_]+[[:space:]]+PANGO_UNAVAILABLE' \
+			"$(PANGO_WRAP_SRC)/pango/pango-version-macros.h"; then \
+			echo ">> pango: 清空 PANGO_AVAILABLE_ENUMERATOR_IN_* 的不可用分支"; \
+			sed -i -E \
+				's@(PANGO_AVAILABLE_ENUMERATOR_IN_[0-9_]+)[[:space:]]+PANGO_UNAVAILABLE[[:space:]]*\([0-9]+,[[:space:]]*[0-9]+\)[[:space:]]*$$@\1@' \
+				"$(PANGO_WRAP_SRC)/pango/pango-version-macros.h" \
+				|| { echo 'ERROR: pango 枚举标注宏修补失败'; exit 1; }; \
+		fi; \
+	fi
+
 config-gtk: ndk pkg-config-link ffi glib pixman
 	$(CREATE_GTK_MESON_CROSS_FILE)
 	# apply the required glib hack patch (meson skips diff_files for pre-existing
@@ -553,10 +581,12 @@ config-gtk: ndk pkg-config-link ffi glib pixman
 		-Dvulkan=disabled
 	# 补丁必须在 meson setup 之后应用（wrap 源码是 setup 时才下载的）
 	$(PATCH_EPOXY)
+	$(PATCH_PANGO)
 
 gtk: ffi glib pixman
 	# 再确认一次：config-gtk 之后源码树可能被重新解压/覆盖，补丁是幂等的
 	$(PATCH_EPOXY)
+	$(PATCH_PANGO)
 	ninja -C "$(GTK_BUILD_DIR)" -j $(BUILD_THREADS)
 	ninja -C "$(GTK_BUILD_DIR)" install
 	# deploy the GTK4 shared libraries into the APK jniLibs so the app can load them

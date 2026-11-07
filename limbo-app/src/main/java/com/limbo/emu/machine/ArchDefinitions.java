@@ -27,6 +27,8 @@ import com.limbo.emu.main.BuildFeatures;
 import com.limbo.emu.main.Config;
 import com.limbo.emu.main.LimboApplication;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -159,8 +161,7 @@ public class ArchDefinitions {
                 values.add("bios.bin");
                 values.add("bios-microvm.bin");
 
-                if (BuildFeatures.edk2())
-                    values.add("edk2-i386-code.fd");
+                addIfShipped(context, values, "edk2-i386-code.fd");
                 break;
             case x86_64:
                 // SeaBIOS 256K (QEMU 10.x default), legacy 128K SeaBIOS, and the
@@ -169,25 +170,21 @@ public class ArchDefinitions {
                 values.add("bios.bin");
                 values.add("bios-microvm.bin");
 
-                if (BuildFeatures.edk2())
-                    values.add("edk2-x86_64-code.fd");
+                addIfShipped(context, values, "edk2-x86_64-code.fd");
                 break;
             case arm:
                 values.add("ast27x0_bootrom.bin");
                 // EDK2 ArmVirtQemu 构建的 32 位 ARM UEFI 固件
-                if (BuildFeatures.edk2())
-                    values.add("edk2-arm-code.fd");
+                addIfShipped(context, values, "edk2-arm-code.fd");
                 break;
             case arm64:
                 // Aspeed 27x0 boot ROM (ast2500/ast2600-evb and the Aspeed BMC
                 // machines, which are the ARM boards selectable in the app)
                 values.add("ast27x0_bootrom.bin");
-                if (BuildFeatures.edk2()) {
-                    values.add("edk2-aarch64-gunyah.fd");
-                    values.add("edk2-aarch64-gzvm.fd");
-                    // 上游 EDK2 ArmVirtQemu 构建的 AArch64 UEFI 固件
-                    values.add("edk2-aarch64-code.fd");
-                }
+                addIfShipped(context, values, "edk2-aarch64-gunyah.fd");
+                addIfShipped(context, values, "edk2-aarch64-gzvm.fd");
+                // 上游 EDK2 ArmVirtQemu 构建的 AArch64 UEFI 固件
+                addIfShipped(context, values, "edk2-aarch64-code.fd");
                 break;
             case ia64:
             case ia64w:
@@ -195,6 +192,30 @@ public class ArchDefinitions {
                 break;
         }
         return values;
+    }
+
+    /**
+     * 按「APK 里是否真的打包了该固件」决定是否列出，而不是按 USE_EDK2
+     * 构建开关（{@link BuildFeatures#edk2()}）判断。
+     *
+     * <p>EDK2 的 .fd 固件随仓库的 assets2/roms 一起打包，与主构建是否编译
+     * EDK2 无关：默认 USE_EDK2=false 的构建会在 build-features.properties 里
+     * 写入 edk2=false，但固件文件仍在 APK 的 assets/roms 中。若只看开关，
+     * 这些已经存在的固件会被 BIOS 下拉框整体过滤掉，表现为「APK 里明明有
+     * edk2 固件，Limbo 却识别不到」。
+     */
+    private static void addIfShipped(Context context, ArrayList<String> values, String name) {
+        if (context == null) {
+            if (BuildFeatures.edk2()) {
+                values.add(name);
+            }
+            return;
+        }
+        try (InputStream ignored = context.getAssets().open("roms/" + name)) {
+            values.add(name);
+        } catch (IOException e) {
+            // 固件未随 APK 打包，不提供该选项
+        }
     }
 
     public static ArrayList<String> getKeyboardValues(Context context) {

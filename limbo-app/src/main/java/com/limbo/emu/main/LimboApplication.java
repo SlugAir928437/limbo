@@ -198,6 +198,8 @@ public class LimboApplication extends Application {
     public void onCreate() {
         super.onCreate();
         sInstance = this;
+        BuildFeatures.init(this);
+        Config.enable_SDL = BuildFeatures.sdl();
         registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override
             public void onActivityResumed(Activity activity) {

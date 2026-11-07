@@ -23,6 +23,7 @@ import android.os.Build;
 
 import com.limbo.emu.R;
 import com.limbo.emu.install.Installer;
+import com.limbo.emu.main.BuildFeatures;
 import com.limbo.emu.main.Config;
 import com.limbo.emu.main.LimboApplication;
 
@@ -100,7 +101,7 @@ public class ArchDefinitions {
             // hw/i386/Kconfig 里 `imply QXL`，而 hw/arm 等其它 target 没有。
             // 即使 ARM 构建启用了 SPICE（CONFIG_SPICE），也没有 qxl 设备，
             // 选中后 QEMU 会直接报 "QXL VGA not available" 并退出。
-            if (isQxlAvailable()) {
+            if (isQxlAvailable() && BuildFeatures.spice()) {
                 vgaValues.add("qxl");
             }
         }
@@ -126,7 +127,10 @@ public class ArchDefinitions {
             // Only x86/x86_64 and arm/arm64 build those (the IA-64 build skips
             // the whole VirGL/virtio-gpu stack, see jni/Makefile).
             vgaValues.add("virtio-gpu-pci");
-            vgaValues.add("virtio-gpu-gl-pci");
+            // GL 变体需要 virglrenderer + gtk4android 提供的 epoxy
+            if (BuildFeatures.virgl() && BuildFeatures.gtk()) {
+                vgaValues.add("virtio-gpu-gl-pci");
+            }
         }
 
         //XXX: some archs don't support vga on QEMU like SPARC64
@@ -155,7 +159,8 @@ public class ArchDefinitions {
                 values.add("bios.bin");
                 values.add("bios-microvm.bin");
 
-                values.add("edk2-i386-code.fd");
+                if (BuildFeatures.edk2())
+                    values.add("edk2-i386-code.fd");
                 break;
             case x86_64:
                 // SeaBIOS 256K (QEMU 10.x default), legacy 128K SeaBIOS, and the
@@ -164,21 +169,25 @@ public class ArchDefinitions {
                 values.add("bios.bin");
                 values.add("bios-microvm.bin");
 
-                values.add("edk2-x86_64-code.fd");
+                if (BuildFeatures.edk2())
+                    values.add("edk2-x86_64-code.fd");
                 break;
             case arm:
                 values.add("ast27x0_bootrom.bin");
                 // EDK2 ArmVirtQemu 构建的 32 位 ARM UEFI 固件
-                values.add("edk2-arm-code.fd");
+                if (BuildFeatures.edk2())
+                    values.add("edk2-arm-code.fd");
                 break;
             case arm64:
                 // Aspeed 27x0 boot ROM (ast2500/ast2600-evb and the Aspeed BMC
                 // machines, which are the ARM boards selectable in the app)
                 values.add("ast27x0_bootrom.bin");
-                values.add("edk2-aarch64-gunyah.fd");
-                values.add("edk2-aarch64-gzvm.fd");
-                // 上游 EDK2 ArmVirtQemu 构建的 AArch64 UEFI 固件
-                values.add("edk2-aarch64-code.fd");
+                if (BuildFeatures.edk2()) {
+                    values.add("edk2-aarch64-gunyah.fd");
+                    values.add("edk2-aarch64-gzvm.fd");
+                    // 上游 EDK2 ArmVirtQemu 构建的 AArch64 UEFI 固件
+                    values.add("edk2-aarch64-code.fd");
+                }
                 break;
             case ia64:
             case ia64w:
@@ -267,6 +276,25 @@ public class ArchDefinitions {
         return arrList;
     }
 
+    /**
+     * 把已保存机型里构建时未编译的显示后端退回一个可用的值。
+     * 未启用 SDL 时退回 VNC（VNC 总是编进引擎）。
+     */
+    public static String resolveUI(String ui) {
+        String fallback = Config.enable_SDL ? "SDL" : "VNC";
+        if ("GTK".equals(ui) && !(BuildFeatures.gtk()
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)) {
+            return fallback;
+        }
+        if ("SPICE".equals(ui) && !BuildFeatures.spice()) {
+            return fallback;
+        }
+        if ("SDL".equals(ui) && !Config.enable_SDL) {
+            return "VNC";
+        }
+        return ui;
+    }
+
     public static ArrayList<String> getUIValues() {
         ArrayList<String> arrList = new ArrayList<>();
         arrList.add("VNC");
@@ -276,7 +304,7 @@ public class ArchDefinitions {
         // The QEMU engine must be built with CONFIG_SPICE; the IA-64 fork is
         // configured with --disable-spice (see jni/Makefile), so the option is
         // hidden there to avoid starting a VM with an unknown -spice option.
-        if (LimboApplication.arch != Config.Arch.ia64
+        if (BuildFeatures.spice() && LimboApplication.arch != Config.Arch.ia64
                 && LimboApplication.arch != Config.Arch.ia64w)
             arrList.add("SPICE");
         if (Config.enable_SDL)
@@ -285,7 +313,7 @@ public class ArchDefinitions {
         // depends on AMotionEvent_fromJava/AKeyEvent_fromJava, which are only
         // exported by libandroid.so on API 31+. On older devices loading the
         // VM would crash with UnsatisfiedLinkError, so hide the option there.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        if (BuildFeatures.gtk() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             arrList.add("GTK");
         // AGL (Android Graphics Layer): the guest is rendered into a Surface
         // owned by the app (QEMU "-display agl"), which is the only display the

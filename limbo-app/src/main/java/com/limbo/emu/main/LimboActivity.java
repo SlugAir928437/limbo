@@ -883,9 +883,8 @@ public class LimboActivity extends AppCompatActivity implements
             if (Build.VERSION.SDK_INT >= 26)
                 System.loadLibrary("compat-SDL2-addons");
             System.loadLibrary("SDL2");
+            System.loadLibrary("compat-SDL2-ext");
         }
-
-        System.loadLibrary("compat-SDL2-ext");
 
         //Limbo needed for vmexecutor
         System.loadLibrary("limbo");
@@ -1615,7 +1614,7 @@ public class LimboActivity extends AppCompatActivity implements
         //XXX: make sure that bios files are installed in case we ran out of space in the last run
         FileInstaller.installFiles(this, false);
 
-        String ui = getMachine().getUI();
+        String ui = ArchDefinitions.resolveUI(getMachine().getUI());
         if ("GTK".equals(ui)) {
             startGtk();
         } else if ("AGL".equals(ui)) {

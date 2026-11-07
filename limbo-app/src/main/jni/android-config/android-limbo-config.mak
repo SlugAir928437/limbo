@@ -87,7 +87,7 @@ USE_QEMU_VERSION ?= 10.2.1
 # GLib 2.66.x is new enough for QEMU 6.2.0 and uses Meson reliably.
 GLIB_VERSION ?= 2.66.8
 
-# If you want to use SDL interface
+# SDL2 显示后端（false 时不下载/不编译 SDL2，QEMU 以 --disable-sdl 配置）
 USE_SDL ?= true
 
 # If you want to use SDL Audio with Android AudioTrack
@@ -171,6 +171,9 @@ USE_VIRGL ?= true
 # Set to false to go back to a venus-less renderer (and drop ,venus=on from the
 # virtio-gpu-gl-pci device).
 USE_VIRGL_VENUS ?= true
+
+# SPICE 显示栈（false 时不下载/不编译 spice-server 栈，QEMU 以 --disable-spice 配置）
+USE_SPICE ?= true
 
 # ---------------------------------------------------------------------------
 # EDK2 客户机 UEFI 固件

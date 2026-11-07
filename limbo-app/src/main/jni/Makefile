@@ -27,15 +27,32 @@ endif
 
 ifeq ($(IA64_GUEST),yes)
 USE_VIRGL := false
-SPICE_CONFIGURE_FLAG := --disable-spice
-SPICE_CONFIG_TARGET :=
-SPICE_DEPS_TARGET :=
-SPICE_FETCH_TARGETS :=
-else
+USE_SPICE := false
+endif
+
+ifeq ($(strip $(USE_SPICE)),true)
 SPICE_CONFIGURE_FLAG := --enable-spice
 SPICE_CONFIG_TARGET := config-spice
 SPICE_DEPS_TARGET := spice
 SPICE_FETCH_TARGETS := fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice
+else
+SPICE_CONFIGURE_FLAG := --disable-spice
+SPICE_CONFIG_TARGET :=
+SPICE_DEPS_TARGET :=
+SPICE_FETCH_TARGETS :=
+endif
+
+# SDL / GTK 的 QEMU configure 开关，交给 android-qemu-config.mak
+ifeq ($(strip $(USE_SDL)),true)
+SDL_CONFIGURE_FLAGS := --enable-sdl --audio-drv-list=sdl
+else
+SDL_CONFIGURE_FLAGS := --disable-sdl --audio-drv-list=default
+endif
+
+ifeq ($(strip $(USE_GTK)),true)
+GTK_CONFIGURE_FLAGS := --enable-gtk
+else
+GTK_CONFIGURE_FLAGS := --disable-gtk
 endif
 
 ndkbuild=cd $(NDK_PROJECT_PATH) && GTK_INSTALL_DIR="$(GTK_INSTALL_DIR)" $(NDK_BUILD) -j $(BUILD_THREADS)
@@ -138,6 +155,19 @@ COPY_ROMS=-mkdir -p ../assets/roms && cp -rf ./qemu/pc-bios/*.rom \
 COPY_KEYMAPS=cp -rf ./qemu/pc-bios/keymaps ../assets/roms/
 COPY_QEMU_VERSION=cp -f ./qemu/VERSION ../assets/QEMU_VERSION
 COPY_RESOLV_CONF=mkdir -p ../assets/roms/etc/ && printf "nameserver 8.8.8.8\n\n" > ../assets/roms/etc/resolv.conf
+
+# 构建功能开关，随 APK 打包，Java 侧（BuildFeatures）据此隐藏不可用的选项
+BUILD_FEATURES_FILE=$(LIMBO_APP_LIBS)/assets/build-features.properties
+FEATURE_BOOL=$(if $(filter true,$(strip $(1))),true,false)
+GENERATE_BUILD_FEATURES=mkdir -p $(dir $(BUILD_FEATURES_FILE)) && printf '%s\n' \
+	"sdl=$(call FEATURE_BOOL,$(USE_SDL))" \
+	"sdl_audio=$(call FEATURE_BOOL,$(USE_SDL_AUDIO))" \
+	"gtk=$(call FEATURE_BOOL,$(USE_GTK))" \
+	"virgl=$(call FEATURE_BOOL,$(USE_VIRGL))" \
+	"virgl_venus=$(call FEATURE_BOOL,$(USE_VIRGL_VENUS))" \
+	"spice=$(call FEATURE_BOOL,$(USE_SPICE))" \
+	"edk2=$(if $(and $(filter true,$(strip $(USE_EDK2))),$(strip $(EDK2_ARCHS))),true,false)" \
+	> $(BUILD_FEATURES_FILE)
 
 #RENAME_TUNCTL=mv -f $(NDK_PROJECT_PATH)/libs/$(APP_ABI)/tunctl \
 	$(NDK_PROJECT_PATH)/libs/$(APP_ABI)/libtunctl.so
@@ -610,7 +640,7 @@ config-qemu: ndk pkg-config-link fetch-qemu
 		echo ">> NOTE: this QEMU tree declares no virglrenderer/opengl meson option:"; \
 		echo ">>       virtio-gpu-gl-pci will NOT be part of the build (set USE_VIRGL=false to silence)"; \
 	fi
-	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" AGL_MESON_FLAGS="$(AGL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)" SPICE_CONFIGURE_FLAG="$(SPICE_CONFIGURE_FLAG)"
+	$(MAKE) -f $(LIMBO_JNI_ROOT)/android-config/android-qemu-config.mak ACCEL_MESON_FLAGS="$(ACCEL_MESON_FLAGS)" AGL_MESON_FLAGS="$(AGL_MESON_FLAGS)" VIRGL_MESON_FLAGS="$(VIRGL_MESON_FLAGS)" SPICE_CONFIGURE_FLAG="$(SPICE_CONFIGURE_FLAG)" SDL_CONFIGURE_FLAGS="$(SDL_CONFIGURE_FLAGS)" GTK_CONFIGURE_FLAGS="$(GTK_CONFIGURE_FLAGS)"
 
 clean-qemu:
 	-cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) distclean
@@ -621,10 +651,10 @@ clean-qemu:
 
 # virglrenderer 不在这里配置/构建：它依赖 GTK4 安装出来的 epoxy（见 config-virgl
 # 注释），必须排在 deps（构建+安装 GTK4）之后，因此由 limbo 目标显式执行。
-config-deps: ndk config-ffi config-glib config-pixman config-slirp $(SPICE_CONFIG_TARGET) $(if $(USE_GTK),config-gtk)
+config-deps: ndk config-ffi config-glib config-pixman config-slirp $(SPICE_CONFIG_TARGET) $(if $(filter true,$(USE_GTK)),config-gtk)
 
 # virglrenderer 同上：由 limbo 在 GTK4 安装完成后显式构建
-deps: ndk glib pixman slirp $(SPICE_DEPS_TARGET) $(if $(USE_GTK),gtk)
+deps: ndk glib pixman slirp $(SPICE_DEPS_TARGET) $(if $(filter true,$(USE_GTK)),gtk)
 
 _build-qemu: ndk 
 	make _qemu
@@ -636,6 +666,7 @@ _build-qemu: ndk
 	$(COPY_KEYMAPS)
 	$(COPY_QEMU_VERSION)
 	$(COPY_RESOLV_CONF)
+	$(GENERATE_BUILD_FEATURES)
 
 qemu: ndk
 	make _build-qemu
@@ -663,6 +694,7 @@ fetch-edk2:
 
 edk2:
 	$(if $(EDK2_ARCHS),$(EDK2_ENV) build $(EDK2_ARCHS),@echo "$(EDK2_SKIP_MSG)")
+	$(GENERATE_BUILD_FEATURES)
 
 # clean 不需要提示：EDK2_ARCHS 为空（ia64）时本来就没有产物可清，展开为空行即空操作
 clean-edk2:
@@ -670,6 +702,10 @@ clean-edk2:
 
 symbols:
 	$(COLLECT_SYMBOLS)
+
+# 单独重新生成 assets/build-features.properties
+features:
+	$(GENERATE_BUILD_FEATURES)
 
 clean-symbols:
 	-rm -rf "$(SYMBOLS_DIR)"
@@ -721,10 +757,11 @@ endif
 #          应用它自己的 Android 适配补丁。
 # gtk4android 亦由此处克隆（不再以 git submodule 形式存在于仓库）。
 # ---------------------------------------------------------------------------
-QEMU_OFFICIAL_URL      := https://github.com/SlugAir928437/QEMU.git
-QEMU_OFFICIAL_BRANCH   := main
-QEMU_FORK_URL          := https://github.com/FreshingAir/qemu-system-ia64.git
-QEMU_FORK_BRANCH    := main
+# 可用环境变量覆盖（CI 手动触发时传入自定义 QEMU 仓库/分支）
+QEMU_OFFICIAL_URL      ?= https://github.com/SlugAir928437/QEMU.git
+QEMU_OFFICIAL_BRANCH   ?= main
+QEMU_FORK_URL          ?= https://github.com/FreshingAir/qemu-system-ia64.git
+QEMU_FORK_BRANCH       ?= main
 # IA-64 fork 仍缺的 Android 适配（fork 未合入）
 QEMU_FORK_PATCH     := $(LIMBO_JNI_ROOT)/patches/qemu-ia64-fork-android.patch
 # GTK/SPICE 的 Android gl=on 适配（GtkGLArea + 无 GBM 的 spice GL 扫描输出）。
@@ -871,7 +908,7 @@ EDK2_ENV = EDK2_FIRMWARE_DIR="$(EDK2_FIRMWARE_DIR)" EDK2_GIT_URL="$(EDK2_GIT_URL
 	EDK2_TAG="$(EDK2_TAG)" EDK2_TOOLCHAIN="$(EDK2_TOOLCHAIN)" \
 	BUILD_THREADS="$(BUILD_THREADS)" bash "$(EDK2_SCRIPT)"
 
-fetch: fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp $(SPICE_FETCH_TARGETS) fetch-gtk4android fetch-virgl fetch-qemu $(if $(filter true,$(USE_EDK2)),fetch-edk2)
+fetch: fetch-glib fetch-libffi fetch-pixman $(if $(filter true,$(USE_SDL)),fetch-sdl2) fetch-slirp $(SPICE_FETCH_TARGETS) $(if $(filter true,$(USE_GTK)),fetch-gtk4android) fetch-virgl fetch-qemu $(if $(filter true,$(USE_EDK2)),fetch-edk2)
 
 fetch-virgl:
 	@if [ "$(USE_VIRGL)" != "true" ]; then \

@@ -112,8 +112,8 @@ public class Config {
     /** 客户端等待 VmExecutorService 连接的超时时间（毫秒）。 */
     public static final long vmServiceBindTimeoutMs = 15000;
 
-    // GUI Options
-    public static final boolean enable_SDL = true;
+    // GUI Options（启动时由 BuildFeatures 按构建配置覆盖）
+    public static boolean enable_SDL = true;
 
     // delay
     static int keyDelay = 100;

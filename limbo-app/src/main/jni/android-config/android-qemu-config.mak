@@ -49,6 +49,9 @@ ACCEL_MESON_FLAGS ?= -Dgunyah=enabled -Dgzvm=enabled
 # 会因找不到 spice-server 直接失败。顶层 Makefile 会把 SPICE_CONFIGURE_FLAG
 # 显式传进来，这里的默认值仅用于其它调用路径。
 SPICE_CONFIGURE_FLAG ?= --enable-spice
+# SDL2 / GTK4 backend switches (passed in by the top level Makefile)
+SDL_CONFIGURE_FLAGS ?= --enable-sdl --audio-drv-list=sdl
+GTK_CONFIGURE_FLAGS ?= --enable-gtk
 
 ifeq ($(APP_ABI), armeabi)
     QEMU_HOST_CPU = arm
@@ -103,12 +106,11 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--disable-vhost-net \
 	--disable-vhost-user --disable-vhost-vdpa --disable-vhost-kernel \
 	--disable-libvduse \
-	--disable-curses --disable-cocoa --enable-gtk \
+	--disable-curses --disable-cocoa $(GTK_CONFIGURE_FLAGS) \
 	--disable-usb-redir \
 	--disable-libusb \
 	--disable-xkbcommon \
-	--enable-sdl \
-	--audio-drv-list=sdl \
+	$(SDL_CONFIGURE_FLAGS) \
 	--enable-coroutine-pool \
 	--disable-tools --disable-libnfs --disable-tpm --disable-libiscsi --disable-docs --disable-rdma --disable-brlapi --disable-curl --disable-vde --disable-netmap --disable-cap-ng --disable-attr --disable-guest-agent --disable-pie --disable-rbd  --disable-lzo  --disable-snappy --disable-seccomp --disable-zstd --disable-bzip2 --disable-glusterfs --disable-libssh --disable-blkio --disable-install-blobs --disable-werror --disable-gnutls --disable-nettle --disable-user \
 	--extra-ldflags=" \

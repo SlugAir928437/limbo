@@ -39,6 +39,7 @@ import com.limbo.emu.machine.MachineAction;
 import com.limbo.emu.machine.MachineController;
 import com.limbo.emu.machine.MachineExecutor;
 import com.limbo.emu.machine.MachineProperty;
+import com.limbo.emu.main.BuildFeatures;
 import com.limbo.emu.main.Config;
 import com.limbo.emu.main.LimboApplication;
 import com.limbo.emu.main.LimboSDLActivity;
@@ -410,7 +411,7 @@ public class VMExecutor extends MachineExecutor {
      * 添加 UI 相关选项：VNC、monitor/serial/parallel 控制台、显示后端、键盘、鼠标。
      */
     private void addUIOptions(Context context, ArrayList<String> paramsList) {
-        String ui = getMachine().getUI();
+        String ui = ArchDefinitions.resolveUI(getMachine().getUI());
         boolean gtk = "GTK".equals(ui);
         boolean agl = "AGL".equals(ui);
         boolean spice = "SPICE".equals(ui);
@@ -991,8 +992,12 @@ public class VMExecutor extends MachineExecutor {
         // 旧引擎（没有应用 patches/qemu-arm-qxl.patch 的 ARM/AArch64 构建）
         // 里没有 qxl 设备，机器配置中残留的 qxl 值会让 QEMU 报
         // "QXL VGA not available" 并 exit(1)。这种架构上统一退回 std。
-        if (!ArchDefinitions.isQxlAvailable() && vga.equals("qxl")) {
+        if ((!ArchDefinitions.isQxlAvailable() || !BuildFeatures.spice()) && vga.equals("qxl")) {
             vga = "std";
+        }
+        // VirGL 没编进引擎时退回非 GL 的 virtio-gpu-pci
+        if (vga.startsWith("virtio-gpu-gl") && !BuildFeatures.virgl()) {
+            vga = "virtio-gpu-pci";
         }
         // SPICE 的显示通道由 QXL 显卡原生提供（ui/spice-core.c 只接受
         // QXLInstance）；QXL 现在在 x86/x86_64 与 arm/arm64 里都编进来了
@@ -1000,7 +1005,7 @@ public class VMExecutor extends MachineExecutor {
         // SPICE 模式会同时打开 egl-headless,gl=on，VirGL 渲染结果作为普通
         // 帧更新送给 SPICE，因此用户显式选择 virtio-gpu* 时保留其选择；
         // 其余本地显卡（Default/std/cirrus/ati/...）统一落到 qxl-vga。
-        if ("SPICE".equals(getMachine().getUI())) {
+        if ("SPICE".equals(ArchDefinitions.resolveUI(getMachine().getUI()))) {
             if (ArchDefinitions.isQxlAvailable()) {
                 if (!vga.startsWith("virtio-gpu")) {
                     vga = "qxl";
@@ -1037,7 +1042,7 @@ public class VMExecutor extends MachineExecutor {
                 if (!vgaDevice.contains(",hostmem=")) {
                     vgaDevice += ",hostmem=" + GL_HOSTMEM_SIZE;
                 }
-                if (!vgaDevice.contains(",venus=")) {
+                if (BuildFeatures.virglVenus() && !vgaDevice.contains(",venus=")) {
                     vgaDevice += ",venus=on";
                 }
             }

@@ -126,11 +126,15 @@ jobs:
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
+      # actions/cache 的 key 不允许逗号，先把多客户机列表转成 slug
+      - name: 生成缓存 key 片段
+        run: echo "GUEST_SLUG=${BUILD_GUEST//,/-}" >> "$GITHUB_ENV"
+
       - name: 缓存 meson wrap 下载
         uses: actions/cache@v4
         with:
           path: ~/.cache/meson
-          key: meson-wrap-${{ runner.os }}-custom-${{ replace(github.event.inputs.build_guest, ',', '-') }}
+          key: meson-wrap-${{ runner.os }}-custom-${{ env.GUEST_SLUG }}
 
       - name: 解析 QEMU 仓库与功能开关
         env:

@@ -130,7 +130,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/meson
-          key: meson-wrap-${{ runner.os }}-custom-${{ github.event.inputs.build_guest }}
+          key: meson-wrap-${{ runner.os }}-custom-${{ replace(github.event.inputs.build_guest, ',', '-') }}
 
       - name: 解析 QEMU 仓库与功能开关
         env:

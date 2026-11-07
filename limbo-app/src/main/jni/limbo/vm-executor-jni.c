@@ -63,6 +63,125 @@ static int limbo_pending_sdl_scale_mode = -1;
  * 库还没 dlopen，先缓存，等 start() 加载完库再统一下发。 */
 static int limbo_pending_sdl_refresh_rate = -1;
 
+/* ---------------------------------------------------------------------------
+ * Limbo：VirGL/EGL 渲染后端（系统 GLES 或 ANGLE）。
+ *
+ * QEMU 的 CONFIG_OPENGL、virglrenderer 的 vrend 都通过 libepoxy 做 EGL/GL
+ * 入口分发，而 libepoxy 默认按编译期写死的库名（"libEGL.so" /
+ * "libGLESv1_CM.so" / "libGLESv2.so"）dlopen。要把渲染后端换成 ANGLE，就得
+ * 让 libepoxy 改去加载 "<angle目录>/libEGL_angle.so" 等一套库。
+ *
+ * 做法抄自 termux-packages 的 virglrenderer-android（0003-use-angle.patch +
+ * 0007-Ensure-EGL-GLES-ANGLE-help-and-socket-path.patch）：给 libepoxy 打一个
+ * 补丁，在 __ANDROID__ 分支上把三个库名从宏常量改成 static char[]，并额外导出
+ *
+ *     void epoxy_set_library_path(const char *path);
+ *
+ * 调用它之后，libepoxy 里所有 EGL/GLES 入口都会从 path 目录下的 ANGLE 库解析。
+ * 补丁在 patches/epoxy-android-angle-backend.patch，由 Makefile 的 config-gtk
+ * 目标在 gtk4android 的 libepoxy 源码上应用（epoxy 是 QEMU 与 virglrenderer
+ * 共同的依赖，只有 gtk4android 里编的这份被链进 libqemu-system-*.so）。
+ *
+ * 时机很关键：epoxy 的入口是在第一次 EGL/GL 调用时才 dlopen 的，所以必须在
+ * qemu_init()（SDL/EGL 显示初始化）之前调用。因此这里和缩放模式一样缓存
+ * 用户的选择，等 libqemu 加载完、qemu_init() 之前再下发。
+ * ------------------------------------------------------------------------- */
+#define LIMBO_GL_BACKEND_GLES  0
+#define LIMBO_GL_BACKEND_ANGLE 1
+
+/* -1 = 未设置（沿用系统 GLES）；否则是 LIMBO_GL_BACKEND_* */
+static int limbo_pending_gl_backend = -1;
+/* ANGLE 库所在目录，空串表示让 native 自己按候选目录去找 */
+static char limbo_pending_angle_dir[MAX_STRING_LEN] = { 0 };
+/* -1 = 还没尝试过；0 = 已生效；其他 = 失败原因（不重复尝试） */
+static int limbo_gl_backend_applied = -1;
+
+static int limbo_dir_has_angle(const char *dir) {
+    char path[MAX_STRING_LEN + 32];
+    if (dir == NULL || dir[0] == '\0') {
+        return 0;
+    }
+    snprintf(path, sizeof(path), "%s/libEGL_angle.so", dir);
+    return access(path, R_OK) == 0;
+}
+
+/*
+ * 找到一套可用的 ANGLE 库目录。
+ * 首选 Java 侧传进来的目录（通常是 APK 的 nativeLibraryDir，把 ANGLE 随包
+ * 分发时就是它），其次是设备自带的系统 ANGLE（Android 15 起部分机型在
+ * /system/lib64 下带 libEGL_angle.so）。找不到就返回 0。
+ */
+static int limbo_resolve_angle_dir(const char *hint, char *out, size_t out_size) {
+    const char *candidates[] = {
+        hint,
+        "/system/lib64",
+        "/system/lib",
+        "/vendor/lib64",
+        "/vendor/lib",
+        NULL,
+    };
+
+    for (int i = 0; candidates[i] != NULL; i++) {
+        if (!limbo_dir_has_angle(candidates[i])) {
+            continue;
+        }
+        snprintf(out, out_size, "%s", candidates[i]);
+        return 1;
+    }
+    return 0;
+}
+
+/*
+ * 把选择好的后端告诉 libepoxy。必须在 qemu_init() 之前调用。
+ * 返回 0 成功；<0 表示没生效（调用方只记日志，不影响启动）。
+ */
+static int limbo_apply_gl_backend(void) {
+    char angle_dir[MAX_STRING_LEN + 32] = { 0 };
+    void *epoxy = NULL;
+    void (*set_library_path)(const char *) = NULL;
+
+    if (limbo_gl_backend_applied != -1) {
+        return limbo_gl_backend_applied;
+    }
+    if (limbo_pending_gl_backend != LIMBO_GL_BACKEND_ANGLE) {
+        /* 默认（系统 GLES）：什么都不用做，epoxy 本来就用 libEGL.so */
+        limbo_gl_backend_applied = 0;
+        return 0;
+    }
+
+    if (!limbo_resolve_angle_dir(limbo_pending_angle_dir, angle_dir,
+                                 sizeof(angle_dir))) {
+        LOGE("VirGL 后端：选了 ANGLE，但没找到 libEGL_angle.so（看过 APK 的 "
+             "nativeLibraryDir 与 /system/lib64、/vendor/lib64），回退系统 GLES");
+        limbo_gl_backend_applied = -2;
+        return -2;
+    }
+
+    /* libepoxy 是 libqemu-system-*.so 的 DT_NEEDED，libqemu 一 dlopen 它就在
+     * 进程里了；但运行中也允许提前（VM 没启动时）调用，先自己 dlopen 一次，
+     * 之后 libqemu 的 DT_NEEDED 拿到的是同一个实例，改的也是同一份全局表。 */
+    epoxy = dlopen("libepoxy.so", RTLD_NOW | RTLD_GLOBAL);
+    if (epoxy == NULL) {
+        LOGE("VirGL 后端：dlopen(libepoxy.so) 失败: %s", dlerror());
+        limbo_gl_backend_applied = -3;
+        return -3;
+    }
+    set_library_path = (void (*)(const char *)) dlsym(epoxy,
+                                                      "epoxy_set_library_path");
+    if (set_library_path == NULL) {
+        LOGE("VirGL 后端：libepoxy 里没有 epoxy_set_library_path，说明这份 "
+             "libepoxy 没打 patches/epoxy-android-angle-backend.patch，"
+             "ANGLE 后端不可用，继续用系统 GLES");
+        limbo_gl_backend_applied = -4;
+        return -4;
+    }
+
+    set_library_path(angle_dir);
+    printf("VirGL render backend: ANGLE (%s)\n", angle_dir);
+    limbo_gl_backend_applied = 0;
+    return 0;
+}
+
 void * loadLib(const char* lib_filename, const char * lib_path_str) {
 
 	char res_msg[MAX_STRING_LEN];
@@ -381,6 +500,40 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateHz(
 }
 
 
+
+/*
+ * 设置 VirGL/EGL 渲染后端：0 = 系统 GLES（默认），1 = ANGLE。
+ * angleDir 是 ANGLE 那套库（libEGL_angle.so / libGLESv1_CM_angle.so /
+ * libGLESv2_angle.so）所在目录，可为空（native 侧按 APK nativeLibraryDir、
+ * /system/lib64、/vendor/lib64 依次探测）。
+ * 必须赶在 qemu_init() 之前生效，所以库没加载时只缓存，由 start() 里下发。
+ */
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeSetVirglRenderBackend(
+		JNIEnv* env, jobject thiz, jint jbackend, jstring jangle_dir) {
+    const char *dir = NULL;
+
+    limbo_pending_gl_backend = (int) jbackend;
+    limbo_gl_backend_applied = -1;
+
+    if (jangle_dir != NULL) {
+        dir = (*env)->GetStringUTFChars(env, jangle_dir, 0);
+    }
+    if (dir != NULL) {
+        snprintf(limbo_pending_angle_dir, sizeof(limbo_pending_angle_dir), "%s", dir);
+        (*env)->ReleaseStringUTFChars(env, jangle_dir, dir);
+    } else {
+        limbo_pending_angle_dir[0] = '\0';
+    }
+
+    if (limbo_pending_gl_backend != LIMBO_GL_BACKEND_ANGLE) {
+        printf("VirGL render backend: system GLES\n");
+        return;
+    }
+    if (handle != NULL) {
+        /* libqemu 已经加载：可以立刻应用到 libepoxy 上 */
+        limbo_apply_gl_backend();
+    }
+}
 
 JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
 		JNIEnv* env, jobject thiz) {
@@ -1370,6 +1523,14 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
         set_qemu_var(env, thiz, "limbo_sdl_refresh_rate", limbo_pending_sdl_refresh_rate);
         set_qemu_var(env, thiz, "limbo_gtk_refresh_rate", limbo_pending_sdl_refresh_rate);
     }
+
+    /* 显卡渲染后端（GLES / ANGLE）。必须在这里做，理由有两条：
+     *   1) libqemu 已经 dlopen，libepoxy 已经在进程里，能 dlsym 到
+     *      epoxy_set_library_path()；
+     *   2) 还没走到 qemu_init()，epoxy 的 EGL/GL 入口都还没第一次解析，
+     *      改了库名才会被后续所有的 egl*/gl* 调用采用。
+     * 失败只记日志（例如选 ANGLE 但设备上没有 ANGLE 库），不拦启动。 */
+    limbo_apply_gl_backend();
 
 	// Use correct function signatures to avoid undefined behavior on ARM64
 	typedef void (*qemu_init_t)(int argc, char **argv);

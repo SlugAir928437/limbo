@@ -1,0 +1,37 @@
+diff --git a/src/dispatch_common.c b/src/dispatch_common.c
+--- a/src/dispatch_common.c
++++ b/src/dispatch_common.c
+@@ -179,10 +179,29 @@
+ #define GLES1_LIB "libGLESv1_CM.so"
+ #define GLES2_LIB "libGLESv2.so"
+ #elif defined(__ANDROID__)
+-#define GLX_LIB "libGLESv2.so"
+-#define EGL_LIB "libEGL.so"
+-#define GLES1_LIB "libGLESv1_CM.so"
+-#define GLES2_LIB "libGLESv2.so"
++#define GLX_LIB GLES2_LIB
++/*
++ * Limbo: Android 上"设备厂商 EGL/GLES"和 ANGLE 的 libEGL_angle.so /
++ * libGLESv2_angle.so 是两套独立实现，编译期写死库名就没法在运行时切换渲染
++ * 后端。这里把三个库名改成可写变量，并额外导出 epoxy_set_library_path()：
++ * 调用方（limbo 的 nativeSetVirglRenderBackend）在第一次 EGL/GL 调用之前把
++ * 目录指过去，之后 libepoxy 的所有 EGL/GLES 入口都从 ANGLE 那套库解析。
++ * 做法同 termux-packages 的 virglrenderer-android 0003-use-angle.patch。
++ */
++static char EGL_LIB[256] = "libEGL.so";
++static char GLES1_LIB[256] = "libGLESv1_CM.so";
++static char GLES2_LIB[256] = "libGLESv2.so";
++
++EPOXY_PUBLIC void
++epoxy_set_library_path(const char *path)
++{
++    if (path == NULL || path[0] == '\0') {
++        return;
++    }
++    snprintf(EGL_LIB,   sizeof(EGL_LIB),   "%s/libEGL_angle.so", path);
++    snprintf(GLES1_LIB, sizeof(GLES1_LIB), "%s/libGLESv1_CM_angle.so", path);
++    snprintf(GLES2_LIB, sizeof(GLES2_LIB), "%s/libGLESv2_angle.so", path);
++}
+ #elif defined(_WIN32)
+ #define EGL_LIB "libEGL.dll"
+ #define GLES1_LIB "libGLES_CM.dll"

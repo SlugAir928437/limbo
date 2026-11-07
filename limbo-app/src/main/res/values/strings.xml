@@ -387,4 +387,10 @@
     <string name="kvm_root_dialog_normal">Normal start</string>
     <string name="kvm_relax_failed">/dev/kvm could not be made usable. Starting the VM in a root process instead (no GPU acceleration).</string>
 
+    <!-- 显卡渲染后端（VirGL/EGL）：GLES 用设备厂商库，ANGLE 用 libEGL_angle.so -->
+    <string name="virglBackendGles">System GLES</string>
+    <string name="virglBackendAngle">ANGLE (GLES on Vulkan)</string>
+    <string name="virglBackend">VirGL render backend</string>
+    <string name="virglBackendSummary">EGL/GLES implementation used by QEMU + virglrenderer. Switch to ANGLE when the vendor GL driver refuses the ES context that vrend asks for.</string>
+
 </resources>

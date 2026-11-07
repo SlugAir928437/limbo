@@ -452,6 +452,19 @@ config-gtk: ndk pkg-config-link ffi glib pixman
 		cd $(LIMBO_JNI_ROOT)/gtk4android/subprojects/glib && \
 		git apply ../packagefiles/glib/hack.patch || { echo 'ERROR: failed to apply glib hack.patch'; exit 1; }; \
 	fi
+	# libepoxy：给 Android 分支加 epoxy_set_library_path()，让 EGL/GLES 能在
+	# “设备厂商 GLES ↔ ANGLE”之间运行时切换（显卡渲染后端开关，见
+	# patches/epoxy-android-angle-backend.patch）。与 glib hack 一样，wrap
+	# 源码不随仓库下发时跳过，ANGLE 后端只是在运行时不可用，不影响构建。
+	@for d in "$(LIMBO_JNI_ROOT)/gtk4android/subprojects/libepoxy" \
+	          "$(GTK_BUILD_DIR)/subprojects/libepoxy"; do \
+		if [ -f "$$d/src/dispatch_common.c" ] && \
+		   ! grep -q epoxy_set_library_path "$$d/src/dispatch_common.c"; then \
+			echo ">> libepoxy: 应用 ANGLE 后端补丁"; \
+			patch -p1 -d "$$d" --forward < "$(EPOXY_ANGLE_PATCH)" || \
+				echo ">> WARNING: libepoxy ANGLE 补丁没打上，ANGLE 后端将不可用"; \
+		fi; \
+	done
 	# keep the downloaded subproject sources across reconfigures
 	@if [ -d "$(GTK_BUILD_DIR).subprojects-save" ]; then \
 		rm -rf "$(GTK_BUILD_DIR).subprojects-save"; \
@@ -742,6 +755,15 @@ VIRGL_URL           := https://gitlab.freedesktop.org/virgl/virglrenderer.git
 # 该补丁把 Android 并入 Windows/macOS 那条 have_egl = true 分支（QEMU 通过
 # get_egl_display 回调把自己的 EGLDisplay 交给它，不需要 gbm/render node）。
 VIRGL_PATCH         := $(LIMBO_JNI_ROOT)/patches/virglrenderer-android-egl.patch
+# libepoxy（QEMU 的 CONFIG_OPENGL 与 virglrenderer 的 vrend 都用它做 EGL/GL
+# 入口分发）默认按编译期写死的 "libEGL.so"/"libGLESv2.so" dlopen。这个补丁
+# 在 __ANDROID__ 分支把库名改成可写变量并导出 epoxy_set_library_path()，
+# 于是运行时可以把 EGL/GLES 换成 ANGLE 的那套 libEGL_angle.so /
+# libGLESv2_angle.so（做法抄自 termux-packages 的 virglrenderer-android
+# 0003-use-angle.patch；调用方见 limbo/vm-executor-jni.c 的
+# Java_com_limbo_emu_jni_VMExecutor_nativeSetVirglRenderBackend）。
+# epoxy 是 gtk4android 的 meson 子工程，补丁在 config-gtk 里应用。
+EPOXY_ANGLE_PATCH   := $(LIMBO_JNI_ROOT)/patches/epoxy-android-angle-backend.patch
 GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
 GTK4_BRANCH         := master
 GLIB_URL            := https://gitlab.gnome.org/GNOME/glib.git

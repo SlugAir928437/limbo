@@ -88,4 +88,15 @@
         <item>directsync</item>
         <item>unsafe</item>
     </string-array>
+
+    <!-- 显卡渲染后端。取值必须与 VMExecutor.GL_BACKEND_GLES / GL_BACKEND_ANGLE 一致 -->
+    <string-array name="virglBackendLabels">
+        <item>@string/virglBackendGles</item>
+        <item>@string/virglBackendAngle</item>
+    </string-array>
+
+    <string-array name="virglBackendValues">
+        <item>0</item>
+        <item>1</item>
+    </string-array>
 </resources>

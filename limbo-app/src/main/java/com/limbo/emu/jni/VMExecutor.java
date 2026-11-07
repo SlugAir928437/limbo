@@ -236,6 +236,50 @@ public class VMExecutor extends MachineExecutor {
     }
 
     /**
+     * 显卡渲染后端：系统 GLES（默认）。QEMU/virglrenderer 通过 libepoxy 加载
+     * 设备厂商的 {@code libEGL.so / libGLESv2.so}。
+     */
+    public static final int GL_BACKEND_GLES = 0;
+    /**
+     * 显卡渲染后端：ANGLE。libepoxy 改加载 ANGLE 那套
+     * {@code libEGL_angle.so / libGLESv1_CM_angle.so / libGLESv2_angle.so}，
+     * 让 virglrenderer 跑在 Vulkan 之上的 GLES 实现里（部分设备的厂商 GL
+     * 驱动与 vrend 期望的 ES profile 不匹配，换 ANGLE 才能起来）。
+     */
+    public static final int GL_BACKEND_ANGLE = 1;
+
+    /**
+     * 下发渲染后端给 native（libepoxy 的 {@code epoxy_set_library_path()}）。
+     *
+     * <p>时机由 native 侧保证：库还没加载时先缓存，{@code start()} 里在
+     * {@code qemu_init()} 之前应用——epoxy 的 EGL/GL 入口是第一次调用时才
+     * dlopen 的，晚于此点就改不动了。
+     *
+     * @param backend  {@link #GL_BACKEND_GLES} 或 {@link #GL_BACKEND_ANGLE}
+     * @param angleDir ANGLE 库目录，可为 null（native 侧按 APK 的
+     *                 nativeLibraryDir、/system/lib64、/vendor/lib64 依次探测）
+     */
+    public void setVirglRenderBackend(int backend, String angleDir) {
+        try {
+            nativeSetVirglRenderBackend(backend, angleDir);
+        } catch (Throwable t) {
+            // 跨进程隔离时原生库在服务进程里，本进程调用会失败；也兼容
+            // 没打 epoxy 补丁的旧 native 库（那时符号不存在）。
+            Log.w(TAG, "setVirglRenderBackend(" + backend + ") 失败: " + t);
+        }
+    }
+
+    /** 按设置里的选择下发渲染后端；在 {@code start()} 里、native 启动之前调用。 */
+    private void applyVirglRenderBackend() {
+        int backend = LimboSettingsManager.getVirglRenderBackend(
+                LimboApplication.getInstance());
+        String angleDir = FileUtils.getNativeLibSearchDir(LimboApplication.getInstance());
+        setVirglRenderBackend(backend, angleDir);
+    }
+
+    private native void nativeSetVirglRenderBackend(int backend, String angleDir);
+
+    /**
      * 设置显示后端的可变刷新率（VRR）目标频率：0 = 关闭（后端沿用自身节奏），
      * 大于 0 表示目标刷新率（Hz），与 Android 面板的
      * {@code Surface.setFrameRate()} 取同一数值。
@@ -1584,6 +1628,9 @@ public class VMExecutor extends MachineExecutor {
             }
 
             QmpClient.setExternal(LimboSettingsManager.getEnableExternalQMP(LimboApplication.getInstance()));
+            // 显卡渲染后端（GLES / ANGLE）要在 QEMU 起显示之前定下来：libepoxy
+            // 的 EGL/GL 入口一旦第一次被调用就锁定库名，之后再改无效。
+            applyVirglRenderBackend();
             // 在 VM 启动时读取，使设置对当前运行生效。
             String libFilename = getQemuLibrary();
             res = start(Config.storagedir, LimboApplication.getBasefileDir(),

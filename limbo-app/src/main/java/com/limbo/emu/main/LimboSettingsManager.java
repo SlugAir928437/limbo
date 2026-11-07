@@ -221,6 +221,30 @@ public class LimboSettingsManager extends PreferenceActivity {
         return prefs.getInt("sdlRefreshRate", Config.SDL_REFRESH_OFF);
     }
 
+    /**
+     * 显卡渲染后端：0 = 系统 GLES（默认），1 = ANGLE。
+     *
+     * <p>对应 QEMU/virglrenderer 侧 libepoxy 的 EGL/GL 库选择，见
+     * VMExecutor#setVirglRenderBackend 与 patches/epoxy-android-angle-backend.patch。
+     */
+    public static int getVirglRenderBackend(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        // settings.xml 里是 ListPreference，存的是字符串（"0"/"1"），这里按数值解析
+        String value = prefs.getString("virglRenderBackend", "0");
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    public static void setVirglRenderBackend(Context context, int value) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        SharedPreferences.Editor edit = prefs.edit();
+        edit.putString("virglRenderBackend", String.valueOf(value));
+        edit.apply();
+    }
+
     public static void setSDLRefreshRate(Context context, int value) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         SharedPreferences.Editor edit = prefs.edit();

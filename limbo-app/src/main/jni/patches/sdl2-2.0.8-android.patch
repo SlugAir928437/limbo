@@ -188,3 +188,24 @@ diff -ru --no-dereference /tmp/SDL2/src/video/SDL_egl.c SDL2/src/video/SDL_egl.c
          /* EGL 1.5 allows querying for client version */
          const char *egl_version = _this->egl_data->eglQueryString(EGL_NO_DISPLAY, EGL_VERSION);
          if (egl_version != NULL) {
+diff -ru --no-dereference /tmp/SDL2/src/video/SDL_video.c SDL2/src/video/SDL_video.c
+--- /tmp/SDL2/src/video/SDL_video.c	2018-03-02 00:34:42.000000000 +0800
++++ SDL2/src/video/SDL_video.c	2026-11-08 11:45:00.000000000 +0800
+@@ -2969,10 +2969,14 @@
+     if (!_this) {
+         return;
+     }
+ 
+-    _this->gl_config.red_size = 3;
+-    _this->gl_config.green_size = 3;
+-    _this->gl_config.blue_size = 2;
++    /* Limbo: ask for 8 bits per channel.  SDL's historical 3/3/2 default
++     * lets SDL_EGL_ChooseConfig() prefer an RGB565 config whenever the EGL
++     * implementation exposes one -- ANGLE does -- which dithers the guest's
++     * 32-bit scanout down to 16-bit on screen. */
++    _this->gl_config.red_size = 8;
++    _this->gl_config.green_size = 8;
++    _this->gl_config.blue_size = 8;
+     _this->gl_config.alpha_size = 0;
+     _this->gl_config.buffer_size = 0;
+     _this->gl_config.depth_size = 16;

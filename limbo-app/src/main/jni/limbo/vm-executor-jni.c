@@ -110,6 +110,11 @@ static int limbo_gl_backend_applied = -1;
  *
  * 加载成功故意不 dlclose：epoxy 之后 dlopen 同一路径拿到的是同一个 handle，
  * 既省一次加载，也保证它不会拿到 NULL。
+ *
+ * 用 RTLD_NOW 而不是 RTLD_LAZY：libepoxy 是 RTLD_LAZY（dispatch_common.c:308），
+ * 而 SDL2 的 SDL_LoadObject 是 RTLD_NOW|RTLD_LOCAL（src/loadso/dlopen/
+ * SDL_sysloadso.c:50）。按最严的那一方探测，过了就说明 SDL 那边也一定能加载，
+ * 否则会出现"探针过了、SDL_GL_CreateContext 却失败"的半吊子状态。
  */
 static int limbo_angle_lib_loadable(const char *dir, const char *name) {
     char path[MAX_STRING_LEN + 64];
@@ -120,7 +125,7 @@ static int limbo_angle_lib_loadable(const char *dir, const char *name) {
     }
     snprintf(path, sizeof(path), "%s/%s", dir, name);
     dlerror();
-    h = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+    h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (h == NULL) {
         LOGD("VirGL 后端：%s 不可加载: %s", path, dlerror());
         return 0;
@@ -173,7 +178,51 @@ static int limbo_resolve_angle_dir(const char *hint, char *out, size_t out_size)
 }
 
 /*
- * 把选择好的后端告诉 libepoxy。必须在 qemu_init() 之前调用。
+ * 让 SDL2 用和 libepoxy 同一套 EGL/GLES。
+ *
+ * SDL2 自带一份 EGL 加载器（SDL2/src/video/SDL_egl.c），跟 libepoxy 毫无关系：
+ * 它直接 dlopen "libEGL.so" / "libGLESv2.so"，也就是系统那套。只把 epoxy 指到
+ * ANGLE、不管 SDL 的话，两边就是两套 EGL 实现：
+ *
+ *   - SDL_GL_CreateContext() 建出来的是【系统 EGL】的上下文；
+ *   - QEMU/virgl 的 GL 入口却来自 epoxy，而 epoxy 已经改从 ANGLE 解析，
+ *     于是 epoxy 的 eglGetCurrentContext()（走 libEGL_angle.so）看不到 SDL 建
+ *     的那个系统上下文，返回 EGL_NO_CONTEXT；
+ *   - epoxy_get_proc_address() 因此在 dispatch_common.c 里直接返回 NULL，
+ *     生成的 thunk 把这个 NULL 写进全局函数指针再尾调用它。
+ *
+ * 现象就是 ui/shader.c 里第一次 glCreateShader() 跳到地址 0：
+ *
+ *   SIGSEGV, esr 0x82000006 (Instruction Abort), pc 0x0
+ *   #03 qemu_gl_init_shader+52
+ *   #04 sdl2_gl_switch+224
+ *
+ * SDL_EGL_LoadLibrary() 在读死默认值之前会先看这两个环境变量（SDL_egl.c:297
+ * 读 SDL_VIDEO_GL_DRIVER、:351 读 SDL_VIDEO_EGL_DRIVER），而且只认环境变量、
+ * 不认 SDL hint，所以必须在 SDL_Init(SDL_INIT_VIDEO) 之前 setenv ——
+ * limbo_apply_gl_backend() 正好跑在 qemu_init() 之前，时机是对的。
+ *
+ * dir 为 NULL/空 表示用系统 GLES，要把之前设过的变量清掉：同一个进程里切回
+ * 系统 GLES 再启动时，残留的 ANGLE 路径会让这个 mismatch 反过来再崩一次。
+ */
+static void limbo_set_sdl_gl_driver(const char *dir) {
+    char path[MAX_STRING_LEN + 64];
+
+    if (dir == NULL || dir[0] == '\0') {
+        unsetenv("SDL_VIDEO_EGL_DRIVER");
+        unsetenv("SDL_VIDEO_GL_DRIVER");
+        return;
+    }
+    snprintf(path, sizeof(path), "%s/libEGL_angle.so", dir);
+    setenv("SDL_VIDEO_EGL_DRIVER", path, 1);
+    snprintf(path, sizeof(path), "%s/libGLESv2_angle.so", dir);
+    setenv("SDL_VIDEO_GL_DRIVER", path, 1);
+    LOGD("VirGL 后端：SDL 也切到 ANGLE（%s）", dir);
+}
+
+/*
+ * 把选择好的后端告诉 libepoxy（以及 SDL2，见 limbo_set_sdl_gl_driver）。
+ * 必须在 qemu_init() 之前调用。
  * 返回 0 成功；<0 表示没生效（调用方只记日志，不影响启动）。
  */
 static int limbo_apply_gl_backend(void) {
@@ -185,7 +234,9 @@ static int limbo_apply_gl_backend(void) {
         return limbo_gl_backend_applied;
     }
     if (limbo_pending_gl_backend != LIMBO_GL_BACKEND_ANGLE) {
-        /* 默认（系统 GLES）：什么都不用做，epoxy 本来就用 libEGL.so */
+        /* 默认（系统 GLES）：epoxy 本来就用 libEGL.so，SDL 也用 libEGL.so，
+         * 两边一致；只需清掉上一次可能设过的 ANGLE 路径。 */
+        limbo_set_sdl_gl_driver(NULL);
         limbo_gl_backend_applied = 0;
         return 0;
     }
@@ -196,6 +247,7 @@ static int limbo_apply_gl_backend(void) {
              "/system/lib64、/vendor/lib64 里都没有可加载的 libEGL_angle.so + "
              "libGLESv2_angle.so（文件在≠能加载：app 的 linker 命名空间不允许 "
              "dlopen 系统私有库），回退系统 GLES");
+        limbo_set_sdl_gl_driver(NULL);
         limbo_gl_backend_applied = -2;
         return -2;
     }
@@ -206,6 +258,7 @@ static int limbo_apply_gl_backend(void) {
     epoxy = dlopen("libepoxy.so", RTLD_NOW | RTLD_GLOBAL);
     if (epoxy == NULL) {
         LOGE("VirGL 后端：dlopen(libepoxy.so) 失败: %s", dlerror());
+        limbo_set_sdl_gl_driver(NULL);
         limbo_gl_backend_applied = -3;
         return -3;
     }
@@ -215,11 +268,14 @@ static int limbo_apply_gl_backend(void) {
         LOGE("VirGL 后端：libepoxy 里没有 epoxy_set_library_path，说明这份 "
              "libepoxy 没打 patches/epoxy-android-angle-backend.patch，"
              "ANGLE 后端不可用，继续用系统 GLES");
+        limbo_set_sdl_gl_driver(NULL);
         limbo_gl_backend_applied = -4;
         return -4;
     }
 
     set_library_path(angle_dir);
+    /* 只改 epoxy 不改 SDL 会 pc 0x0，见 limbo_set_sdl_gl_driver 的注释 */
+    limbo_set_sdl_gl_driver(angle_dir);
     printf("VirGL render backend: ANGLE (%s)\n", angle_dir);
     limbo_gl_backend_applied = 0;
     return 0;

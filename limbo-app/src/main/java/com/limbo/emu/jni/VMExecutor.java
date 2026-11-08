@@ -246,6 +246,12 @@ public class VMExecutor extends MachineExecutor {
      * {@code libEGL_angle.so / libGLESv1_CM_angle.so / libGLESv2_angle.so}，
      * 让 virglrenderer 跑在 Vulkan 之上的 GLES 实现里（部分设备的厂商 GL
      * 驱动与 vrend 期望的 ES profile 不匹配，换 ANGLE 才能起来）。
+     *
+     * <p>注意 SDL2 自带一份 EGL 加载器，默认还是 dlopen 系统的
+     * {@code libEGL.so / libGLESv2.so}。native 侧会同时把
+     * {@code SDL_VIDEO_EGL_DRIVER / SDL_VIDEO_GL_DRIVER} 指到同一套 ANGLE，
+     * 否则 SDL 建的是系统 EGL 的上下文、epoxy 却从 ANGLE 解析 GL 入口，
+     * 第一次 {@code glCreateShader()} 就会跳到地址 0（SIGSEGV, pc 0x0）。
      */
     public static final int GL_BACKEND_ANGLE = 1;
 

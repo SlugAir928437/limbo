@@ -356,6 +356,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version }}
+          # 显式指定目标提交：release 任务没有 checkout 代码，
+          # 不指定时 generate-notes 会收到非法的 target_commitish 并报 422。
+          target_commitish: ${{ github.sha }}
           name: Limbo ${{ github.event.inputs.version }}
           body: |
             手动触发的 release 工作流自动构建。
@@ -371,4 +374,3 @@ jobs:
             dist/checksums.txt
           draft: false
           prerelease: false
-          generate_release_notes: true

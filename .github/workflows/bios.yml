@@ -74,6 +74,7 @@ jobs:
           #   repo  外部仓库（owner/name，仅 external-* / ia64）
           #   dsc   edk2 平台描述符（仅 external-edk2）
           #   fv    构建出的 FV 路径（仅 external-edk2，相对外部源码树）
+          # matrix 必须是对象而不是数组，故包一层 include。
           json="$(python3 - "${targets[@]}" <<'PY'
           import json, sys
 
@@ -109,7 +110,7 @@ jobs:
               item = {"arch": name}
               item.update(table[name])
               out.append(item)
-          print(json.dumps(out, separators=(",", ":")))
+          print(json.dumps({"include": out}, separators=(",", ":")))
           PY
           )"
           echo "matrix=$json" >> "$GITHUB_OUTPUT"

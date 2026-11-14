@@ -882,10 +882,9 @@ public class LimboSDLActivity extends SDLActivity
     }
 
     public void updateLayout(int orientation) {
-        if (orientation == Configuration.ORIENTATION_PORTRAIT)
-            mGap.setVisibility(View.VISIBLE);
-        else
-            mGap.setVisibility(View.GONE);
+        // gap 不再根据方向切换可见性：SDL SurfaceView 现在始终 match_parent
+        // 占满整个 sdl_layout，gap 保持 GONE 即可。
+        mGap.setVisibility(View.GONE);
     }
 
     //    private static Thread limboSDLThread = null;

@@ -144,6 +144,12 @@
     <string name="AllowExternalQMPConnections">Allow External QMP Connections</string>
     <string name="RunVMThreadHighPriority">Run vm thread in high priority</string>
     <string name="HighPriority">High Priority</string>
+    <string name="WatchdogCpuAffinity">Watchdog CPU cores</string>
+    <string name="WatchdogCpuAffinitySummaryDefault">Physical cores the VM threads are pinned to (KVM only)</string>
+    <string name="WatchdogCpuAffinitySummary">Pinned to %s (KVM only)</string>
+    <string name="WatchdogCpuAffinityAuto">Auto (pick a homogeneous cluster)</string>
+    <string name="WatchdogCpuAffinityGroup">CPU cores %s</string>
+    <string name="WatchdogCpuAffinityCustom">Custom (%s)</string>
     <string name="AlwaysShowToolbar">Always show the Toolbar</string>
     <string name="AlwaysToolbar">Always Toolbar</string>
     <string name="KeyMapperButtonLayout">Key Mapper button layout</string>

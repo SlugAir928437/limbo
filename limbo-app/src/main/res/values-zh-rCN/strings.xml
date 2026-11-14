@@ -143,6 +143,12 @@
     <string name="AllowExternalQMPConnections">允许外部 QMP 连接</string>
     <string name="RunVMThreadHighPriority">以高优先级运行虚拟机线程</string>
     <string name="HighPriority">高优先级</string>
+    <string name="WatchdogCpuAffinity">看门狗绑定核心</string>
+    <string name="WatchdogCpuAffinitySummaryDefault">虚拟机线程绑定的物理核心（仅 KVM）</string>
+    <string name="WatchdogCpuAffinitySummary">已绑定 %s（仅 KVM）</string>
+    <string name="WatchdogCpuAffinityAuto">自动（按大小核拓扑选同构簇）</string>
+    <string name="WatchdogCpuAffinityGroup">核心 %s</string>
+    <string name="WatchdogCpuAffinityCustom">自定义（%s）</string>
     <string name="AlwaysShowToolbar">始终显示工具栏</string>
     <string name="AlwaysToolbar">始终显示工具栏</string>
     <string name="KeyMapperButtonLayout">按键映射按钮布局</string>

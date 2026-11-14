@@ -76,6 +76,14 @@
             android:key="HighPrio"
             android:summary="@string/RunVMThreadHighPriority"
             android:title="@string/HighPriority" />
+
+        <!-- 看门狗绑定的物理核心（仅 KVM）：条目由 LimboSettingsManager 按设备
+             实际在线 CPU 动态填充，值为 CPU 列表（如 "0-3"），空串表示自动选簇。 -->
+        <ListPreference
+            android:defaultValue=""
+            android:key="watchdogCpuAffinity"
+            android:summary="@string/WatchdogCpuAffinitySummaryDefault"
+            android:title="@string/WatchdogCpuAffinity" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/pref_title_qmp">

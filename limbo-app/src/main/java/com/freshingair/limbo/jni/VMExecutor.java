@@ -237,6 +237,24 @@ public class VMExecutor extends MachineExecutor {
     }
 
     /**
+     * 看门狗绑定的物理核心（仅 KVM）：形如 {@code "4-7"} 的 CPU 列表，
+     * 空串表示由 native 按大小核拓扑自动挑选一个同构簇。
+     *
+     * <p>看门狗会把 vCPU 线程持续收在这个掩码里；值会在 {@link #start()}
+     * 启动原生 VM 之前下发（root 子进程路径走启动脚本的环境变量）。
+     */
+    public static native void nativeSetCpuAffinity(String cpuList);
+
+    /** nativeSetCpuAffinity() 的带保护版本：库未加载时不抛异常，只记日志。 */
+    public static void setCpuAffinity(String cpuList) {
+        try {
+            nativeSetCpuAffinity(cpuList == null ? "" : cpuList);
+        } catch (Throwable t) {
+            Log.w(TAG, "setCpuAffinity(" + cpuList + ") 失败: " + t);
+        }
+    }
+
+    /**
      * 显卡渲染后端：系统 GLES（默认）。QEMU/virglrenderer 通过 libepoxy 加载
      * 设备厂商的 {@code libEGL.so / libGLESv2.so}。
      */
@@ -1723,6 +1741,11 @@ public class VMExecutor extends MachineExecutor {
             String[] params = prepareParams(LimboApplication.getInstance());
             printParams(params);
 
+            // 看门狗绑定的物理核心（KVM 专用）：必须在原生 VM 启动之前下发。
+            // root 子进程调不到 JNI，改由启动脚本里的环境变量传递。
+            setCpuAffinity(LimboSettingsManager.getWatchdogCpuAffinity(
+                    LimboApplication.getInstance()));
+
             // gunyah/gzvm 会打开 /dev/gunyah 或 /dev/gzvm，在目标设备上
             // 这是 root-only 的：除非当前进程已经是 root，
             // 否则在 root 子进程中运行 VM（通过 app_process 启动独立 JVM）。
@@ -1944,6 +1967,11 @@ public class VMExecutor extends MachineExecutor {
                                    @NonNull String[] childParams) throws IOException {
         StringBuilder sb = new StringBuilder(512);
         sb.append("#!/system/bin/sh\n");
+        // 看门狗绑定的物理核心：root 子进程没有 JNI 入口，用环境变量传给 native
+        // （空值表示自动选簇）。
+        sb.append("export LIMBO_WATCHDOG_CPUS=")
+                .append(shq(LimboSettingsManager.getWatchdogCpuAffinity(
+                        LimboApplication.getInstance()))).append("\n");
         sb.append("export LD_LIBRARY_PATH=").append(shq(nativeLibDir)).append("\n");
         sb.append("export CLASSPATH=").append(shq(apkPath)).append("\n");
         sb.append("echo $$ > ").append(shq(pidFile.getAbsolutePath())).append("\n");

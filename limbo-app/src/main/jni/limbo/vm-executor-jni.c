@@ -55,6 +55,12 @@ void * handle = 0;
  * 库再统一下发）；运行中调用则立刻通过 set_qemu_var() 生效。 */
 static int limbo_pending_sdl_scale_mode = -1;
 
+/* Limbo：看门狗绑定的物理核心（仅 KVM），形如 "0-3,5" 的 CPU 列表，
+ * 空串表示不指定、由 native 按大小核拓扑自动挑选一个同构簇。
+ * Java 侧在 start() 之前通过 nativeSetCpuAffinity() 下发；root 子进程
+ * 调不到 JNI，改由启动脚本 export LIMBO_WATCHDOG_CPUS 传入。 */
+static char limbo_watchdog_cpus[64] = { 0 };
+
 /* Limbo：显示后端的可变刷新率（VRR）目标频率（Hz），0=关闭，-1=尚未下发。
  * 对应 QEMU 侧 SDL 的 ui/sdl2.c::limbo_sdl_refresh_rate 与 GTK 的
  * ui/gtk.c::limbo_gtk_refresh_rate（见 patches/qemu-v11.0.0-limbo-sdl-vrr.patch
@@ -601,6 +607,24 @@ JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_setSDLScaleMode
     }
     set_qemu_var(env, NULL, "limbo_sdl_scale_mode", limbo_pending_sdl_scale_mode);
     set_qemu_var(env, NULL, "limbo_gtk_scale_mode", limbo_pending_sdl_scale_mode);
+}
+
+/*
+ * 设置看门狗绑定的物理核心（仅 KVM）：cpuList 是形如 "0-3,5" 的 CPU 列表，
+ * 空串/非法值表示不指定，由 native 按大小核拓扑自动选簇。
+ * 静态 native（VMExecutor.setCpuAffinity），因此第二个参数是 jclass。
+ * 只需在 start() 之前调用：值会在启动时被 limbo_pin_to_selected_cpus() 读取。
+ */
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_nativeSetCpuAffinity(
+		JNIEnv* env, jclass clazz, jstring jcpu_list) {
+	const char *list = NULL;
+
+	if (jcpu_list != NULL)
+		list = (*env)->GetStringUTFChars(env, jcpu_list, 0);
+	snprintf(limbo_watchdog_cpus, sizeof(limbo_watchdog_cpus), "%s",
+			list != NULL ? list : "");
+	if (list != NULL)
+		(*env)->ReleaseStringUTFChars(env, jcpu_list, list);
 }
 
 /*
@@ -1374,6 +1398,62 @@ static int limbo_pin_to_single_cluster(int argc, char **argv) {
 	return clusters[best].ncpu;
 }
 
+/* 用户在设置里选定的物理核心（KVM 专用）。列表来自 Java 侧下发或 root 子进程
+ * 的环境变量；只保留当前允许运行的 CPU，避免换设备后沿用旧设置时把线程 pin 到
+ * 不存在的核上。返回被选中的 CPU 数，0 表示没设置/设置无效，调用方回退到自动选簇。 */
+static int limbo_pin_to_selected_cpus(void) {
+	struct limbo_cpu_mask selected, allowed;
+	const char *list = limbo_watchdog_cpus;
+	char line[128];
+	int cpu, count = 0;
+
+	if (list[0] == '\0')
+		list = getenv("LIMBO_WATCHDOG_CPUS");
+	if (list == NULL || list[0] == '\0')
+		return 0;
+
+	limbo_mask_zero(&selected);
+	if (limbo_parse_cpu_list(list, &selected) == 0) {
+		LOGW("cpu affinity: invalid watchdog cpu list '%s', "
+				"falling back to auto", list);
+		return 0;
+	}
+
+	/* 与内核实际允许运行的集合求交：设置里可能还留着别的设备的核心号。 */
+	if (limbo_get_affinity(&allowed) == 0) {
+		for (cpu = 0; cpu < LIMBO_CPU_MAX; cpu++) {
+			if (limbo_mask_isset(&selected, cpu) &&
+					!limbo_mask_isset(&allowed, cpu))
+				selected.bits[cpu / LIMBO_CPU_BITS] &=
+						~(1UL << (cpu % LIMBO_CPU_BITS));
+		}
+	}
+
+	for (cpu = 0; cpu < LIMBO_CPU_MAX; cpu++) {
+		if (limbo_mask_isset(&selected, cpu))
+			count++;
+	}
+	if (count == 0) {
+		LOGW("cpu affinity: watchdog cpu list '%s' has no allowed cpu, "
+				"falling back to auto", list);
+		return 0;
+	}
+
+	if (limbo_set_affinity(&selected) != 0) {
+		LOGW("cpu affinity: cannot pin to the selected cpus, falling back "
+				"to auto");
+		return 0;
+	}
+
+	limbo_pin_mask = selected;
+	limbo_pin_cpus = count;
+
+	limbo_mask_to_string(&selected, line, sizeof(line));
+	LOGI("cpu affinity: pinned to the watchdog cpus [%s] (%d cpu(s))",
+			line, count);
+	return count;
+}
+
 /* qemu_init() 之后回读一次亲和性：vCPU 线程继承本线程的掩码，万一它跑到了
  * 簇外，KVM 写回 cache/ID 寄存器（demux CCSIDR）就会再次失败，日志要能看出来。 */
 static void limbo_verify_affinity(const char *when) {
@@ -1676,7 +1756,10 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
 	 * 也早于任何 QEMU 线程的创建，掩码会被它们继承。 */
 	limbo_pin_cpus = 0;
 	if (limbo_args_use_kvm(argc, argv)) {
-		limbo_pin_to_single_cluster(argc, argv);
+		/* 设置里指定了物理核心就按它 pin；否则按大小核拓扑自动挑一个
+		 * 同构簇。看门狗随后统一跟随 limbo_pin_mask。 */
+		if (limbo_pin_to_selected_cpus() == 0)
+			limbo_pin_to_single_cluster(argc, argv);
 		/* 看门狗必须在 qemu_init() 之前起来：vCPU 的寄存器初始化就在
 		 * qemu_init() 里完成，期间掩码若被 cpuset 迁移放开就来不及收。 */
 		limbo_pin_watchdog_start();

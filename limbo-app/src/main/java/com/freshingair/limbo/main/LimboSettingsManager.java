@@ -28,6 +28,8 @@ import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.preference.ListPreference;
+import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceManager;
 import android.text.InputType;
@@ -43,7 +45,15 @@ import com.freshingair.limbo.R;
 import com.freshingair.limbo.network.NetworkUtils;
 import com.freshingair.limbo.toast.ToastUtils;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class LimboSettingsManager extends PreferenceActivity {
@@ -97,6 +107,137 @@ public class LimboSettingsManager extends PreferenceActivity {
     public static boolean getPrio(Context activity) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
         return prefs.getBoolean("HighPrio", false);
+    }
+
+    // 看门狗绑定的物理核心（仅 KVM）：CPU 列表如 "4-7"，空串表示自动选簇
+    public static String getWatchdogCpuAffinity(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getString("watchdogCpuAffinity", "");
+    }
+
+    /**
+     * 按设备实际在线 CPU 填充「看门狗绑定核心」的选项。
+     *
+     * <p>分组方式与 native 侧选簇一致：优先 cpufreq/related_cpus（一个 cpufreq
+     * policy 就是一个物理簇），其次 cpu_capacity（EAS 算力相同即同簇），都读不到
+     * 就按单个 CPU 列出。值为 CPU 列表（如 "0-3"），空串表示自动。
+     */
+    private void setupCpuAffinityPreference() {
+        Preference preference = getPreferenceManager().findPreference("watchdogCpuAffinity");
+        if (!(preference instanceof ListPreference))
+            return;
+        final ListPreference list = (ListPreference) preference;
+
+        List<String> labels = new ArrayList<>();
+        List<String> values = new ArrayList<>();
+        labels.add(getString(R.string.WatchdogCpuAffinityAuto));
+        values.add("");
+
+        Map<String, List<Integer>> groups = new LinkedHashMap<>();
+        for (int cpu : readOnlineCpus()) {
+            String key = readCpuGroupKey(cpu);
+            List<Integer> group = groups.get(key);
+            if (group == null) {
+                group = new ArrayList<>();
+                groups.put(key, group);
+            }
+            group.add(cpu);
+        }
+        for (List<Integer> group : groups.values()) {
+            String value = formatCpuList(group);
+            labels.add(getString(R.string.WatchdogCpuAffinityGroup, value));
+            values.add(value);
+        }
+
+        // 保存的可能是别的设备的核心号：保留成自定义条目，别让用户的选择静默丢失
+        String current = getWatchdogCpuAffinity(this);
+        if (current != null && !current.isEmpty() && !values.contains(current)) {
+            labels.add(getString(R.string.WatchdogCpuAffinityCustom, current));
+            values.add(current);
+        }
+
+        list.setEntries(labels.toArray(new CharSequence[0]));
+        list.setEntryValues(values.toArray(new CharSequence[0]));
+        list.setOnPreferenceChangeListener((pref, newValue) -> {
+            updateCpuAffinitySummary(list, (String) newValue);
+            return true;
+        });
+        updateCpuAffinitySummary(list, list.getValue());
+    }
+
+    private void updateCpuAffinitySummary(ListPreference list, String value) {
+        if (value == null)
+            value = "";
+        CharSequence[] entries = list.getEntries();
+        int index = list.findIndexOfValue(value);
+        CharSequence label = index >= 0 && entries != null ? entries[index] : value;
+        list.setSummary(getString(R.string.WatchdogCpuAffinitySummary, label));
+    }
+
+    /** 读 /sys/devices/system/cpu/online（"0-3,5" -> [0,1,2,3,5]）。 */
+    private static List<Integer> readOnlineCpus() {
+        List<Integer> cpus = new ArrayList<>();
+        String text = readSysfsText("/sys/devices/system/cpu/online");
+        if (text == null)
+            return cpus;
+        for (String part : text.trim().split(",")) {
+            try {
+                int dash = part.indexOf('-');
+                if (dash > 0) {
+                    int first = Integer.parseInt(part.substring(0, dash).trim());
+                    int last = Integer.parseInt(part.substring(dash + 1).trim());
+                    for (int cpu = first; cpu <= last && cpu < 64; cpu++)
+                        cpus.add(cpu);
+                } else {
+                    int cpu = Integer.parseInt(part.trim());
+                    if (cpu >= 0 && cpu < 64)
+                        cpus.add(cpu);
+                }
+            } catch (NumberFormatException ignored) {
+                // 忽略无法解析的项，不影响其他 CPU
+            }
+        }
+        return cpus;
+    }
+
+    /** 与 native 侧 limbo_cpu_cluster_key() 一致的分组键。 */
+    private static String readCpuGroupKey(int cpu) {
+        String related = readSysfsText(
+                "/sys/devices/system/cpu/cpu" + cpu + "/cpufreq/related_cpus");
+        if (related != null && !related.trim().isEmpty())
+            return "policy:" + related.trim();
+        String capacity = readSysfsText(
+                "/sys/devices/system/cpu/cpu" + cpu + "/cpu_capacity");
+        if (capacity != null && !capacity.trim().isEmpty())
+            return "capacity:" + capacity.trim();
+        return "cpu:" + cpu;
+    }
+
+    private static String readSysfsText(String path) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
+            return reader.readLine();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** [0,1,2,5] -> "0-2,5" */
+    private static String formatCpuList(List<Integer> cpus) {
+        Collections.sort(cpus);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cpus.size(); ) {
+            int first = cpus.get(i);
+            int last = first;
+            while (i + 1 < cpus.size() && cpus.get(i + 1) == last + 1)
+                last = cpus.get(++i);
+            if (sb.length() > 0)
+                sb.append(',');
+            sb.append(first);
+            if (last != first)
+                sb.append('-').append(last);
+            i++;
+        }
+        return sb.toString();
     }
 
     // files
@@ -342,6 +483,7 @@ public class LimboSettingsManager extends PreferenceActivity {
         Intent data = new Intent();
         setResult(Config.SETTINGS_RETURN_CODE, data);
         addPrefs();
+        setupCpuAffinityPreference();
         getPreferenceManager().findPreference("enableVNCPassword").setOnPreferenceChangeListener(
                 (preference, newValue) -> {
                     if ((boolean) newValue)

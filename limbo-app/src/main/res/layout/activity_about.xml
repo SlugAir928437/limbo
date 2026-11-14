@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 关于页：顶栏 + 应用信息 + 当前版本更新日志 + 功能入口 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_about_gradient"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <!-- 顶栏：返回按钮 + 居中标题 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@drawable/bg_about_topbar"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
+
+        <ImageButton
+            android:id="@+id/about_back"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/about_back"
+            android:src="@drawable/ic_about_back" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="@string/about_title"
+            android:textColor="#FFFFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <Space
+            android:layout_width="48dp"
+            android:layout_height="48dp" />
+    </LinearLayout>
+
+    <!-- 应用图标、名称与版本号 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="20dp">
+
+        <ImageView
+            android:id="@+id/about_icon"
+            android:layout_width="88dp"
+            android:layout_height="88dp"
+            android:background="@drawable/bg_about_icon"
+            android:contentDescription="@string/app_name"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/limbo" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/about_app_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFFFF"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/about_version"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="#E6FFFFFF"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 当前版本更新日志（内容较长，占满剩余空间并可滚动） -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_about_card"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/this_version"
+                android:textColor="#FFFFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/about_changelog"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:lineSpacingExtra="4dp"
+                android:textColor="#F2FFFFFF"
+                android:textIsSelectable="true"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 功能入口 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:id="@+id/about_qq_group"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:background="@drawable/bg_about_row"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/about_qq_group"
+                android:textColor="#FFFFFFFF"
+                android:textSize="18sp" />
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_about_arrow" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/about_github"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_about_row"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/about_github"
+                android:textColor="#FFFFFFFF"
+                android:textSize="18sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/about_check_update"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_about_row"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/about_check_update"
+                android:textColor="#FFFFFFFF"
+                android:textSize="18sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

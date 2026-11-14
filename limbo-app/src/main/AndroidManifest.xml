@@ -76,6 +76,11 @@
             android:label="Settings"
             android:exported="false"
             android:theme="@style/Theme.AppCompat"/>
+        <!-- 关于页：更新日志、QQ 群、GitHub 源码、检查更新 -->
+        <activity
+            android:name=".main.AboutActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
         <activity
             android:name=".ui.StorageDeviceEditorActivity"
             android:exported="false"

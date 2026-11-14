@@ -33,6 +33,7 @@ import com.freshingair.limbo.main.Config;
 import com.freshingair.limbo.main.LimboApplication;
 import com.freshingair.limbo.main.LimboSettingsManager;
 import com.freshingair.limbo.network.NetworkUtils;
+import com.freshingair.limbo.toast.ToastUtils;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -52,7 +53,17 @@ public class UpdateChecker {
             Pattern.compile("(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?");
 
     public static void checkNewVersion(final Activity activity) {
-        if (!LimboSettingsManager.getPromptUpdateVersion(activity)) {
+        checkNewVersion(activity, false);
+    }
+
+    /**
+     * 检查 GitHub 最新 Release。
+     *
+     * @param manual true 表示用户在「关于」页手动点的检查更新：此时不受
+     *               「不再提示」选项影响，且会给出版本已最新/检查失败的反馈。
+     */
+    public static void checkNewVersion(final Activity activity, final boolean manual) {
+        if (!manual && !LimboSettingsManager.getPromptUpdateVersion(activity)) {
             return;
         }
         try {
@@ -62,12 +73,18 @@ public class UpdateChecker {
             String tagName = release.optString("tag_name", "");
             int[] remote = parseSemVer(tagName);
             if (remote == null || !isNewer(remote)) {
+                if (manual) {
+                    postToast(activity, R.string.check_update_latest);
+                }
                 return;
             }
 
             String apkUrl = findApkUrl(release);
             if (TextUtils.isEmpty(apkUrl)) {
                 Log.w(TAG, "No APK asset found in latest release");
+                if (manual) {
+                    postToast(activity, R.string.check_update_failed);
+                }
                 return;
             }
 
@@ -85,7 +102,20 @@ public class UpdateChecker {
             Log.w(TAG, "Could not check for new version: " + ex.getMessage());
             if (Config.debug)
                 ex.printStackTrace();
+            if (manual) {
+                postToast(activity, R.string.check_update_failed);
+            }
         }
+    }
+
+    /** 手动检查更新时在 UI 线程给出结果提示。 */
+    private static void postToast(final Activity activity, final int resId) {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                ToastUtils.toastShort(activity, activity.getString(resId));
+            }
+        });
     }
 
     /** Pick the first .apk asset; prefer the one containing Config.apkAssetKeyword when set. */

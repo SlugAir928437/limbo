@@ -124,6 +124,16 @@
     <string name="ViewLog">查看日志</string>
     <string name="Changelog">更新日志</string>
     <string name="License">许可证</string>
+    <string name="about_title">关于</string>
+    <string name="about_back">返回</string>
+    <string name="about_version">版本号 %s</string>
+    <string name="about_qq_group">QQ 群</string>
+    <string name="about_github">在 GitHub 上查看源码</string>
+    <string name="about_check_update">检查更新</string>
+    <string name="about_qq_not_installed">未安装 QQ 或 QQ 版本不支持加群</string>
+    <string name="about_changelog_unavailable">更新日志不可用</string>
+    <string name="check_update_latest">当前已是最新版本</string>
+    <string name="check_update_failed">检查更新失败</string>
     <string name="Exit">退出</string>
     <string name="TapDeviceFound">发现 TAP 设备</string>
     <string name="tunDeviceWarning">警告！请确保设备 /dev/net/tun 具有适当的权限\n用户 ID</string>

@@ -102,7 +102,7 @@ public class LimboActivity extends AppCompatActivity implements
     private static final int DELETE = 3;
     private static final int EXPORT = 4;
     private static final int IMPORT = 5;
-    private static final int CHANGELOG = 6;
+    private static final int ABOUT = 6;
     private static final int LICENSE = 7;
     private static final int VIEWLOG = 8;
     private static final int CREATE = 9;
@@ -2235,8 +2235,8 @@ public class LimboActivity extends AppCompatActivity implements
             case SWITCH_ARCH:
                 promptSwitchArchitecture();
                 break;
-            case CHANGELOG:
-                LimboActivityCommon.showChangelog(this);
+            case ABOUT:
+                startActivity(new Intent(this, AboutActivity.class));
                 break;
             case LICENSE:
                 promptLicense();
@@ -2258,7 +2258,7 @@ public class LimboActivity extends AppCompatActivity implements
         else if (label.equals(getString(R.string.Settings))) return SETTINGS;
         else if (label.equals(getString(R.string.ViewLog))) return VIEWLOG;
         else if (label.equals(getString(R.string.SwitchArchitecture))) return SWITCH_ARCH;
-        else if (label.equals(getString(R.string.Changelog))) return CHANGELOG;
+        else if (label.equals(getString(R.string.about_title))) return ABOUT;
         else if (label.equals(getString(R.string.License))) return LICENSE;
         else if (label.equals(getString(R.string.Exit))) return QUIT;
         else return -1;
@@ -2284,7 +2284,7 @@ public class LimboActivity extends AppCompatActivity implements
         // even when only a single engine happens to be bundled.
         if (ArchManager.getSelectableArchs().size() > 1)
             items.add(getString(R.string.SwitchArchitecture));
-        items.add(getString(R.string.Changelog));
+        items.add(getString(R.string.about_title));
         items.add(getString(R.string.License));
         items.add(getString(R.string.Exit));
 

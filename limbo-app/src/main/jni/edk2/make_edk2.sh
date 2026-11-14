@@ -80,7 +80,7 @@
 # 兼容性补丁
 # -----------------------------------------------------------------------------
 # <jni>/patches/edk2-*.patch 会在 fetch 时按「先 git apply --check 再 apply」的
-# 方式自动应用（幂等：已打过就跳过）。当前有两个：
+# 方式自动应用（幂等：已打过就跳过）。当前有三个：
 #   edk2-nasm3.patch
 #     NASM 3.x（如 3.01）不再允许在 64 位模式下写 `push strict dword`，会报
 #     “instruction not valid with 32-bit operand size”，使
@@ -98,6 +98,16 @@
 #     补丁做两件事：① 将该变量初始化为 0；② 在 tools_def.template 的
 #     GCC_ALL_CC_FLAGS 末尾追加 -Wno-error=maybe-uninitialized（保留告警、只降级为
 #     非致命），以兼容其它架构可能出现的同类告警。
+#
+#   edk2-basetools-c23.patch
+#     GCC 15 默认 C23，glibc 的 <string.h> 按 C23 让 strstr() 在实参为 const 时
+#     返回 const char *。BaseTools 的 EfiRom.c 把返回值赋给 CHAR8 *，触发
+#         error: assignment discards 'const' qualifier from pointer target type
+#                [-Werror=discarded-qualifiers]
+#     EfiRom 编不过会让 make -C BaseTools 整个失败，GenSec / GenFw 等后续工具
+#     产不出来，再往下才在 ResetVector 之类的地方报 “BaseTools C Tool binary
+#     was not found”，非常难定位。补丁与上游 master 一致：去掉这次多余赋值
+#     （返回值只用于非空判断）。
 #
 # -----------------------------------------------------------------------------
 # 宿主工具链
@@ -334,14 +344,44 @@ fetch_src() {
 # ---------------------------------------------------------------------------
 # BaseTools 构建（生成 GenFw/GenFds/GenFfs 等构建期工具）
 # ---------------------------------------------------------------------------
+# 就绪判定要看齐真正需要的那几个工具：只看 GenFw 会漏掉 GenSec（EfiRom 编译失败
+# 时 GenSec 不会被产出），于是带着半套工具继续构建，最后在 FV 阶段报一个与真实
+# 原因无关的错误。
+BASETOOLS_REQUIRED_TOOLS="GenFfs GenFv GenFw GenSec"
+
+basetools_ready() {
+    local dir="$1" t
+    for t in $BASETOOLS_REQUIRED_TOOLS; do
+        if [ -x "$dir/BaseTools/Source/C/bin/$t" ] || [ -x "$dir/BaseTools/Source/C/bin/$t.exe" ]; then
+            continue
+        fi
+        return 1
+    done
+    return 0
+}
+
 build_basetools() {
-    local dir="$1"
-    if [ -x "$dir/BaseTools/Source/C/bin/GenFw" ] || [ -x "$dir/BaseTools/Source/C/bin/GenFw.exe" ]; then
+    local dir="$1" t missing=""
+    if basetools_ready "$dir"; then
         msg "BaseTools 已构建，跳过"
         return 0
     fi
     msg "构建 BaseTools"
-    ( cd "$dir" && PYTHON_COMMAND="$PYTHON_COMMAND" make -C BaseTools -j "$BUILD_THREADS" )
+    # build_one 由 `if ! build_one` 调用，该上下文会关闭 set -e，所以这里必须显式
+    # 判断返回值，不能让 make 的失败被忽略。
+    if ! ( cd "$dir" && PYTHON_COMMAND="$PYTHON_COMMAND" make -C BaseTools -j "$BUILD_THREADS" ); then
+        warn "BaseTools 构建失败（宿主 GCC 对 BaseTools 的 C 工具报 -Werror 时会这样，见 patches/edk2-basetools-c23.patch）"
+        return 1
+    fi
+    if ! basetools_ready "$dir"; then
+        for t in $BASETOOLS_REQUIRED_TOOLS; do
+            if [ ! -x "$dir/BaseTools/Source/C/bin/$t" ] && [ ! -x "$dir/BaseTools/Source/C/bin/$t.exe" ]; then
+                missing="$missing $t"
+            fi
+        done
+        warn "BaseTools 构建不完整，缺少：$missing"
+        return 1
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -375,8 +415,10 @@ build_one() {
     out="$(arch_out "$arch")"
     dir="$(src_dir_for "$EDK2_TAG")"
 
-    fetch_src "$EDK2_TAG"
-    build_basetools "$dir"
+    # 注意：build_one 由 `if ! build_one` 调用，该上下文关闭了 set -e，
+    # 所以每一步的关键失败都必须显式 return，否则会被静默忽略。
+    fetch_src "$EDK2_TAG" || return 1
+    build_basetools "$dir" || return 1
     ensure_tools_def_flag "$dir"
     preflight_arch "$arch" || return 1
 

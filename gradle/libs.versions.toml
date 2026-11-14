@@ -2,7 +2,6 @@
 agp = "9.2.1"
 annotations = "26.1.0"
 constraintlayout = "2.2.2"
-crashreport = "4.1.9.3"
 glide = "5.0.9"
 leakcanaryAndroid = "2.14"
 markwon-core = "4.6.2"
@@ -31,7 +30,6 @@ androidx-documentfile = { module = "androidx.documentfile:documentfile", version
 androidx-swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefreshlayout" }
 androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
 annotations = { module = "org.jetbrains:annotations", version.ref = "annotations" }
-crashreport = { module = "com.tencent.bugly:crashreport", version.ref = "crashreport" }
 glide = { module = "com.github.bumptech.glide:glide", version.ref = "glide" }
 leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanaryAndroid" }
 leakcanary-android-instrumentation = { module = "com.squareup.leakcanary:leakcanary-android-instrumentation", version.ref = "leakcanaryAndroid" }

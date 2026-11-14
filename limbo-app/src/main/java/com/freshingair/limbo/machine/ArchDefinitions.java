@@ -1,0 +1,411 @@
+/*
+Copyright (C) Max Kastanas 2012
+
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ */
+package com.freshingair.limbo.machine;
+
+import android.content.Context;
+import android.os.Build;
+
+import com.freshingair.limbo.R;
+import com.freshingair.limbo.install.Installer;
+import com.freshingair.limbo.main.BuildFeatures;
+import com.freshingair.limbo.main.Config;
+import com.freshingair.limbo.main.LimboApplication;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+/**
+ * A simple utility class to retrieved often long architecture attribute lists
+ */
+public class ArchDefinitions {
+    private static String TAG = "ArchDefinitions";
+
+    public static ArrayList<String> getSoundcards(Context context) {
+        return new ArrayList<>(Arrays.asList(Installer.getAttrs(context, R.raw.common_soundcards)));
+    }
+
+    public static ArrayList<String> getNetworkDevices(Context context) {
+        ArrayList<String> commonNetworkCards = new ArrayList<>(Arrays.asList(Installer.getAttrs(context, R.raw.common_nic_cards)));
+
+        ArrayList<String> networkCards = new ArrayList<>();
+        switch (LimboApplication.arch) {
+            case x86:
+            case x86_64:
+                networkCards.add("Default");
+                networkCards.addAll(commonNetworkCards);
+                break;
+            case arm:
+            case arm64:
+                networkCards.add("Default");
+                networkCards.addAll(commonNetworkCards);
+                networkCards.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.arm_nic_cards)));
+                break;
+            case ia64:
+            case ia64w:
+                networkCards.add("Default");
+                //networkCards.addAll(commonNetworkCards);
+                networkCards.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_nic_cards)));
+                break;
+        }
+        return networkCards;
+    }
+
+    /**
+     * QXL (qxl-vga) 是否存在于当前架构的 QEMU 引擎中。
+     *
+     * <p>上游 QEMU 只在 i386 机器配置里 `imply QXL`（hw/i386/Kconfig），
+     * Limbo 通过 patches/qemu-arm-qxl.patch 给 arm-softmmu/aarch64-softmmu
+     * 打开了 CONFIG_QXL（Makefile 的 fetch-qemu 负责应用），所以 x86/x86_64
+     * 与 arm/arm64 都带 qxl 设备；IA-64 的 QEMU 以 --disable-spice 配置，
+     * 没有 SPICE/QXL。
+     */
+    public static boolean isQxlAvailable() {
+        return LimboApplication.arch == Config.Arch.x86
+                || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm
+                || LimboApplication.arch == Config.Arch.arm64;
+    }
+
+    public static ArrayList<String> getVGAValues(Context context) {
+        ArrayList<String> vgaValues = new ArrayList<>();
+        // IA-64 客户机走 IA-64 QEMU fork，构建时跳过 VirGL/virtio-gpu 与 SPICE 两套
+        // 栈（见 jni/Makefile）：virtio-gpu-pci / virtio-gpu-gl-pci 与 qxl 都没有
+        // 编进 libqemu-system-ia64.so，因此这里不能再向下拉列表提供，否则选中后
+        // QEMU 会在启动时报 "unknown device" / "invalid vga type"。
+        boolean isIa64 = LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w;
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64
+                || isIa64) {
+            vgaValues.add("std");
+            // ATI VGA is available when libqemu-system-*.*.so was built with CONFIG_ATI_VGA;
+            // this is an experimental PCI vga option and may not be supported by every board
+            vgaValues.add("ati");
+            // QXL (qxl-vga) 只有 x86/x86_64 的 QEMU 编进去了：QEMU 的
+            // hw/i386/Kconfig 里 `imply QXL`，而 hw/arm 等其它 target 没有。
+            // 即使 ARM 构建启用了 SPICE（CONFIG_SPICE），也没有 qxl 设备，
+            // 选中后 QEMU 会直接报 "QXL VGA not available" 并退出。
+            if (isQxlAvailable() && BuildFeatures.spice()) {
+                vgaValues.add("qxl");
+            }
+        }
+
+        if (isIa64) {
+            // NVIDIA Quadro2 Pro PCI VGA, provided by the merged experimental HP
+            // i2000/zx2000/zx6000 machines via '-vga quadro2'; experimental like
+            // ati.  hp-zx2000/hp-zx6000 default to the ATI Radeon RV100 instead.
+            vgaValues.add("quadro2");
+        }
+
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64) {
+            vgaValues.add("cirrus");
+            vgaValues.add("vmware");
+        }
+
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
+            // VirtIO GPU: paravirtualized display, handed to QEMU as -device
+            // (not -vga). virtio-gpu-gl-pci additionally needs a
+            // libqemu-system-*.so built with CONFIG_VIRGL (virglrenderer +
+            // OpenGL); when that is missing QEMU rejects the device at start.
+            // Only x86/x86_64 and arm/arm64 build those (the IA-64 build skips
+            // the whole VirGL/virtio-gpu stack, see jni/Makefile).
+            vgaValues.add("virtio-gpu-pci");
+            // GL 变体需要 virglrenderer + gtk4android 提供的 epoxy
+            if (BuildFeatures.virgl() && BuildFeatures.gtk()) {
+                vgaValues.add("virtio-gpu-gl-pci");
+            }
+        }
+
+        //XXX: some archs don't support vga on QEMU like SPARC64
+        vgaValues.add("nographic");
+
+        //TODO: Add XEN???
+        // "xenfb"
+        return vgaValues;
+    }
+
+    /**
+     * Returns the system BIOS firmware files shipped under assets/roms that are
+     * applicable to the current build architecture. Only genuine system
+     * firmware is listed: VGA BIOS (vgabios-*.bin), PXE/EFI NIC option ROMs,
+     * direct-kernel boot shims (linuxboot/multiboot/pvh/qboot) and firmware of
+     * other architectures (OpenSBI, SLOF, PNOR, vof, openbios, ...) are
+     * excluded, since they cannot be used as a machine's -bios.
+     */
+    public static ArrayList<String> getBiosFirmwareValues(Context context) {
+        ArrayList<String> values = new ArrayList<>();
+        switch (LimboApplication.arch) {
+            case x86:
+                // SeaBIOS 256K (QEMU 10.x default), legacy 128K SeaBIOS, and the
+                // microvm machine firmware
+                values.add("bios-256k.bin");
+                values.add("bios.bin");
+                values.add("bios-microvm.bin");
+
+                addIfShipped(context, values, "edk2-i386-code.fd");
+                break;
+            case x86_64:
+                // SeaBIOS 256K (QEMU 10.x default), legacy 128K SeaBIOS, and the
+                // microvm machine firmware
+                values.add("bios-256k.bin");
+                values.add("bios.bin");
+                values.add("bios-microvm.bin");
+
+                addIfShipped(context, values, "edk2-x86_64-code.fd");
+                break;
+            case arm:
+                values.add("ast27x0_bootrom.bin");
+                // EDK2 ArmVirtQemu 构建的 32 位 ARM UEFI 固件
+                addIfShipped(context, values, "edk2-arm-code.fd");
+                break;
+            case arm64:
+                // Aspeed 27x0 boot ROM (ast2500/ast2600-evb and the Aspeed BMC
+                // machines, which are the ARM boards selectable in the app)
+                values.add("ast27x0_bootrom.bin");
+                addIfShipped(context, values, "edk2-aarch64-gunyah.fd");
+                addIfShipped(context, values, "edk2-aarch64-gzvm.fd");
+                // 上游 EDK2 ArmVirtQemu 构建的 AArch64 UEFI 固件
+                addIfShipped(context, values, "edk2-aarch64-code.fd");
+                break;
+            case ia64:
+            case ia64w:
+                values.add("ia64-firmware.bin");
+                break;
+        }
+        return values;
+    }
+
+    /**
+     * 按「APK 里是否真的打包了该固件」决定是否列出，而不是按 USE_EDK2
+     * 构建开关（{@link BuildFeatures#edk2()}）判断。
+     *
+     * <p>EDK2 的 .fd 固件随仓库的 assets2/roms 一起打包，与主构建是否编译
+     * EDK2 无关：默认 USE_EDK2=false 的构建会在 build-features.properties 里
+     * 写入 edk2=false，但固件文件仍在 APK 的 assets/roms 中。若只看开关，
+     * 这些已经存在的固件会被 BIOS 下拉框整体过滤掉，表现为「APK 里明明有
+     * edk2 固件，Limbo 却识别不到」。
+     */
+    private static void addIfShipped(Context context, ArrayList<String> values, String name) {
+        if (context == null) {
+            if (BuildFeatures.edk2()) {
+                values.add(name);
+            }
+            return;
+        }
+        try (InputStream ignored = context.getAssets().open("roms/" + name)) {
+            values.add(name);
+        } catch (IOException e) {
+            // 固件未随 APK 打包，不提供该选项
+        }
+    }
+
+    public static ArrayList<String> getKeyboardValues(Context context) {
+        ArrayList<String> arrList = new ArrayList<>();
+        arrList.add("en-us");
+        return arrList;
+    }
+
+    public static ArrayList<String> getMouseValues(Context context) {
+        ArrayList<String> arrList = new ArrayList<>();
+        // 在 i8042=off (disableI8042==1) 的情况下不提供 ps2 鼠标选项
+        boolean i8042Off = false;
+        Machine machine = MachineController.getInstance().getMachine();
+        if (machine != null) {
+            i8042Off = machine.getDisableI8042() == 1;
+        }
+        if (!i8042Off && LimboApplication.arch != Config.Arch.ia64
+                && LimboApplication.arch != Config.Arch.ia64w) {
+            arrList.add("ps2");
+        }
+        arrList.add("usb-mouse");
+        arrList.add("usb-tablet" + " " + context.getString(R.string.fixesMouseParen));
+        // VirtIO input: absolute coordinate tablet. The launcher pairs it with a
+        // virtio-keyboard-pci so the guest also gets a keyboard (see
+        // VMExecutor#addUIOptions). Both devices need a libqemu-system-*.so
+        // built with CONFIG_VIRTIO_INPUT / CONFIG_VIRTIO_PCI.
+        arrList.add("virtio-tablet-pci");
+        // VirtIO input: multi-touch touchscreen (INPUT_PROP_DIRECT + ABS_MT_*).
+        // 必须使用带 PCI 传输的 -pci 名字：QEMU 的 "virtio-multitouch-device"
+        // 是没有传输层的设备，在 PCI 机器上会被静默挂到其它 virtio 代理内部
+        // 的总线，客户机（Debian/Windows）根本看不到该设备。
+        arrList.add("virtio-multitouch-pci");
+        return arrList;
+    }
+
+    /**
+     * USB controller models offered in the Advanced section of the machine
+     * editor.  The list is the set of QEMU USB host controllers actually
+     * compiled into the engine for the current architecture (verified against
+     * the shipped libqemu-system-*.so):
+     *
+     * <ul>
+     *   <li>x86 / x86_64 / arm / arm64: qemu-xhci, nec-usb-xhci, ich9-usb-ehci1
+     *       and piix3-usb-uhci.</li>
+     *   <li>ia64 / ia64w: the xHCI devices are not built into the IA-64 fork,
+     *       so only ich9-usb-ehci1 and piix3-usb-uhci are offered.  In
+     *       addition, the IA-64 fork needs a USB keyboard during text-mode
+     *       setup (PS/2 is not operational there), so "usb-kbd" is offered as
+     *       well.</li>
+     * </ul>
+     *
+     * "None" adds no USB controller to the QEMU command line, preserving the
+     * pre-feature behavior.
+     */
+    public static ArrayList<String> getUsbControllerValues() {
+        ArrayList<String> arrList = new ArrayList<>();
+        arrList.add("None");
+
+        boolean isIa64 = LimboApplication.arch == Config.Arch.ia64
+                || LimboApplication.arch == Config.Arch.ia64w;
+
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
+            // USB 3.0 xHCI controllers
+            arrList.add("qemu-xhci");
+            arrList.add("nec-usb-xhci");
+        }
+
+        // USB 2.0 EHCI (with its companion UHCI ports) and USB 1.1 UHCI
+        arrList.add("ich9-usb-ehci1");
+        arrList.add("piix3-usb-uhci");
+
+        if (isIa64) {
+            // IA-64: USB keyboard required by the XP/Server 2003 IA64 text-mode
+            // installer (see VMExecutor#addUIOptions)
+            arrList.add("usb-kbd");
+        }
+
+        return arrList;
+    }
+
+    /**
+     * 把已保存机型里构建时未编译的显示后端退回一个可用的值。
+     * 未启用 SDL 时退回 VNC（VNC 总是编进引擎）。
+     */
+    public static String resolveUI(String ui) {
+        String fallback = Config.enable_SDL ? "SDL" : "VNC";
+        if ("GTK".equals(ui) && !(BuildFeatures.gtk()
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)) {
+            return fallback;
+        }
+        if ("SPICE".equals(ui) && !BuildFeatures.spice()) {
+            return fallback;
+        }
+        if ("SDL".equals(ui) && !Config.enable_SDL) {
+            return "VNC";
+        }
+        return ui;
+    }
+
+    public static ArrayList<String> getUIValues() {
+        ArrayList<String> arrList = new ArrayList<>();
+        arrList.add("VNC");
+        // SPICE server output ("-spice" + qxl-vga): the guest display is
+        // exported over the SPICE protocol and rendered by an external SPICE
+        // client (remote-viewer / virt-viewer / an Android SPICE viewer).
+        // The QEMU engine must be built with CONFIG_SPICE; the IA-64 fork is
+        // configured with --disable-spice (see jni/Makefile), so the option is
+        // hidden there to avoid starting a VM with an unknown -spice option.
+        if (BuildFeatures.spice() && LimboApplication.arch != Config.Arch.ia64
+                && LimboApplication.arch != Config.Arch.ia64w)
+            arrList.add("SPICE");
+        if (Config.enable_SDL)
+            arrList.add("SDL");
+        // The GTK4 backend (gtk4android) is cross-compiled against API 31 and
+        // depends on AMotionEvent_fromJava/AKeyEvent_fromJava, which are only
+        // exported by libandroid.so on API 31+. On older devices loading the
+        // VM would crash with UnsatisfiedLinkError, so hide the option there.
+        if (BuildFeatures.gtk() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            arrList.add("GTK");
+        // AGL (Android Graphics Layer): the guest is rendered into a Surface
+        // owned by the app (QEMU "-display agl"), which is the only display the
+        // gunyah/gzvm accelerated VMs can use since those run in-process as
+        // root.  It requires a libqemu-system-*.so built with the AGL backend.
+        if (Config.enableAgl && (LimboApplication.arch == Config.Arch.arm
+                || LimboApplication.arch == Config.Arch.arm64))
+            arrList.add("AGL");
+        return arrList;
+    }
+
+    public static ArrayList<String> getMachineValues(Context context) {
+        ArrayList<String> machinesList = new ArrayList<>();
+        machinesList.add("None");
+        machinesList.add("New");
+        return machinesList;
+    }
+
+    public static ArrayList<String> getCpuValues(Context context) {
+        ArrayList<String> arrList = new ArrayList<>();
+        switch (LimboApplication.arch) {
+            case x86:
+            case x86_64:
+                arrList.add("Default");
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.x86_cpu)));
+                break;
+            case arm:
+            case arm64:
+                arrList.add("Default");
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.arm_cpu)));
+                break;
+            case ia64:
+            case ia64w:
+                arrList.add("Default");
+                // The list mirrors the CPU aliases the IA-64 fork advertises
+                // (target/ia64/cpu.c ia64_cpu_aliases): merced, mckinley,
+                // deerfield, madison, montecito, montvale, itanium, itanium2.
+                // The HP workstation models force their own CPU (see
+                // VMExecutor#addCpuBoardOptions), so the selection only applies
+                // to the VPC machines.
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_cpu)));
+                break;
+        }
+
+        if (LimboApplication.arch == Config.Arch.x86 || LimboApplication.arch == Config.Arch.x86_64
+                || LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64
+                || LimboApplication.arch == Config.Arch.ia64 || LimboApplication.arch == Config.Arch.ia64w)
+            arrList.add("host");
+        return arrList;
+    }
+
+    public static ArrayList<String> getMachineTypeValues(Context context) {
+        ArrayList<String> arrList = new ArrayList<>();
+        switch (LimboApplication.arch) {
+            case x86:
+            case x86_64:
+                arrList.add("Default");
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.x86_machine_types)));
+                break;
+            case arm:
+            case arm64:
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.arm_machine_types)));
+                break;
+            case ia64:
+            case ia64w:
+                // Virtual PC models (itanium-vpc / itanium2-vpc / ia64-vpc) plus
+                // the HP workstation models: hp-i2000, hp-zx2000 (added with the
+                // upstream zx2000 merge), hp-zx6000 and the "none" pseudo machine.
+                arrList.addAll(Arrays.asList(Installer.getAttrs(context, R.raw.ia64_machine_types)));
+                break;
+        }
+        return arrList;
+    }
+}

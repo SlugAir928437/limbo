@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <string name="app_name">Limbo Emulator</string>
+    <string name="app_name">Limbo FA</string>
     <string name="button_send_text">Send Text</string>
     <string name="center_mouse">Mouse</string>
     <string name="reset">Reset</string>

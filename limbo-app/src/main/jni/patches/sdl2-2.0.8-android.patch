@@ -72,7 +72,7 @@ diff -ru --no-dereference /tmp/SDL2/src/core/android/SDL_android.c SDL2/src/core
 +    getAaudioBuffer = (getAaudioBuffer_t) loadSymbol("getAaudioBuffer");
 +}
 +
-+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeEnableAaudio(
++JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_nativeEnableAaudio(
 +        JNIEnv* env, jobject thiz, 
 +        int value, jstring aaudioLibName, jstring aaudioLibFullpath) {
 +    printf("set enable aaudio: %d\n", value);

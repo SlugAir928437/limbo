@@ -5,8 +5,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import com.limbo.emu.R
-import com.limbo.emu.databinding.ActivityNetcatSessionBinding
+import com.freshingair.limbo.R
+import com.freshingair.limbo.databinding.ActivityNetcatSessionBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.lang.ref.WeakReference
 

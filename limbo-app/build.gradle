@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace 'com.limbo.emu'
+    namespace 'com.freshingair.limbo'
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId "com.limbo.emu"
+        applicationId "com.freshingair.limbo"
         minSdk 24
         targetSdk 37
         versionCode 10000
@@ -37,6 +37,7 @@ android {
         compose = true
         buildConfig = true
         aidl = true
+        viewBinding = true
     }
     buildTypes {
         release {

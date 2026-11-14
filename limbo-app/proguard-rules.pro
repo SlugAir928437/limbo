@@ -49,7 +49,7 @@
 # build.gradle 在构建期从 local.properties 注入，如 bugly_appId）。这些常量在
 # Java 代码里没有直接引用，R8 会把它们内联/删除，反射随即抛 NoSuchFieldException，
 # Bugly 初始化被静默跳过，所以必须保留 BuildConfig 的类与字段。
--keep class com.limbo.emu.BuildConfig { *; }
+-keep class com.freshingair.limbo.BuildConfig { *; }
 
 # ==============================
 # 5. JNI 反射查找保护（仅被 native 调用的 Java 成员会被 R8 移除/重命名）
@@ -73,7 +73,7 @@
 -keep class org.gtk.android.** { *; }
 
 # Limbo 兼容层: libqemu-system-*.so 通过 GetMethodID 调用 VMExecutor.close_fd(int)
--keepclassmembers class com.limbo.emu.jni.VMExecutor {
+-keepclassmembers class com.freshingair.limbo.jni.VMExecutor {
     public int close_fd(int);
 }
 

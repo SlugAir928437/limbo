@@ -79,7 +79,7 @@ public class FileUtil {
 	 * 外部储存不可用时退回内部 cache（/data/data/${PackageName}/cache）。
 	 *
 	 * <p>不能直接相信 getExternalCacheDir()：储存卷没准备好时它可能返回 null，
-	 * 也可能返回指向无效卷的路径（曾出现 {@code /dev/null/Android/data/com.limbo.emu/cache}），
+	 * 也可能返回指向无效卷的路径（曾出现 {@code /dev/null/Android/data/com.freshingair.limbo/cache}），
 	 * 拼出来的日志文件打不开（open failed: ENOTDIR），而写日志失败会一路抛到
 	 * Application 初始化里把 App 干掉。所以这里必须做兜底。
 	 *

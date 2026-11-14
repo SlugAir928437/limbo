@@ -840,7 +840,7 @@ VIRGL_PATCH         := $(LIMBO_JNI_ROOT)/patches/virglrenderer-android-egl.patch
 # 于是运行时可以把 EGL/GLES 换成 ANGLE 的那套 libEGL_angle.so /
 # libGLESv2_angle.so（做法抄自 termux-packages 的 virglrenderer-android
 # 0003-use-angle.patch；调用方见 limbo/vm-executor-jni.c 的
-# Java_com_limbo_emu_jni_VMExecutor_nativeSetVirglRenderBackend）。
+# Java_com_freshingair_limbo_jni_VMExecutor_nativeSetVirglRenderBackend）。
 # epoxy 是 gtk4android 的 meson wrap，源码在 config-gtk 的 meson setup 才
 # 下载，所以补丁也在那之后应用（见 PATCH_EPOXY）。
 EPOXY_ANGLE_PATCH   := $(LIMBO_JNI_ROOT)/patches/epoxy-android-angle-backend.patch

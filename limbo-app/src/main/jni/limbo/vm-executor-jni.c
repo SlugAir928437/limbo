@@ -414,7 +414,7 @@ static void cleanup_agl_display(void) {
     }
 }
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_setSurface(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_AglDisplay_setSurface(
         JNIEnv* env, jclass clazz, jobject surface, jfloat refresh_rate) {
     agl_set_window_fn set_window =
             (agl_set_window_fn) get_qemu_symbol("agl_set_window");
@@ -443,7 +443,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_setSurface(
     }
 }
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_pointer(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_AglDisplay_pointer(
         JNIEnv* env, jclass clazz, jfloat x, jfloat y, jint buttons) {
     agl_pointer_fn pointer =
             (agl_pointer_fn) get_qemu_symbol("limbo_agl_pointer");
@@ -453,7 +453,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_pointer(
     }
 }
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_scroll(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_AglDisplay_scroll(
         JNIEnv* env, jclass clazz, jfloat x, jfloat y) {
     agl_scroll_fn scroll =
             (agl_scroll_fn) get_qemu_symbol("limbo_agl_scroll");
@@ -463,7 +463,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_scroll(
     }
 }
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_key(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_AglDisplay_key(
         JNIEnv* env, jclass clazz, jint scan_code, jboolean down) {
     agl_key_fn key = (agl_key_fn) get_qemu_symbol("limbo_agl_key");
 
@@ -483,7 +483,7 @@ typedef void (*display_switch_fn)(int delta);
  * 真正的切换由它投递到 QEMU 主循环线程执行，因此这里可以从界面线程直接调。
  * 旧引擎没有这个符号时只记日志，不影响虚拟机继续运行。
  */
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeSwitchDisplay(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_nativeSwitchDisplay(
         JNIEnv* env, jclass clazz, jint delta) {
     display_switch_fn switch_display =
             (display_switch_fn) get_qemu_symbol("limbo_display_switch");
@@ -502,7 +502,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeSwitchDisplay(
  * elevate an existing process, which is why the fallback for devices without
  * KernelSU is the separate root child process (headless).
  */
-JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_RootUtils_grantRoot(
+JNIEXPORT jint JNICALL Java_com_freshingair_limbo_jni_RootUtils_grantRoot(
         JNIEnv* env, jclass clazz) {
     int fd = -1;
     int status;
@@ -538,7 +538,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *pvt) {
  * 才下发，上游树则安静跳过。SDL/GTK 后端在 Surface 变化时本来就会重新
  * layout 并重绘，不依赖这个开关。
  */
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeRefreshScreen(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_nativeRefreshScreen(
                 JNIEnv* env, jobject thiz, jint jvalue) {
     if (handle == NULL) {
         return;
@@ -550,33 +550,33 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeRefreshScreen(
     set_qemu_var(env, thiz, "limbo_vga_full_update", jvalue);
 }
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setvncrefreshrate(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_setvncrefreshrate(
 		JNIEnv* env, jobject thiz, jint jvalue) {
     set_qemu_var(env, thiz, "vnc_refresh_interval_inc", jvalue);
     set_qemu_var(env, thiz, "vnc_refresh_interval_base", jvalue);
 }
 
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateDefault(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_setSDLRefreshRateDefault(
 		JNIEnv* env, jobject thiz, jint jvalue) {
     set_qemu_var(env, thiz, "gui_refresh_interval_default", jvalue);
 }
 
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateIdle(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_setSDLRefreshRateIdle(
 		JNIEnv* env, jobject thiz, jint jvalue) {
             printf("setting sdl refresh rate idle: %d\n", jvalue);
     set_qemu_var(env, thiz, "gui_refresh_interval_idle", jvalue);
 }
 
 
-JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateDefault(
+JNIEXPORT jint JNICALL Java_com_freshingair_limbo_jni_VMExecutor_getSDLRefreshRateDefault(
 		JNIEnv* env, jobject thiz) {
     
     int res = get_qemu_var(env, thiz, "gui_refresh_interval_default");
     return res;
 }
 
-JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateIdle(
+JNIEXPORT jint JNICALL Java_com_freshingair_limbo_jni_VMExecutor_getSDLRefreshRateIdle(
 		JNIEnv* env, jobject thiz) {
 
     int res = get_qemu_var(env, thiz, "gui_refresh_interval_idle");
@@ -591,7 +591,7 @@ JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getSDLRefreshRateIdle(
  *   2 = 原始分辨率 1:1（居中，超出部分裁剪）
  * 静态 native（VMExecutor.setSDLScaleMode），因此第二个参数是 jclass。
  */
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLScaleMode(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_setSDLScaleMode(
 		JNIEnv* env, jclass clazz, jint jmode) {
     limbo_pending_sdl_scale_mode = (int) jmode;
 
@@ -609,7 +609,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLScaleMode(
  * limbo_gtk_refresh_rate），这里一并下发；AGL 后端走 AglDisplay.setSurface()。
  * 静态 native（VMExecutor.setSDLRefreshRateHz），因此第二个参数是 jclass。
  */
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateHz(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_setSDLRefreshRateHz(
 		JNIEnv* env, jclass clazz, jint jhz) {
     limbo_pending_sdl_refresh_rate = (int) jhz;
 
@@ -630,7 +630,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_setSDLRefreshRateHz(
  * /system/lib64、/vendor/lib64 依次探测）。
  * 必须赶在 qemu_init() 之前生效，所以库没加载时只缓存，由 start() 里下发。
  */
-JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeSetVirglRenderBackend(
+JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_nativeSetVirglRenderBackend(
 		JNIEnv* env, jobject thiz, jint jbackend, jstring jangle_dir) {
     const char *dir = NULL;
 
@@ -657,7 +657,7 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeSetVirglRenderBac
     }
 }
 
-JNIEXPORT jint JNICALL Java_com_limbo_emu_jni_VMExecutor_getvncrefreshrate(
+JNIEXPORT jint JNICALL Java_com_freshingair_limbo_jni_VMExecutor_getvncrefreshrate(
 		JNIEnv* env, jobject thiz) {
 
     int res = get_qemu_var(env, thiz, "vnc_refresh_interval_inc");
@@ -1765,7 +1765,7 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
     return (*env)->NewStringUTF(env, res_msg);
 }
 
-JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_start(
+JNIEXPORT jstring JNICALL Java_com_freshingair_limbo_jni_VMExecutor_start(
         JNIEnv* env, jobject thiz,
 		jstring storage_dir, jstring base_dir,
 		jstring lib_filename, jstring lib_path,
@@ -1776,7 +1776,7 @@ JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_start(
 
 /* Entry point for the root child process (RootVmLauncher.main): runs the
  * very same in-process VM bootstrap but without any Android UI object. */
-JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_RootVmLauncher_startVm(
+JNIEXPORT jstring JNICALL Java_com_freshingair_limbo_jni_RootVmLauncher_startVm(
         JNIEnv* env, jclass clazz,
 		jstring storage_dir, jstring base_dir,
 		jstring lib_filename, jstring lib_path,
@@ -1786,7 +1786,7 @@ JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_RootVmLauncher_startVm(
 }
 
 
-JNIEXPORT jstring JNICALL Java_com_limbo_emu_jni_VMExecutor_stop(
+JNIEXPORT jstring JNICALL Java_com_freshingair_limbo_jni_VMExecutor_stop(
 		JNIEnv* env, jobject thiz, jint jint_restart) {
 	char res_msg[MSG_BUFSIZE + 1] = { 0 };
 

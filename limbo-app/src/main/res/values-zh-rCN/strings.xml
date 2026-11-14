@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 应用名称 -->
-    <string name="app_name">Limbo 模拟器</string>
+    <string name="app_name">Limbo FA</string>
     <!-- 基本控件 -->
     <string name="button_send_text">发送文本</string>
     <string name="center_mouse">鼠标</string>

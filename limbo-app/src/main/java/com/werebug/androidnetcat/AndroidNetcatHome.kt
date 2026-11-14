@@ -3,8 +3,8 @@ package com.werebug.androidnetcat
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import com.limbo.emu.R
-import com.limbo.emu.databinding.ActivityNetcatHomeBinding
+import com.freshingair.limbo.R
+import com.freshingair.limbo.databinding.ActivityNetcatHomeBinding
 
 class AndroidNetcatHome : AppCompatActivity(), View.OnClickListener {
 

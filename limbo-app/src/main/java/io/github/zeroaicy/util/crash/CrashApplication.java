@@ -3,8 +3,8 @@ package io.github.zeroaicy.util.crash;
 import android.app.Application;
 import android.content.Context;
 
-import com.limbo.emu.BuildConfig;
-import com.limbo.emu.main.LimboApplication;
+import com.freshingair.limbo.BuildConfig;
+import com.freshingair.limbo.main.LimboApplication;
 
 import io.github.zeroaicy.util.DebugUtil;
 import io.github.zeroaicy.util.FileUtil;

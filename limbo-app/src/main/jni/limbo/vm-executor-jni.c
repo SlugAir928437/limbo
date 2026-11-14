@@ -70,23 +70,26 @@ static char limbo_watchdog_cpus[64] = { 0 };
 static int limbo_pending_sdl_refresh_rate = -1;
 
 /* ---------------------------------------------------------------------------
- * Limbo：VirGL/EGL 渲染后端（系统 GLES 或 ANGLE）。
+ * Limbo：VirGL/EGL 渲染后端（系统 GLES / ANGLE / Mesa zink）。
  *
  * QEMU 的 CONFIG_OPENGL、virglrenderer 的 vrend 都通过 libepoxy 做 EGL/GL
  * 入口分发，而 libepoxy 默认按编译期写死的库名（"libEGL.so" /
- * "libGLESv1_CM.so" / "libGLESv2.so"）dlopen。要把渲染后端换成 ANGLE，就得
- * 让 libepoxy 改去加载 "<angle目录>/libEGL_angle.so" 等一套库。
+ * "libGLESv1_CM.so" / "libGLESv2.so"）dlopen。要把渲染后端换成另一套实现，
+ * 就得让 libepoxy 改去加载那套库。
  *
  * 做法抄自 termux-packages 的 virglrenderer-android（0003-use-angle.patch +
- * 0007-Ensure-EGL-GLES-ANGLE-help-and-socket-path.patch）：给 libepoxy 打一个
- * 补丁，在 __ANDROID__ 分支上把三个库名从宏常量改成 static char[]，并额外导出
+ * 0007-Ensure-EGL-GLES-ANGLE-help-and-socket-path.patch）：给 libepoxy 打两个
+ * 补丁（patches/epoxy-android-*.patch），在 __ANDROID__ 分支上把三个库名从宏
+ * 常量改成 static char[]，并额外导出
  *
- *     void epoxy_set_library_path(const char *path);
+ *     void epoxy_set_library_names(const char *egl, const char *gles1, const char *gles2);
+ *     void epoxy_set_library_path(const char *path);   // ANGLE 固定命名
  *
- * 调用它之后，libepoxy 里所有 EGL/GLES 入口都会从 path 目录下的 ANGLE 库解析。
- * 补丁在 patches/epoxy-android-angle-backend.patch，由 Makefile 的 config-gtk
- * 目标在 gtk4android 的 libepoxy 源码上应用（epoxy 是 QEMU 与 virglrenderer
- * 共同的依赖，只有 gtk4android 里编的这份被链进 libqemu-system-*.so）。
+ * 两套后端共用同一机制，只是库名不同：
+ *   ANGLE：libEGL_angle.so / libGLESv1_CM_angle.so / libGLESv2_angle.so
+ *   Zink ：libEGL_zink.so  / libGLESv1_CM_zink.so  / libGLESv2_zink.so
+ *          （Mesa 的 GL/GLES 实现，见 Makefile 的 USE_VIRGL_ZINK；还需要
+ *           GALLIUM_DRIVER=zink 告诉 Mesa 用 zink 这个 gallium 驱动）
  *
  * 时机很关键：epoxy 的入口是在第一次 EGL/GL 调用时才 dlopen 的，所以必须在
  * qemu_init()（SDL/EGL 显示初始化）之前调用。因此这里和缩放模式一样缓存
@@ -94,16 +97,48 @@ static int limbo_pending_sdl_refresh_rate = -1;
  * ------------------------------------------------------------------------- */
 #define LIMBO_GL_BACKEND_GLES  0
 #define LIMBO_GL_BACKEND_ANGLE 1
+#define LIMBO_GL_BACKEND_ZINK  2
+
+/* 一套 EGL/GLES 实现的库名。gles1 只有走 GLES1 入口才用到（QEMU/virgl 不走）。 */
+typedef struct {
+    const char *egl;
+    const char *gles1;
+    const char *gles2;
+} limbo_gl_libs;
+
+static const limbo_gl_libs limbo_gl_angle_libs = {
+    "libEGL_angle.so", "libGLESv1_CM_angle.so", "libGLESv2_angle.so",
+};
+static const limbo_gl_libs limbo_gl_zink_libs = {
+    "libEGL_zink.so", "libGLESv1_CM_zink.so", "libGLESv2_zink.so",
+};
 
 /* -1 = 未设置（沿用系统 GLES）；否则是 LIMBO_GL_BACKEND_* */
 static int limbo_pending_gl_backend = -1;
-/* ANGLE 库所在目录，空串表示让 native 自己按候选目录去找 */
-static char limbo_pending_angle_dir[MAX_STRING_LEN] = { 0 };
+/* 选中后端那套库所在目录，空串表示让 native 自己按候选目录去找 */
+static char limbo_pending_gl_dir[MAX_STRING_LEN] = { 0 };
 /* -1 = 还没尝试过；0 = 已生效；其他 = 失败原因（不重复尝试） */
 static int limbo_gl_backend_applied = -1;
 
+static int limbo_gl_backend_is_virtual(int backend) {
+    return backend == LIMBO_GL_BACKEND_ANGLE || backend == LIMBO_GL_BACKEND_ZINK;
+}
+
+static const limbo_gl_libs *limbo_gl_libs_for(int backend) {
+    return backend == LIMBO_GL_BACKEND_ZINK ? &limbo_gl_zink_libs
+                                            : &limbo_gl_angle_libs;
+}
+
+static const char *limbo_gl_backend_name(int backend) {
+    switch (backend) {
+    case LIMBO_GL_BACKEND_ANGLE: return "ANGLE";
+    case LIMBO_GL_BACKEND_ZINK:  return "Zink";
+    default:                     return "system GLES";
+    }
+}
+
 /*
- * 实测 dir 下某个 ANGLE 库能不能加载。只看文件在不在（access()）是不够的：
+ * 实测 dir 下某个 EGL/GLES 库能不能加载。只看文件在不在（access()）是不够的：
  * Android 的 linker 命名空间默认不允许 app 直接 dlopen /system/lib64 下没列进
  * public.libraries.txt 的私有库，logcat 里只会留一行
  *
@@ -122,7 +157,7 @@ static int limbo_gl_backend_applied = -1;
  * SDL_sysloadso.c:50）。按最严的那一方探测，过了就说明 SDL 那边也一定能加载，
  * 否则会出现"探针过了、SDL_GL_CreateContext 却失败"的半吊子状态。
  */
-static int limbo_angle_lib_loadable(const char *dir, const char *name) {
+static int limbo_gl_lib_loadable(const char *dir, const char *name) {
     char path[MAX_STRING_LEN + 64];
     void *h = NULL;
 
@@ -140,30 +175,31 @@ static int limbo_angle_lib_loadable(const char *dir, const char *name) {
 }
 
 /*
- * 判断 dir 下是不是一整套能用的 ANGLE。
- * libEGL_angle.so 和 libGLESv2_angle.so 都必须能加载：epoxy 是分别 dlopen 的，
- * 少了任何一个都会在第一次 GL 调用时 abort。libGLESv1_CM_angle.so 只有 GLES1
- * 入口才会用到，QEMU/virgl 不走那条路，缺了不算失败。
+ * 判断 dir 下是不是一整套能用的 EGL/GLES 实现（ANGLE 或 zink）。
+ * EGL 和 GLESv2 都必须能加载：epoxy 是分别 dlopen 的，少了任何一个都会在
+ * 第一次 GL 调用时 abort。GLESv1 只有 GLES1 入口才会用到，QEMU/virgl 不走
+ * 那条路，缺了不算失败。
  */
-static int limbo_dir_has_angle(const char *dir) {
-    if (!limbo_angle_lib_loadable(dir, "libEGL_angle.so")) {
+static int limbo_dir_has_gl_libs(const char *dir, const limbo_gl_libs *libs) {
+    if (!limbo_gl_lib_loadable(dir, libs->egl)) {
         return 0;
     }
-    if (!limbo_angle_lib_loadable(dir, "libGLESv2_angle.so")) {
+    if (!limbo_gl_lib_loadable(dir, libs->gles2)) {
         return 0;
     }
-    limbo_angle_lib_loadable(dir, "libGLESv1_CM_angle.so");
+    limbo_gl_lib_loadable(dir, libs->gles1);
     return 1;
 }
 
 /*
- * 找到一套可用的 ANGLE 库目录。
- * 首选 Java 侧传进来的目录（通常是 APK 的 nativeLibraryDir，把 ANGLE 随包
- * 分发时就是它），其次是设备自带的系统 ANGLE（Android 15 起部分机型在
+ * 找到一套可用的 EGL/GLES 库目录。
+ * 首选 Java 侧传进来的目录（通常是 APK 的 nativeLibraryDir，把这套库随包
+ * 分发时就是它），其次是设备自带的系统库（Android 15 起部分机型在
  * /system/lib64 下带 libEGL_angle.so）。候选目录必须真的能 dlopen 才算数
- * （见 limbo_dir_has_angle），都不行就返回 0，让调用方回退系统 GLES。
+ * （见 limbo_dir_has_gl_libs），都不行就返回 0，让调用方回退系统 GLES。
  */
-static int limbo_resolve_angle_dir(const char *hint, char *out, size_t out_size) {
+static int limbo_resolve_gl_dir(const char *hint, const limbo_gl_libs *libs,
+                                char *out, size_t out_size) {
     const char *candidates[] = {
         hint,
         "/system/lib64",
@@ -174,7 +210,7 @@ static int limbo_resolve_angle_dir(const char *hint, char *out, size_t out_size)
     };
 
     for (int i = 0; candidates[i] != NULL; i++) {
-        if (!limbo_dir_has_angle(candidates[i])) {
+        if (!limbo_dir_has_gl_libs(candidates[i], libs)) {
             continue;
         }
         snprintf(out, out_size, "%s", candidates[i]);
@@ -188,12 +224,12 @@ static int limbo_resolve_angle_dir(const char *hint, char *out, size_t out_size)
  *
  * SDL2 自带一份 EGL 加载器（SDL2/src/video/SDL_egl.c），跟 libepoxy 毫无关系：
  * 它直接 dlopen "libEGL.so" / "libGLESv2.so"，也就是系统那套。只把 epoxy 指到
- * ANGLE、不管 SDL 的话，两边就是两套 EGL 实现：
+ * 另一套实现（ANGLE / Mesa zink）、不管 SDL 的话，两边就是两套 EGL：
  *
  *   - SDL_GL_CreateContext() 建出来的是【系统 EGL】的上下文；
- *   - QEMU/virgl 的 GL 入口却来自 epoxy，而 epoxy 已经改从 ANGLE 解析，
- *     于是 epoxy 的 eglGetCurrentContext()（走 libEGL_angle.so）看不到 SDL 建
- *     的那个系统上下文，返回 EGL_NO_CONTEXT；
+ *   - QEMU/virgl 的 GL 入口却来自 epoxy，而 epoxy 已经改从另一套库解析，
+ *     于是 epoxy 的 eglGetCurrentContext() 看不到 SDL 建的那个系统上下文，
+ *     返回 EGL_NO_CONTEXT；
  *   - epoxy_get_proc_address() 因此在 dispatch_common.c 里直接返回 NULL，
  *     生成的 thunk 把这个 NULL 写进全局函数指针再尾调用它。
  *
@@ -209,21 +245,45 @@ static int limbo_resolve_angle_dir(const char *hint, char *out, size_t out_size)
  * limbo_apply_gl_backend() 正好跑在 qemu_init() 之前，时机是对的。
  *
  * dir 为 NULL/空 表示用系统 GLES，要把之前设过的变量清掉：同一个进程里切回
- * 系统 GLES 再启动时，残留的 ANGLE 路径会让这个 mismatch 反过来再崩一次。
+ * 系统 GLES 再启动时，残留的路径会让这个 mismatch 反过来再崩一次。
  */
-static void limbo_set_sdl_gl_driver(const char *dir) {
+static void limbo_set_sdl_gl_driver(const limbo_gl_libs *libs, const char *dir) {
     char path[MAX_STRING_LEN + 64];
 
-    if (dir == NULL || dir[0] == '\0') {
+    if (libs == NULL || dir == NULL || dir[0] == '\0') {
         unsetenv("SDL_VIDEO_EGL_DRIVER");
         unsetenv("SDL_VIDEO_GL_DRIVER");
         return;
     }
-    snprintf(path, sizeof(path), "%s/libEGL_angle.so", dir);
+    snprintf(path, sizeof(path), "%s/%s", dir, libs->egl);
     setenv("SDL_VIDEO_EGL_DRIVER", path, 1);
-    snprintf(path, sizeof(path), "%s/libGLESv2_angle.so", dir);
+    snprintf(path, sizeof(path), "%s/%s", dir, libs->gles2);
     setenv("SDL_VIDEO_GL_DRIVER", path, 1);
-    LOGD("VirGL 后端：SDL 也切到 ANGLE（%s）", dir);
+    LOGD("VirGL 后端：SDL 也切到 %s/%s", dir, libs->egl);
+}
+
+/*
+ * Mesa zink 还要告诉 Mesa 用哪个 gallium 驱动：EGL/GLES 入口由 Mesa 提供，
+ * zink 再把 GL 调用翻译成设备 Vulkan 驱动的调用。
+ *
+ * libgallium_dri.so 随 APK 分发，与应用其它 jniLibs 在同一个 linker 命名空间
+ * 里，Mesa 按 soname 就能找到；LIBGL_DRIVERS_PATH 只是部分 Mesa 版本的兜底
+ * 查找路径。切回系统 GLES / ANGLE 时必须清掉，否则会残留到下一次启动。
+ */
+static void limbo_set_mesa_env(int zink, const char *dir) {
+    if (!zink) {
+        unsetenv("GALLIUM_DRIVER");
+        unsetenv("MESA_LOADER_DRIVER_OVERRIDE");
+        unsetenv("LIBGL_DRIVERS_PATH");
+        return;
+    }
+    setenv("GALLIUM_DRIVER", "zink", 1);
+    setenv("MESA_LOADER_DRIVER_OVERRIDE", "zink", 1);
+    if (dir != NULL && dir[0] != '\0') {
+        setenv("LIBGL_DRIVERS_PATH", dir, 1);
+    } else {
+        unsetenv("LIBGL_DRIVERS_PATH");
+    }
 }
 
 /*
@@ -232,28 +292,35 @@ static void limbo_set_sdl_gl_driver(const char *dir) {
  * 返回 0 成功；<0 表示没生效（调用方只记日志，不影响启动）。
  */
 static int limbo_apply_gl_backend(void) {
-    char angle_dir[MAX_STRING_LEN + 32] = { 0 };
+    char gl_dir[MAX_STRING_LEN + 32] = { 0 };
+    const limbo_gl_libs *libs = NULL;
     void *epoxy = NULL;
+    void (*set_library_names)(const char *, const char *, const char *) = NULL;
     void (*set_library_path)(const char *) = NULL;
+    int backend = limbo_pending_gl_backend;
 
     if (limbo_gl_backend_applied != -1) {
         return limbo_gl_backend_applied;
     }
-    if (limbo_pending_gl_backend != LIMBO_GL_BACKEND_ANGLE) {
+    if (!limbo_gl_backend_is_virtual(backend)) {
         /* 默认（系统 GLES）：epoxy 本来就用 libEGL.so，SDL 也用 libEGL.so，
-         * 两边一致；只需清掉上一次可能设过的 ANGLE 路径。 */
-        limbo_set_sdl_gl_driver(NULL);
+         * 两边一致；只需清掉上一次可能设过的后端路径与 Mesa 环境。 */
+        limbo_set_sdl_gl_driver(NULL, NULL);
+        limbo_set_mesa_env(0, NULL);
         limbo_gl_backend_applied = 0;
         return 0;
     }
 
-    if (!limbo_resolve_angle_dir(limbo_pending_angle_dir, angle_dir,
-                                 sizeof(angle_dir))) {
-        LOGE("VirGL 后端：选了 ANGLE，但 APK 的 nativeLibraryDir 与 "
-             "/system/lib64、/vendor/lib64 里都没有可加载的 libEGL_angle.so + "
-             "libGLESv2_angle.so（文件在≠能加载：app 的 linker 命名空间不允许 "
-             "dlopen 系统私有库），回退系统 GLES");
-        limbo_set_sdl_gl_driver(NULL);
+    libs = limbo_gl_libs_for(backend);
+    if (!limbo_resolve_gl_dir(limbo_pending_gl_dir, libs,
+                              gl_dir, sizeof(gl_dir))) {
+        LOGE("VirGL 后端：选了 %s，但 APK 的 nativeLibraryDir 与 "
+             "/system/lib64、/vendor/lib64 里都没有可加载的 %s + %s"
+             "（文件在≠能加载：app 的 linker 命名空间不允许 dlopen 系统私有库），"
+             "回退系统 GLES",
+             limbo_gl_backend_name(backend), libs->egl, libs->gles2);
+        limbo_set_sdl_gl_driver(NULL, NULL);
+        limbo_set_mesa_env(0, NULL);
         limbo_gl_backend_applied = -2;
         return -2;
     }
@@ -264,25 +331,53 @@ static int limbo_apply_gl_backend(void) {
     epoxy = dlopen("libepoxy.so", RTLD_NOW | RTLD_GLOBAL);
     if (epoxy == NULL) {
         LOGE("VirGL 后端：dlopen(libepoxy.so) 失败: %s", dlerror());
-        limbo_set_sdl_gl_driver(NULL);
+        limbo_set_sdl_gl_driver(NULL, NULL);
+        limbo_set_mesa_env(0, NULL);
         limbo_gl_backend_applied = -3;
         return -3;
     }
-    set_library_path = (void (*)(const char *)) dlsym(epoxy,
-                                                      "epoxy_set_library_path");
-    if (set_library_path == NULL) {
-        LOGE("VirGL 后端：libepoxy 里没有 epoxy_set_library_path，说明这份 "
-             "libepoxy 没打 patches/epoxy-android-angle-backend.patch，"
-             "ANGLE 后端不可用，继续用系统 GLES");
-        limbo_set_sdl_gl_driver(NULL);
+
+    set_library_names = (void (*)(const char *, const char *, const char *))
+        dlsym(epoxy, "epoxy_set_library_names");
+    if (set_library_names != NULL) {
+        char egl[MAX_STRING_LEN + 64];
+        char gles1[MAX_STRING_LEN + 64];
+        char gles2[MAX_STRING_LEN + 64];
+
+        snprintf(egl,   sizeof(egl),   "%s/%s", gl_dir, libs->egl);
+        snprintf(gles1, sizeof(gles1), "%s/%s", gl_dir, libs->gles1);
+        snprintf(gles2, sizeof(gles2), "%s/%s", gl_dir, libs->gles2);
+        set_library_names(egl, gles1, gles2);
+    } else if (backend == LIMBO_GL_BACKEND_ANGLE) {
+        /* 兼容只打了 ANGLE 补丁、没有通用库名补丁的 libepoxy */
+        set_library_path = (void (*)(const char *))
+            dlsym(epoxy, "epoxy_set_library_path");
+        if (set_library_path == NULL) {
+            LOGE("VirGL 后端：libepoxy 里既没有 epoxy_set_library_names 也没有 "
+                 "epoxy_set_library_path，说明这份 libepoxy 没打 "
+                 "patches/epoxy-android-*.patch，ANGLE 后端不可用，"
+                 "继续用系统 GLES");
+            limbo_set_sdl_gl_driver(NULL, NULL);
+            limbo_set_mesa_env(0, NULL);
+            limbo_gl_backend_applied = -4;
+            return -4;
+        }
+        set_library_path(gl_dir);
+    } else {
+        LOGE("VirGL 后端：libepoxy 里没有 epoxy_set_library_names，说明这份 "
+             "libepoxy 没打 patches/epoxy-android-library-names.patch，"
+             "%s 后端不可用，继续用系统 GLES", limbo_gl_backend_name(backend));
+        limbo_set_sdl_gl_driver(NULL, NULL);
+        limbo_set_mesa_env(0, NULL);
         limbo_gl_backend_applied = -4;
         return -4;
     }
 
-    set_library_path(angle_dir);
     /* 只改 epoxy 不改 SDL 会 pc 0x0，见 limbo_set_sdl_gl_driver 的注释 */
-    limbo_set_sdl_gl_driver(angle_dir);
-    printf("VirGL render backend: ANGLE (%s)\n", angle_dir);
+    limbo_set_sdl_gl_driver(libs, gl_dir);
+    limbo_set_mesa_env(backend == LIMBO_GL_BACKEND_ZINK, gl_dir);
+    printf("VirGL render backend: %s (%s)\n",
+           limbo_gl_backend_name(backend), gl_dir);
     limbo_gl_backend_applied = 0;
     return 0;
 }
@@ -648,30 +743,33 @@ JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_setSDLRefreshRa
 
 
 /*
- * 设置 VirGL/EGL 渲染后端：0 = 系统 GLES（默认），1 = ANGLE。
- * angleDir 是 ANGLE 那套库（libEGL_angle.so / libGLESv1_CM_angle.so /
- * libGLESv2_angle.so）所在目录，可为空（native 侧按 APK nativeLibraryDir、
- * /system/lib64、/vendor/lib64 依次探测）。
+ * 设置 VirGL/EGL 渲染后端：0 = 系统 GLES（默认），1 = ANGLE，2 = Mesa zink。
+ * glDir 是所选后端那套库（ANGLE 的 libEGL_angle.so / zink 的 libEGL_zink.so
+ * 等）所在目录，可为空（native 侧按 APK nativeLibraryDir、/system/lib64、
+ * /vendor/lib64 依次探测）。
  * 必须赶在 qemu_init() 之前生效，所以库没加载时只缓存，由 start() 里下发。
  */
 JNIEXPORT void JNICALL Java_com_freshingair_limbo_jni_VMExecutor_nativeSetVirglRenderBackend(
-		JNIEnv* env, jobject thiz, jint jbackend, jstring jangle_dir) {
+		JNIEnv* env, jobject thiz, jint jbackend, jstring jgl_dir) {
     const char *dir = NULL;
 
     limbo_pending_gl_backend = (int) jbackend;
+    if (!limbo_gl_backend_is_virtual(limbo_pending_gl_backend)) {
+        limbo_pending_gl_backend = LIMBO_GL_BACKEND_GLES;
+    }
     limbo_gl_backend_applied = -1;
 
-    if (jangle_dir != NULL) {
-        dir = (*env)->GetStringUTFChars(env, jangle_dir, 0);
+    if (jgl_dir != NULL) {
+        dir = (*env)->GetStringUTFChars(env, jgl_dir, 0);
     }
     if (dir != NULL) {
-        snprintf(limbo_pending_angle_dir, sizeof(limbo_pending_angle_dir), "%s", dir);
-        (*env)->ReleaseStringUTFChars(env, jangle_dir, dir);
+        snprintf(limbo_pending_gl_dir, sizeof(limbo_pending_gl_dir), "%s", dir);
+        (*env)->ReleaseStringUTFChars(env, jgl_dir, dir);
     } else {
-        limbo_pending_angle_dir[0] = '\0';
+        limbo_pending_gl_dir[0] = '\0';
     }
 
-    if (limbo_pending_gl_backend != LIMBO_GL_BACKEND_ANGLE) {
+    if (limbo_pending_gl_backend == LIMBO_GL_BACKEND_GLES) {
         printf("VirGL render backend: system GLES\n");
         return;
     }
@@ -1726,12 +1824,12 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
         set_qemu_var(env, thiz, "limbo_gtk_refresh_rate", limbo_pending_sdl_refresh_rate);
     }
 
-    /* 显卡渲染后端（GLES / ANGLE）。必须在这里做，理由有两条：
+    /* 显卡渲染后端（GLES / ANGLE / zink）。必须在这里做，理由有两条：
      *   1) libqemu 已经 dlopen，libepoxy 已经在进程里，能 dlsym 到
-     *      epoxy_set_library_path()；
+     *      epoxy_set_library_names() / epoxy_set_library_path()；
      *   2) 还没走到 qemu_init()，epoxy 的 EGL/GL 入口都还没第一次解析，
      *      改了库名才会被后续所有的 eglxxx / glxxx 调用采用。
-     * 失败只记日志（例如选 ANGLE 但设备上没有 ANGLE 库），不拦启动。 */
+     * 失败只记日志（例如选 ANGLE/zink 但 APK 里没有对应库），不拦启动。 */
     limbo_apply_gl_backend();
 
 	// Use correct function signatures to avoid undefined behavior on ARM64

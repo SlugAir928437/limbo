@@ -173,12 +173,49 @@ USE_VIRGL ?= true
 USE_VIRGL_VENUS ?= true
 
 # ---------------------------------------------------------------------------
+# VirGL 的 Mesa zink 渲染后端（OpenGL / GLES over Vulkan）
+# ---------------------------------------------------------------------------
+# 编译 Mesa（只构建 zink 这一个 gallium 驱动 + Android EGL / GLESv2），产出
+# libEGL_zink.so / libGLESv1_CM_zink.so / libGLESv2_zink.so / libgallium_dri.so
+# 随 APK 分发。运行时在「显卡渲染后端」里选 Zink 后，native 侧让 libepoxy 与
+# SDL2 改从这套库解析 EGL/GLES，并设置
+# GALLIUM_DRIVER=zink / MESA_LOADER_DRIVER_OVERRIDE=zink
+# （见 limbo/vm-executor-jni.c 的 limbo_apply_gl_backend）。
+#
+# 为什么需要它：厂商 GL 驱动常常只给 ES 2.0/3.0，或对 vrend 需要的扩展支持不全；
+# ANGLE 只把 GLES 转译到 Vulkan，而 zink 是 Mesa 完整的 GL/GLES 实现架在设备
+# Vulkan 驱动之上，能提供更完整的 GLES 3.x / GL 4.x 能力。
+#
+# 默认关闭：Mesa 体积大、编译久，且需要 Mesa 源码能在当前 NDK 上配置成功。
+# 开启：export USE_VIRGL_ZINK=true && make limbo
+# 前提：USE_VIRGL=true（zink 只是 virglrenderer 的渲染后端）。
+USE_VIRGL_ZINK ?= false
+
+# Mesa 源码。用官方 release 压缩包（比 git clone 小很多），版本号对应官方 tag
+# mesa-<version>；下载失败时回退到 GitHub 的 tag 压缩包。可用 export 覆盖。
+MESA_VERSION ?= 25.2.0
+MESA_TGZ ?= https://archive.mesa3d.org/mesa-$(MESA_VERSION).tar.xz
+MESA_TGZ_ALT ?= https://github.com/Mesa3D/mesa/archive/refs/tags/mesa-$(MESA_VERSION).tar.gz
+
+# Mesa 的 EGL 平台。Android 上必须是 android：QEMU 的 SDL gl=on 会拿 Android
+# 原生窗口建 EGLDisplay / EGLSurface，surfaceless 平台没有这部分入口。
+MESA_PLATFORMS ?= android
+
+# 传给 Mesa 的 -Dplatform-sdk-version（只影响 Mesa 内部按 API 版本裁剪代码）。
+# 默认跟 ANDROID_API 一致；某些 Mesa 版本的 Android EGL 平台需要更新的 API
+# （例如 AHardwareBuffer 的 libnativewindow 从 API 26 起才有），此时可以用
+# export MESA_PLATFORM_SDK=26 覆盖——注意本地的 C 链接 API 仍是 ANDROID_API，
+# 覆盖后要求设备版本也相应提高。
+MESA_PLATFORM_SDK ?= $(NDK_PLATFORM_API)
+
+# ---------------------------------------------------------------------------
 # ANGLE 渲染后端（Translator layer: OpenGL ES -> Vulkan / D3D / Metal）
 # 编译 google/angle 产出 libEGL_angle.so / libGLESv2_angle.so，随 APK 分发
 # 让 virglrenderer 的 GL 后端在不支持 GLES 的设备上通过 ANGLE 转到 Vulkan。
 #
-# ANGLE 使用 CMake 交叉编译（参见 Makefile 的 config-angle），默认关闭：源码
-# 体积大、依赖完整的 CMake + Ninja 环境，且首次编译需要拉取 Chromium 子模块。
+# 注意：ANGLE 官方【只支持 GN + depot_tools 构建】（见其 doc/DevSetupAndroid.md），
+# 仓库里没有 CMakeLists.txt，所以下面 config-angle 目标当前的 CMake 流程跑不通，
+# 默认关闭；等改成 GN 流程或改用预编译产物后再打开。CI 里 USE_ANGLE 固定 false。
 # 开启：export USE_ANGLE=true && make limbo
 USE_ANGLE ?= false
 

@@ -20,6 +20,38 @@ on:
         options:
           - 'false'
           - 'true'
+      use_sdl:
+        description: '是否启用 SDL2 显示后端（关闭则 QEMU 以 --disable-sdl 配置）'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      use_gtk:
+        description: '是否编译 GTK4 显示后端（关闭可显著缩短构建时间；关闭后 VirGL 也会自动关闭）'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      use_spice:
+        description: '是否编译 SPICE 栈（只服务 qxl-vga；ia64 矩阵始终跳过）'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      use_angle:
+        description: '是否编译 ANGLE 转译层（注意：ANGLE 只支持 GN 构建，当前 Makefile 的 CMake 流程跑不通，选 true 会失败）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   build_linux:
@@ -49,14 +81,18 @@ jobs:
     env:
       BUILD_GUEST: ${{ matrix.guest }}
       BUILD_HOST: ${{ github.event.inputs.build_host || 'arm64-v8a' }}
-      USE_GTK: 'true'
-      USE_VIRGL: 'true'
-      # ANGLE（google/angle）作为 virglrenderer 的备选 EGL/GLES 后端：
-      # 编译 libEGL_angle.so / libGLESv2_angle.so 随 APK 分发，让 virtio-gpu-gl-pci
-      # 在不支持硬件 GLES 的设备上通过 ANGLE 转译到 Vulkan。
-      # ANGLE 需要额外的构建时间（~10min）和网络（首次拉 SwiftShader 等），
-      # 如需临时禁用可设为 'false'。
-      USE_ANGLE: 'true'
+      # SDL / GTK / SPICE / ANGLE 由手动触发时的四个开关决定；push / pull_request
+      # 事件没有 inputs，统一回落到默认值（SDL/GTK/SPICE 开，ANGLE 关）。
+      USE_SDL: ${{ github.event.inputs.use_sdl || 'true' }}
+      USE_GTK: ${{ github.event.inputs.use_gtk || 'true' }}
+      USE_SPICE: ${{ github.event.inputs.use_spice || 'true' }}
+      # ANGLE（google/angle）：默认关闭。ANGLE 官方只支持 GN + depot_tools 构建
+      # （仓库内无 CMakeLists.txt），Makefile 侧现有的 CMake 目标仍是占位实现，
+      # 打开后会卡在 config-angle，等改造成 GN 流程或改用预编译产物再启用。
+      USE_ANGLE: ${{ github.event.inputs.use_angle || 'false' }}
+      # virglrenderer 需要 gtk4android 安装出来的 libepoxy（CONFIG_OPENGL），
+      # 因此 USE_GTK=false 时把 VirGL 一起自动关掉，避免缺 epoxy 导致链接失败。
+      USE_VIRGL: ${{ github.event.inputs.use_gtk == 'false' && 'false' || 'true' }}
       # EDK2 客户机 UEFI 固件默认【不编译】；需要时在手动触发时把 build_edk2
       # 选为 true（Makefile 侧对应 USE_EDK2=true）。
       USE_EDK2: ${{ github.event.inputs.build_edk2 || 'false' }}
@@ -78,6 +114,8 @@ jobs:
       # config-X + X（libffi / glib / pixman / slirp / spice / gtk / virglrenderer，
       # 保持 jni/Makefile 里 config-deps -> deps 的相对次序）-> config-angle ->
       # angle -> config-qemu -> qemu -> ncat -> install。
+      # 其中 spice / gtk / virgl / angle 四组步骤会按 use_spice / use_gtk /
+      # use_angle 三个开关（env 里的 USE_*）显示为 skipped，不影响其余步骤。
       # EDK2 客户机 UEFI 固件（make edk2）不再是默认步骤：只有当 USE_EDK2=true
       # （手动触发时 build_edk2=true）时才会执行，见文末条件步骤。
       # 拆分的目的是让失败点直接定位到具体阶段（Actions 里一眼可见是哪一步、
@@ -109,7 +147,7 @@ jobs:
           sudo -E apt-get install -y --fix-missing \
             make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync patch \
-            gtk-doc-tools python3-pip ninja-build cmake meson libglib2.0-dev \
+            gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev \
             nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib
           # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉
           # 工具链）。EDK2 默认不编译，只有 USE_EDK2=true 时才安装这两个包：
@@ -212,14 +250,14 @@ jobs:
       # spice 只服务于 qxl-vga，IA-64 的 QEMU 以 --disable-spice 配置，故这两步
       # 在 BUILD_GUEST=ia64-softmmu 时不执行。
       - name: 11/22 配置 spice 栈（make config-spice）
-        if: env.BUILD_GUEST != 'ia64-softmmu'
+        if: env.USE_SPICE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-spice 2>&1 | tee "$LOGDIR/11-config-spice.log"
 
       - name: 12/22 构建 spice 栈（make spice）
-        if: env.BUILD_GUEST != 'ia64-softmmu'
+        if: env.USE_SPICE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
@@ -255,11 +293,9 @@ jobs:
           set -o pipefail
           make virgl 2>&1 | tee "$LOGDIR/16-virgl.log"
 
-      # ANGLE（google/angle）：OpenGL ES -> Vulkan 转译层，C++ 代码量很大、
-      # 首次 config 时 CMake FetchContent 会拉 SwiftShader 等依赖（几百 MB）。
-      # 与 virglrenderer 无编译期依赖，是运行时 libepoxy dlopen 的备选 EGL 实现，
-      # 所以排在 virglrenderer 之后、config-qemu 之前独立构建即可。
-      # 默认开启；想临时跳过设 USE_ANGLE=false（或在 ia64 构建矩阵里不装）。
+      # ANGLE（google/angle）：默认关闭（USE_ANGLE 输入默认 false）。注意 Makefile
+      # 里的 config-angle 目前仍是 CMake 流程，而 ANGLE 官方只支持 GN，选 true
+      # 会在这里失败；保留这两步是为了将来换成 GN/预编译产物后可直接复用开关。
       - name: 16a/22 配置 ANGLE（make config-angle）
         if: env.USE_ANGLE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni

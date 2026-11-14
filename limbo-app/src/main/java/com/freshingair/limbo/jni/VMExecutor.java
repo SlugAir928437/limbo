@@ -23,6 +23,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
 
@@ -272,21 +273,36 @@ public class VMExecutor extends MachineExecutor {
      * 第一次 {@code glCreateShader()} 就会跳到地址 0（SIGSEGV, pc 0x0）。
      */
     public static final int GL_BACKEND_ANGLE = 1;
+    /**
+     * 显卡渲染后端：Mesa zink。libepoxy 改加载随 APK 分发的 Mesa 那套
+     * {@code libEGL_zink.so / libGLESv1_CM_zink.so / libGLESv2_zink.so}，
+     * 并设置 {@code GALLIUM_DRIVER=zink}：Mesa 的 GL/GLES 实现把调用翻译到
+     * 设备的 Vulkan 驱动（系统 libvulkan.so）上。
+     *
+     * <p>与 ANGLE 相同，SDL2 也必须指向同一套库（native 侧会设
+     * {@code SDL_VIDEO_EGL_DRIVER / SDL_VIDEO_GL_DRIVER}），否则两套 EGL 混用
+     * 会在第一次 {@code glCreateShader()} 跳到地址 0。
+     *
+     * <p>这套库由 {@code USE_VIRGL_ZINK=true} 的构建产出；没随包分发时本后端
+     * 不可用，启动前会自动回退系统 GLES。
+     */
+    public static final int GL_BACKEND_ZINK = 2;
 
     /**
-     * 下发渲染后端给 native（libepoxy 的 {@code epoxy_set_library_path()}）。
+     * 下发渲染后端给 native（libepoxy 的 {@code epoxy_set_library_names()}）。
      *
      * <p>时机由 native 侧保证：库还没加载时先缓存，{@code start()} 里在
      * {@code qemu_init()} 之前应用——epoxy 的 EGL/GL 入口是第一次调用时才
      * dlopen 的，晚于此点就改不动了。
      *
-     * @param backend  {@link #GL_BACKEND_GLES} 或 {@link #GL_BACKEND_ANGLE}
-     * @param angleDir ANGLE 库目录，可为 null（native 侧按 APK 的
-     *                 nativeLibraryDir、/system/lib64、/vendor/lib64 依次探测）
+     * @param backend {@link #GL_BACKEND_GLES}、{@link #GL_BACKEND_ANGLE} 或
+     *                {@link #GL_BACKEND_ZINK}
+     * @param glDir   该后端那套 EGL/GLES 库所在目录，可为 null（native 侧按 APK
+     *                的 nativeLibraryDir、/system/lib64、/vendor/lib64 依次探测）
      */
-    public void setVirglRenderBackend(int backend, String angleDir) {
+    public void setVirglRenderBackend(int backend, String glDir) {
         try {
-            nativeSetVirglRenderBackend(backend, angleDir);
+            nativeSetVirglRenderBackend(backend, glDir);
         } catch (Throwable t) {
             // 跨进程隔离时原生库在服务进程里，本进程调用会失败；也兼容
             // 没打 epoxy 补丁的旧 native 库（那时符号不存在）。
@@ -294,48 +310,53 @@ public class VMExecutor extends MachineExecutor {
         }
     }
 
-    /** ANGLE 的 dlopen 入口库。 */
-    private static final String ANGLE_EGL_LIB = "libEGL_angle.so";
-    /** epoxy 之后一定会单独 dlopen 的那一个（virgl 全走 ES2/ES3）。 */
-    private static final String ANGLE_GLES2_LIB = "libGLESv2_angle.so";
-    /** 只有走 GLES1 入口才会用到，QEMU/virgl 不走，缺了不算失败。 */
-    private static final String ANGLE_GLES1_LIB = "libGLESv1_CM_angle.so";
+    /** ANGLE 那套库：EGL 入口 + GLES2（virgl 全走 ES2/ES3）。 */
+    private static final String[] ANGLE_LIBS = {
+            "libEGL_angle.so", "libGLESv2_angle.so", "libGLESv1_CM_angle.so",
+    };
+    /** Mesa zink 那套库（USE_VIRGL_ZINK 的构建产物，随 APK 分发）。 */
+    private static final String[] ZINK_LIBS = {
+            "libEGL_zink.so", "libGLESv2_zink.so", "libGLESv1_CM_zink.so",
+    };
 
-    /** ANGLE 不可用的提示每个进程只弹一次，免得每次开虚拟机都弹。 */
+    /** 各后端不可用的提示每个进程只弹一次，免得每次开虚拟机都弹。 */
     private static boolean sAngleFallbackNotified;
+    private static boolean sZinkFallbackNotified;
 
     /**
      * 按设置里的选择下发渲染后端；在 {@code start()} 里、native 启动之前调用。
      *
-     * <p>选 ANGLE 时先在 Java 侧实测一遍能不能加载（见
-     * {@link #resolveLoadableAngleDir}），不行就回退系统 GLES：libepoxy 的
+     * <p>选 ANGLE / zink 时先在 Java 侧实测一遍能不能加载（见
+     * {@link #resolveLoadableGlDir}），不行就回退系统 GLES：libepoxy 的
      * dlopen 失败不是返回错误，而是直接 {@code abort()} 掉整个进程（SDL 建窗口
      * 时表现为 SIGABRT），必须挡在它前面。
      */
     private void applyVirglRenderBackend() {
         Context context = LimboApplication.getInstance();
         int backend = LimboSettingsManager.getVirglRenderBackend(context);
-        String angleDir = FileUtils.getNativeLibSearchDir(context);
+        String glDir = FileUtils.getNativeLibSearchDir(context);
 
-        if (backend == GL_BACKEND_ANGLE) {
-            String usableDir = resolveLoadableAngleDir(angleDir);
+        if (backend == GL_BACKEND_ANGLE || backend == GL_BACKEND_ZINK) {
+            String[] libs = backend == GL_BACKEND_ZINK ? ZINK_LIBS : ANGLE_LIBS;
+            String usableDir = resolveLoadableGlDir(glDir, libs);
             if (usableDir != null) {
-                angleDir = usableDir;
+                glDir = usableDir;
             } else {
-                Log.w(TAG, "选了 ANGLE 渲染后端，但本进程的 linker 命名空间里没有一套"
-                        + " libEGL_angle.so + libGLESv2_angle.so 能被 dlopen（APK 没随包"
-                        + "分发 ANGLE，设备 /system/lib64 里那份又不允许 app 直接加载），"
+                Log.w(TAG, "选了 " + (backend == GL_BACKEND_ZINK ? "zink" : "ANGLE")
+                        + " 渲染后端，但本进程的 linker 命名空间里没有一套 "
+                        + libs[0] + " + " + libs[1] + " 能被 dlopen（APK 没随包"
+                        + "分发这套库，设备系统目录里那份又不允许 app 直接加载），"
                         + "本次改用系统 GLES");
+                notifyGlFallback(context, backend);
                 backend = GL_BACKEND_GLES;
-                angleDir = null;
-                notifyAngleFallback(context);
+                glDir = null;
             }
         }
-        setVirglRenderBackend(backend, angleDir);
+        setVirglRenderBackend(backend, glDir);
     }
 
     /**
-     * 找出本进程真的能加载的 ANGLE 库目录。
+     * 找出本进程真的能加载的一套 EGL/GLES 库目录。
      *
      * <p>native 侧原来只用 {@code access()} 判断文件在不在，但“文件在”不等于
      * “能加载”：Android 的 linker 命名空间默认禁止 app dlopen {@code /system}
@@ -344,14 +365,18 @@ public class VMExecutor extends MachineExecutor {
      * namespace}。这里用 {@link System#load} 真加载一遍——它和 epoxy 走同一个
      * linker 命名空间，结论一致。
      *
+     * <p>前两个库（EGL + GLES2）都必须能加载；第三个（GLES1）缺了不算失败，
+     * QEMU/virgl 不走 GLES1 入口。
+     *
      * <p>加载成功的库不卸载：epoxy 之后 dlopen 同一路径拿到的是同一个 handle。
      *
      * @param hint 优先尝试的目录，可能是 {@code .../base.apk!/lib/arm64-v8a}
      *             这种 APK 内路径（linker 支持按 zip 内路径加载）
+     * @param libs 该后端的库名，前两个是 EGL / GLES2
      * @return 可用的目录；一套都加载不了时返回 null
      */
     @Nullable
-    private static String resolveLoadableAngleDir(@Nullable String hint) {
+    private static String resolveLoadableGlDir(@Nullable String hint, String[] libs) {
         String[] candidates = {
                 hint,
                 "/system/lib64",
@@ -363,47 +388,58 @@ public class VMExecutor extends MachineExecutor {
             if (dir == null || dir.isEmpty()) {
                 continue;
             }
-            if (!loadAngleLib(dir, ANGLE_EGL_LIB)) {
+            if (!loadGlLib(dir, libs[0])) {
                 continue;
             }
-            if (!loadAngleLib(dir, ANGLE_GLES2_LIB)) {
+            if (!loadGlLib(dir, libs[1])) {
                 continue;
             }
-            loadAngleLib(dir, ANGLE_GLES1_LIB);
+            if (libs.length > 2) {
+                loadGlLib(dir, libs[2]);
+            }
             return dir;
         }
         return null;
     }
 
     /** 试加载 {@code dir/libName}，返回是否成功。 */
-    private static boolean loadAngleLib(String dir, String libName) {
+    private static boolean loadGlLib(String dir, String libName) {
         String path = dir + "/" + libName;
         try {
             System.load(path);
-            Log.i(TAG, "ANGLE 后端可用: " + path);
+            Log.i(TAG, "渲染后端库可用: " + path);
             return true;
         } catch (Throwable t) {
             // 被 linker 命名空间挡住时抛的是 UnsatisfiedLinkError（Error，不是
             // Exception），所以这里接 Throwable。
-            Log.d(TAG, "ANGLE 候选不可用: " + path + " (" + t + ")");
+            Log.d(TAG, "渲染后端候选不可用: " + path + " (" + t + ")");
             return false;
         }
     }
 
-    /** 提示一次“ANGLE 不可用，已回退系统 GLES”。 */
-    private static void notifyAngleFallback(Context context) {
-        if (sAngleFallbackNotified || context == null) {
+    /** 提示一次“所选后端不可用，已回退系统 GLES”。 */
+    private static void notifyGlFallback(Context context, int backend) {
+        if (context == null) {
             return;
         }
-        sAngleFallbackNotified = true;
+        boolean zink = backend == GL_BACKEND_ZINK;
+        if (zink ? sZinkFallbackNotified : sAngleFallbackNotified) {
+            return;
+        }
+        if (zink) {
+            sZinkFallbackNotified = true;
+        } else {
+            sAngleFallbackNotified = true;
+        }
         try {
-            ToastUtils.toastLong(context, context.getString(R.string.virglAngleUnavailable));
+            ToastUtils.toastLong(context, context.getString(
+                    zink ? R.string.virglZinkUnavailable : R.string.virglAngleUnavailable));
         } catch (Throwable t) {
-            Log.w(TAG, "提示 ANGLE 回退失败: " + t);
+            Log.w(TAG, "提示渲染后端回退失败: " + t);
         }
     }
 
-    private native void nativeSetVirglRenderBackend(int backend, String angleDir);
+    private native void nativeSetVirglRenderBackend(int backend, String glDir);
 
     /**
      * 设置显示后端的可变刷新率（VRR）目标频率：0 = 关闭（后端沿用自身节奏），
@@ -605,29 +641,30 @@ public class VMExecutor extends MachineExecutor {
 
         } else if (spice) {
             // SPICE 服务端输出：QEMU 的 spice server 自己就是一种显示后端。
+            // 本地不建窗口，统一 -display none（不指定时 QEMU 会默认挑 GTK，
+            // 在后台服务里多开一个窗口）。
             //
-            // GL 有两条互斥路径：
-            //  * QXL（SPICE 模式默认显卡）：spice-server 自己进行 GL 扫描输出
-            //    （-spice gl=on，见 addSpiceOptions）。此时不能再挂第二个 GL
-            //    显示后端：egl-headless 和 spice 都会对同一个 console 调用
-            //    qemu_console_set_display_gl_ctx()，后注册的会覆盖前一个。
-            //  * virtio-gpu-gl：客户机 GL 由 egl-headless 渲染成普通帧后交给
-            //    SPICE，因此用 -display egl-headless,gl=on，-spice 不带 gl=on。
+            // GL 只能由 -spice gl=on 提供：它会在每块图形控制台上注册自己的
+            // GL 上下文（qemu_console_set_display_gl_ctx）和 GL 显示监听器
+            // （display_listener_gl_ops），virtio-gpu-gl 的 dpy_gl_scanout 才
+            // 能送到 spice-server。
+            // 不能再叠加 -display egl-headless,gl=on：egl-headless 会先占用
+            // 控制台的 GL 上下文，spice 随后 qemu_console_set_display_gl_ctx()
+            // 直接以 "The console already has an OpenGL context." 退出；而不带
+            // gl 的 -spice 只注册 2D 监听器，GL 扫描输出被静默丢弃，SPICE
+            // 客户端永远收不到画面。
+            //
+            // QXL 是 2D/3D 半虚拟显卡，画面由 spice-server 通过 QXL 命令直接
+            // 取走，不需要 QEMU 侧 GL（带上 gl=on 反而会多跑一次 error_fatal
+            // 的 egl_init，初始化失败就整个 VM 起不来），因此只有 virtio-gpu-gl
+            // 才请求 gl=on；未编入 OpenGL（USE_VIRGL=false）的引擎里 -spice
+            // 不认识 gl= 参数，传了会以 "Invalid parameter 'gl'" 退出，所以
+            // 还要看 BuildFeatures.virgl()。
             String vga = getMachine().getVga();
-            boolean virtioGpu = vga != null && vga.startsWith("virtio-gpu");
             boolean glGpu = vga != null && vga.startsWith("virtio-gpu-gl");
             paramsList.add("-display");
-            if (glGpu) {
-                // Android 没有 render node，QEMU 的 EGL 适配会使用
-                // EGL_DEFAULT_DISPLAY + GLES3（见
-                // qemu-v11.0.0-android-egl.patch），因此不需要 rendernode=。
-                paramsList.add("egl-headless,gl=on");
-            } else {
-                // QXL 的 GL 由 -spice gl=on 自己提供；不指定 -display 时
-                // QEMU 会默认挑 GTK，从而在后台服务里多开一个窗口。
-                paramsList.add("none");
-            }
-            addSpiceOptions(context, paramsList, !virtioGpu);
+            paramsList.add("none");
+            addSpiceOptions(context, paramsList, glGpu && BuildFeatures.virgl());
             // 没有本地窗口，monitor/serial/parallel 通过 TCP 暴露给 nc 模块
             addConsoleTcpOptions(paramsList);
         } else {
@@ -736,9 +773,13 @@ public class VMExecutor extends MachineExecutor {
      * 远程控制端口暴露到局域网；只有用户在设置里打开“允许外部 SPICE 连接”
      * 时才绑定 0.0.0.0。密码是可选的 ticketing 认证，和 VNC 一样未加密。
      *
-     * @param gl QXL 是否启用 GL 扫描输出（{@code gl=on}）。它与认证方式无关，
-     *           密码开关只影响 ticketing；virtio-gpu 场景由 egl-headless
-     *           负责 GL，这里必须传 false。
+     * <p>QEMU 从 6.1 起删掉了 {@code -spice password=}，密码只能写成
+     * {@code password-secret=<id>} 并引用一个 {@code -object secret}。这里用
+     * base64 传密码，避免密码里的逗号/空格把 QEMU 的选项分隔符弄坏。
+     *
+     * @param gl 是否启用 QEMU 的 SPICE GL 扫描输出（{@code gl=on}）。只有
+     *           virtio-gpu-gl 需要；QXL 的画面由 spice-server 自己取走。
+     *           引擎没编 OpenGL 时不能传（-spice 不认识该参数）。
      */
     private void addSpiceOptions(Context context, ArrayList<String> paramsList, boolean gl) {
         boolean external = LimboSettingsManager.getEnableExternalSPICE(context);
@@ -750,7 +791,12 @@ public class VMExecutor extends MachineExecutor {
         spice.append(",addr=").append(external ? "0.0.0.0" : Config.defaultSPICEHost);
         if (usePassword && password != null && !password.isEmpty()) {
             // ticketing 认证：客户端可填任意用户名 + 该密码
-            spice.append(",password=").append(password);
+            final String secretId = "limbo-spice-pass";
+            String encoded = Base64.encodeToString(
+                    password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+            paramsList.add("-object");
+            paramsList.add("secret,id=" + secretId + ",data=" + encoded + ",format=base64");
+            spice.append(",password-secret=").append(secretId);
         } else {
             if (external) {
                 Log.w(TAG, "SPICE is bound to all interfaces without a password");
@@ -1169,10 +1215,11 @@ public class VMExecutor extends MachineExecutor {
         }
         // SPICE 的显示通道由 QXL 显卡原生提供（ui/spice-core.c 只接受
         // QXLInstance）；QXL 现在在 x86/x86_64 与 arm/arm64 里都编进来了
-        // （见 patches/qemu-arm-qxl.patch）。virtio-gpu(-gl) 走另一条路径：
-        // SPICE 模式会同时打开 egl-headless,gl=on，VirGL 渲染结果作为普通
-        // 帧更新送给 SPICE，因此用户显式选择 virtio-gpu* 时保留其选择；
-        // 其余本地显卡（Default/std/cirrus/ati/...）统一落到 qxl-vga。
+        // （configs/devices/arm-softmmu/default.mak 里有 CONFIG_QXL=y）。
+        // virtio-gpu 走另一条路径：SPICE 会给它注册一个合成的 QXL 接口，
+        // 普通 virtio-gpu 用 2D 更新、virtio-gpu-gl 用 -spice gl=on 的 GL
+        // 扫描输出（见 addUIOptions），因此用户显式选择 virtio-gpu* 时保留
+        // 其选择；其余本地显卡（Default/std/cirrus/ati/...）统一落到 qxl-vga。
         if ("SPICE".equals(ArchDefinitions.resolveUI(getMachine().getUI()))) {
             if (ArchDefinitions.isQxlAvailable()) {
                 if (!vga.startsWith("virtio-gpu")) {

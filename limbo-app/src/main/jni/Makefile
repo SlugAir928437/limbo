@@ -27,6 +27,7 @@ endif
 
 ifeq ($(IA64_GUEST),yes)
 USE_VIRGL := false
+USE_VIRGL_ZINK := false
 USE_SPICE := false
 endif
 
@@ -201,6 +202,7 @@ SYMBOLS_SRC_DIRS := $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI) \
 	$(PIXMAN_INSTALL_DIR)/lib \
 	$(GTK_INSTALL_DIR)/lib \
 	$(VIRGL_INSTALL_DIR)/lib \
+	$(if $(filter true,$(USE_VIRGL_ZINK)),$(MESA_INSTALL_DIR)/lib) \
 	$(if $(filter true,$(USE_ANGLE)),$(ANGLE_INSTALL_DIR)/lib)
 
 COLLECT_SYMBOLS= \
@@ -251,7 +253,7 @@ endif
 
 export
 
-.PHONY: limbo symbols clean-symbols clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl edk2 fetch-edk2 clean-edk2 fetch-angle config-angle angle clean-angle
+.PHONY: limbo symbols clean-symbols clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-mesa ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl fetch-mesa config-virgl config-mesa virgl mesa edk2 fetch-edk2 clean-edk2 fetch-angle config-angle angle clean-angle
 
 default: limbo
 	
@@ -474,23 +476,38 @@ clean-spice:
 # be built (and their .pc files generated) before we can configure GTK.
 #
 # libepoxy 是 gtk4android 的 meson wrap（anholt/libepoxy）：wrap 源码只有在
-# `meson setup` 时才会下载/解压到 gtk4android/subprojects/libepoxy。ANGLE 后端
-# 补丁（epoxy_set_library_path，见 patches/epoxy-android-angle-backend.patch）
-# 因此必须排在 setup 之后、首次 ninja 之前；放在 setup 之前时目录还不存在，
-# 补丁会被静默跳过，最终产出没有 epoxy_set_library_path() 的 libepoxy.so
-# （ANGLE 渲染后端运行时直接不可用）。打不上直接失败，不再只警告。
+# `meson setup` 时才会下载/解压到 gtk4android/subprojects/libepoxy。渲染后端
+# 补丁（epoxy_set_library_path / epoxy_set_library_names，见
+# patches/epoxy-android-*.patch）因此必须排在 setup 之后、首次 ninja 之前；
+# 放在 setup 之前时目录还不存在，补丁会被静默跳过，最终产出没有这两个符号的
+# libepoxy.so（ANGLE / zink 渲染后端运行时直接不可用）。打不上直接失败，不再
+# 只警告。
 EPOXY_WRAP_SRC := $(LIMBO_JNI_ROOT)/gtk4android/subprojects/libepoxy
+EPOXY_DISPATCH_C := $(EPOXY_WRAP_SRC)/src/dispatch_common.c
+# 两个补丁按顺序应用：
+#   1) ANGLE 基础改造：库名从宏常量改成 static char[]，额外导出
+#      epoxy_set_library_path()（固定按 *_angle.so 命名）；
+#   2) 通用库名：在 1) 之上再导出 epoxy_set_library_names()，让 zink 等任意一套
+#      EGL/GLES 库都能在运行时接进来。
+# 各自用引入的符号做幂等判断，所以已经打过旧版 ANGLE 补丁的源码树也能平滑升级。
 PATCH_EPOXY = \
-	if [ ! -f "$(EPOXY_WRAP_SRC)/src/dispatch_common.c" ]; then \
-		echo 'ERROR: libepoxy wrap 源码不存在，无法应用 ANGLE 后端补丁'; \
+	if [ ! -f "$(EPOXY_DISPATCH_C)" ]; then \
+		echo 'ERROR: libepoxy wrap 源码不存在，无法应用渲染后端补丁'; \
 		exit 1; \
 	fi; \
-	if grep -q epoxy_set_library_path "$(EPOXY_WRAP_SRC)/src/dispatch_common.c"; then \
+	if grep -q epoxy_set_library_path "$(EPOXY_DISPATCH_C)"; then \
 		echo ">> libepoxy: ANGLE 后端补丁已应用"; \
 	else \
 		echo ">> libepoxy: 应用 ANGLE 后端补丁"; \
 		patch -p1 -d "$(EPOXY_WRAP_SRC)" --forward < "$(EPOXY_ANGLE_PATCH)" \
 			|| { echo 'ERROR: libepoxy ANGLE 补丁没打上'; exit 1; }; \
+	fi; \
+	if grep -q epoxy_set_library_names "$(EPOXY_DISPATCH_C)"; then \
+		echo ">> libepoxy: 通用库名补丁已应用"; \
+	else \
+		echo ">> libepoxy: 应用通用库名补丁（zink 等后端）"; \
+		patch -p1 -d "$(EPOXY_WRAP_SRC)" --forward < "$(EPOXY_NAMES_PATCH)" \
+			|| { echo 'ERROR: libepoxy 通用库名补丁没打上'; exit 1; }; \
 	fi
 
 # pango 也是 gtk4android 的 meson wrap（GNOME/pango，revision = main，同样在
@@ -672,14 +689,169 @@ clean-virgl:
 	-rm -rf "$(VIRGL_BUILD_DIR)" "$(VIRGL_INSTALL_DIR)" "$(VIRGL_CROSS_FILE)"
 
 # ---------------------------------------------------------------------------
+# Mesa（zink）：virglrenderer 的另一种 GL/GLES 实现（USE_VIRGL_ZINK）
+#
+# 只编 Mesa 的 GL/GLES 前端 + zink 这一个 gallium 驱动：zink 把 GL 调用翻译成
+# 设备 Vulkan 驱动（系统 libvulkan.so）的调用，比厂商 GL 驱动更容易满足 vrend
+# 对 GLES 3.x/GL 4.x 的要求。产物：
+#   libEGL_zink.so / libGLESv1_CM_zink.so / libGLESv2_zink.so
+#   libgallium_dri.so / libglapi.so
+# 与 ANGLE 一样不参与 QEMU 编译，运行时由 libepoxy + SDL2 指向它们
+# （见 limbo/vm-executor-jni.c 的 limbo_apply_gl_backend）。
+#
+# 注意：
+#   * 这里没有把 Mesa 的 .pc 加进全局 PKG_CONFIG_PATH——Mesa 只是运行时替换，
+#     编译期不能影响 QEMU/virglrenderer 对系统 EGL/GLES 的解析；
+#   * Mesa 的 meson 选项在各版本之间有增删，和 virglrenderer 一样先探测
+#     meson_options.txt 再传：未知 -D 只是警告，但值类型不符会直接失败；
+#   * 需要 host 的 python3 + mako（Mesa 代码生成），缺失时 config-mesa 直接报错。
+# ---------------------------------------------------------------------------
+fetch-mesa:
+	@if [ "$(USE_VIRGL_ZINK)" != "true" ]; then \
+		echo ">> USE_VIRGL_ZINK=$(USE_VIRGL_ZINK)，跳过 Mesa"; \
+	elif [ -f "$(MESA_SRC_DIR)/meson.build" ]; then \
+		echo ">> Mesa 已存在，跳过"; \
+	else \
+		echo ">> GET Mesa $(MESA_VERSION)"; \
+		rm -rf "$(MESA_SRC_DIR)" /tmp/mesa-$(MESA_VERSION) /tmp/mesa-mesa-$(MESA_VERSION); \
+		ok=0; \
+		for url in $(MESA_TGZ) $(MESA_TGZ_ALT); do \
+			rm -f /tmp/mesa-$(MESA_VERSION).tar.xz /tmp/mesa-$(MESA_VERSION).tar.gz; \
+			echo ">> Mesa 下载 $$url"; \
+			case "$$url" in \
+				*.tar.xz) \
+					if wget --quiet --tries=1 --timeout=180 -O /tmp/mesa-$(MESA_VERSION).tar.xz "$$url" && \
+					   xz -t /tmp/mesa-$(MESA_VERSION).tar.xz 2>/dev/null && \
+					   tar -xJf /tmp/mesa-$(MESA_VERSION).tar.xz -C /tmp; then ok=1; fi ;; \
+				*) \
+					if wget --quiet --tries=1 --timeout=180 -O /tmp/mesa-$(MESA_VERSION).tar.gz "$$url" && \
+					   gzip -t /tmp/mesa-$(MESA_VERSION).tar.gz 2>/dev/null && \
+					   tar -xzf /tmp/mesa-$(MESA_VERSION).tar.gz -C /tmp; then ok=1; fi ;; \
+			esac; \
+			[ $$ok -eq 1 ] && break; \
+			echo ">> Mesa 下载失败或压缩包不完整，换下一个源"; \
+		done; \
+		if [ $$ok -ne 1 ]; then \
+			echo "ERROR: Mesa $(MESA_VERSION) 下载失败或压缩包损坏"; \
+			rm -f /tmp/mesa-$(MESA_VERSION).tar.xz /tmp/mesa-$(MESA_VERSION).tar.gz; \
+			exit 1; \
+		fi; \
+		src=$$(ls -d /tmp/mesa-$(MESA_VERSION) /tmp/mesa-mesa-$(MESA_VERSION) 2>/dev/null | head -n1); \
+		if [ -z "$$src" ]; then echo "ERROR: Mesa 解压目录不存在"; exit 1; fi; \
+		mv -f "$$src" "$(MESA_SRC_DIR)"; \
+		rm -f /tmp/mesa-$(MESA_VERSION).tar.xz /tmp/mesa-$(MESA_VERSION).tar.gz; \
+	fi
+
+config-mesa: ndk
+	@if [ "$(USE_VIRGL_ZINK)" != "true" ]; then \
+		echo ">> USE_VIRGL_ZINK=$(USE_VIRGL_ZINK)，跳过 Mesa 配置"; \
+	elif [ "$(USE_VIRGL)" != "true" ]; then \
+		echo "ERROR: USE_VIRGL_ZINK=true 需要 USE_VIRGL=true（zink 是 virgl 的渲染后端）"; \
+		exit 1; \
+	elif [ ! -f "$(MESA_SRC_DIR)/meson.build" ]; then \
+		echo "ERROR: Mesa 源码不存在（$(MESA_SRC_DIR)），先执行 make fetch-mesa"; \
+		exit 1; \
+	elif ! python3 -c 'import mako' >/dev/null 2>&1; then \
+		echo "ERROR: Mesa 的构建需要 python3 的 mako 模块（pip3 install mako）"; \
+		exit 1; \
+	else \
+		echo ">> Mesa 配置（$(MESA_BUILDTYPE), $(APP_ABI), platforms=$(MESA_PLATFORMS)）"; \
+		$(CREATE_MESA_MESON_CROSS_FILE); \
+		rm -rf "$(MESA_BUILD_DIR)" "$(MESA_INSTALL_DIR)"; \
+		$(CREATE_MESA_PC); \
+		cd $(MESA_SRC_DIR) && \
+		mesa_opts=""; \
+		has_opt() { \
+			grep -qE "option\('$$1'" meson_options.txt 2>/dev/null || \
+			grep -qE "^[[:space:]]*'$$1'[[:space:]]*," meson_options.txt 2>/dev/null; \
+		}; \
+		opt_type() { \
+			grep -A4 -E "option\('$$1'|^[[:space:]]*'$$1'[[:space:]]*," meson_options.txt 2>/dev/null | \
+				sed -n "s/.*type *: *'\([a-z]*\)'.*/\1/p" | head -n1; \
+		}; \
+		add_opt() { \
+			if has_opt "$$1"; then \
+				t=$$(opt_type "$$1"); \
+				case "$$t" in \
+					feature) mesa_opts="$$mesa_opts -D$$1=$$2" ;; \
+					boolean) mesa_opts="$$mesa_opts -D$$1=$$3" ;; \
+					*)       mesa_opts="$$mesa_opts -D$$1=$$4" ;; \
+				esac; \
+			fi; \
+		}; \
+		add_opt platforms enabled true "$(MESA_PLATFORMS)"; \
+		add_opt platform-sdk-version enabled true "$(MESA_PLATFORM_SDK)"; \
+		add_opt android-stub enabled true false; \
+		add_opt android-libbacktrace enabled false disabled; \
+		add_opt gallium-drivers enabled true zink; \
+		add_opt vulkan-drivers enabled true ""; \
+		add_opt egl enabled true enabled; \
+		add_opt gbm enabled true disabled; \
+		add_opt glx enabled true disabled; \
+		add_opt glvnd enabled true disabled; \
+		add_opt opengl enabled true disabled; \
+		add_opt gles1 enabled true disabled; \
+		add_opt gles2 enabled true enabled; \
+		add_opt llvm enabled true disabled; \
+		add_opt lmsensors enabled true disabled; \
+		add_opt valgrind enabled true disabled; \
+		add_opt zlib enabled true enabled; \
+		add_opt shared-glapi enabled true enabled; \
+		add_opt tests enabled true false; \
+		add_opt tools enabled true ""; \
+		echo ">> Mesa meson options:$$mesa_opts"; \
+		PKG_CONFIG_PATH="$(MESA_PKG_CONFIG_DIR)" \
+		PKG_CONFIG_LIBDIR="$(MESA_PKG_CONFIG_DIR)" \
+		meson setup "$(MESA_BUILD_DIR)" . \
+			--cross-file "$(MESA_CROSS_FILE)" \
+			--prefix "$(MESA_INSTALL_DIR)" \
+			$$mesa_opts; \
+	fi
+
+mesa: ndk config-mesa
+	@if [ "$(USE_VIRGL_ZINK)" = "true" ]; then \
+		echo ">> Mesa 构建（ninja -C $(MESA_BUILD_DIR)）"; \
+		ninja -C "$(MESA_BUILD_DIR)" -j $(BUILD_THREADS) && \
+		echo ">> Mesa 安装到 $(MESA_INSTALL_DIR)" && \
+		DESTDIR= ninja -C "$(MESA_BUILD_DIR)" install || exit 1; \
+		$(CREATE_LIBSDIR); \
+		libdir="$(MESA_INSTALL_DIR)/lib"; \
+		if [ ! -d "$$libdir" ]; then libdir="$(MESA_INSTALL_DIR)/lib64"; fi; \
+		deploy() { \
+			src="$$1"; dst="$$2"; \
+			if [ ! -f "$$src" ]; then echo ">> WARNING: 缺少 $$src"; return 0; fi; \
+			cp -Lf "$$src" "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/$$dst"; \
+			if command -v patchelf >/dev/null 2>&1; then \
+				patchelf --set-soname "$$dst" "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/$$dst"; \
+			else \
+				echo ">> WARNING: 没找到 patchelf，$$dst 的 SONAME 仍是 $$(basename "$$src")"; \
+			fi; \
+		}; \
+		deploy "$$libdir/libEGL.so" libEGL_zink.so; \
+		deploy "$$libdir/libGLESv1_CM.so" libGLESv1_CM_zink.so; \
+		deploy "$$libdir/libGLESv2.so" libGLESv2_zink.so; \
+		for extra in libgallium_dri.so libglapi.so; do \
+			if [ -f "$$libdir/$$extra" ]; then \
+				cp -Lf "$$libdir/$$extra" "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/"; \
+			fi; \
+		done; \
+		echo ">> Mesa 完成"; \
+	else \
+		echo ">> USE_VIRGL_ZINK=$(USE_VIRGL_ZINK)，跳过 Mesa 构建"; \
+	fi
+
+clean-mesa:
+	-rm -rf "$(MESA_BUILD_DIR)" "$(MESA_INSTALL_DIR)" "$(MESA_CROSS_FILE)"
+
+# ---------------------------------------------------------------------------
 # ANGLE (google/angle): OpenGL ES -> Vulkan Translator layer for Android.
 # 作用：在不支持硬件 GLES 的设备上，让 virglrenderer 的 GL 后端通过 ANGLE
 # 转译到 Vulkan，实现 virtio-gpu-gl-pci 的软件渲染兜底。与运行时切换配合
 # 见 limbo/vm-executor-jni.c（epoxy_set_library_path + set_library_path）。
 #
-# 构建：CMake + Ninja（同 libjpeg-turbo），独立 CMakeLists.txt，不依赖 pkg-config。
-# 共享库安装到 $(ANGLE_INSTALL_DIR)/lib，ANGLE 自己拉 SwiftShader / volk 等依赖
-# （CMake FetchContent，首次 configure 时自动下载）。USE_ANGLE=false 时全部跳过。
+# 构建：ANGLE 官方只支持 GN + depot_tools（仓库内无 CMakeLists.txt，见其
+# doc/DevSetupAndroid.md），下面这套 CMake 流程目前跑不通，仅作为占位保留；
+# USE_ANGLE 默认 false，CI 里也固定 false。等改成 GN 流程或改用预编译产物再启用。
 #
 # ANGLE 与 virglrenderer 无编译期依赖：ANGLE 只是 virgl 的运行时备选后端，
 # libepoxy 在运行时 dlopen 它。因此顺序上 ANGLE 可排在任何位置。
@@ -687,7 +859,7 @@ clean-virgl:
 config-angle: ndk
 	@if [ "$(USE_ANGLE)" != "true" ]; then \
 		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 配置"; \
-	elif [ ! -f "$(ANGLE_SRC_DIR)/CMakeLists.txt" ]; then \
+	elif [ ! -f "$(ANGLE_SRC_DIR)/BUILD.gn" ]; then \
 		echo "ERROR: ANGLE 源码不存在（$(ANGLE_SRC_DIR)），先执行 make fetch-angle"; exit 1; \
 	else \
 		echo ">> ANGLE CMake 配置（$(ANGLE_BUILDTYPE), $(APP_ABI)）"; \
@@ -734,13 +906,12 @@ clean-angle:
 	-rm -rf "$(ANGLE_BUILD_DIR)" "$(ANGLE_INSTALL_DIR)"
 
 # ANGLE 源码获取：google/angle 官方仓库 + 指定 tag（depth 1）。
-# ANGLE 依赖 SwiftShader 等 Chromium 子项目，CMake FetchContent 会在
-# config-angle 阶段自动拉取；这里只做顶层仓库克隆（省网络）。
-# 需要完整仓库历史时（某些子模块脚本要），ANGLE_FETCH_DEPS=true 才拉子模块。
+# 注意：ANGLE 的第三方依赖由 DEPS 管理（需 gclient sync），顶层克隆只是占位。
+# 需要子模块时 ANGLE_FETCH_DEPS=true 才拉子模块。
 fetch-angle:
 	@if [ "$(USE_ANGLE)" != "true" ]; then \
 		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 源码获取"; \
-	elif [ ! -f "$(ANGLE_SRC_DIR)/CMakeLists.txt" ]; then \
+	elif [ ! -f "$(ANGLE_SRC_DIR)/BUILD.gn" ]; then \
 		echo ">> GET ANGLE @ $(ANGLE_TAG) from $(ANGLE_URL)"; \
 		rm -rf "$(ANGLE_SRC_DIR)"; \
 		git clone --depth 1 --branch $(ANGLE_TAG) --single-branch $(ANGLE_URL) "$(ANGLE_SRC_DIR)"; \
@@ -864,6 +1035,12 @@ ifeq ($(USE_ANGLE),true)
 	make config-angle
 	make angle
 endif
+# Mesa zink 渲染后端：同样只在运行时替换 EGL/GLES（外加 GALLIUM_DRIVER=zink），
+# 与 QEMU/virglrenderer 无编译期依赖。
+ifeq ($(USE_VIRGL_ZINK),true)
+	make config-mesa
+	make mesa
+endif
 	make config-qemu
 	make qemu
 	make ncat
@@ -922,15 +1099,19 @@ VIRGL_URL           := https://gitlab.freedesktop.org/virgl/virglrenderer.git
 # get_egl_display 回调把自己的 EGLDisplay 交给它，不需要 gbm/render node）。
 VIRGL_PATCH         := $(LIMBO_JNI_ROOT)/patches/virglrenderer-android-egl.patch
 # libepoxy（QEMU 的 CONFIG_OPENGL 与 virglrenderer 的 vrend 都用它做 EGL/GL
-# 入口分发）默认按编译期写死的 "libEGL.so"/"libGLESv2.so" dlopen。这个补丁
-# 在 __ANDROID__ 分支把库名改成可写变量并导出 epoxy_set_library_path()，
-# 于是运行时可以把 EGL/GLES 换成 ANGLE 的那套 libEGL_angle.so /
-# libGLESv2_angle.so（做法抄自 termux-packages 的 virglrenderer-android
-# 0003-use-angle.patch；调用方见 limbo/vm-executor-jni.c 的
-# Java_com_freshingair_limbo_jni_VMExecutor_nativeSetVirglRenderBackend）。
+# 入口分发）默认按编译期写死的 "libEGL.so"/"libGLESv2.so" dlopen。
+#   * epoxy-android-angle-backend.patch：在 __ANDROID__ 分支把库名改成可写变量并
+#     导出 epoxy_set_library_path()，运行时把 EGL/GLES 换成 ANGLE 的
+#     libEGL_angle.so / libGLESv2_angle.so（做法抄自 termux-packages 的
+#     virglrenderer-android 0003-use-angle.patch）；
+#   * epoxy-android-library-names.patch：在其基础上再导出
+#     epoxy_set_library_names()，可指定任意库名（zink 用 libEGL_zink.so 等）。
+# 调用方见 limbo/vm-executor-jni.c 的
+# Java_com_freshingair_limbo_jni_VMExecutor_nativeSetVirglRenderBackend。
 # epoxy 是 gtk4android 的 meson wrap，源码在 config-gtk 的 meson setup 才
 # 下载，所以补丁也在那之后应用（见 PATCH_EPOXY）。
 EPOXY_ANGLE_PATCH   := $(LIMBO_JNI_ROOT)/patches/epoxy-android-angle-backend.patch
+EPOXY_NAMES_PATCH   := $(LIMBO_JNI_ROOT)/patches/epoxy-android-library-names.patch
 GTK4_URL            := https://github.com/SlugAir928437/gtk4android.git
 GTK4_BRANCH         := master
 GLIB_URL            := https://gitlab.gnome.org/GNOME/glib.git
@@ -1038,7 +1219,7 @@ EDK2_ENV = EDK2_FIRMWARE_DIR="$(EDK2_FIRMWARE_DIR)" EDK2_GIT_URL="$(EDK2_GIT_URL
 	EDK2_TAG="$(EDK2_TAG)" EDK2_TOOLCHAIN="$(EDK2_TOOLCHAIN)" \
 	BUILD_THREADS="$(BUILD_THREADS)" bash "$(EDK2_SCRIPT)"
 
-fetch: fetch-glib fetch-libffi fetch-pixman $(if $(filter true,$(USE_SDL)),fetch-sdl2) fetch-slirp $(SPICE_FETCH_TARGETS) $(if $(filter true,$(USE_GTK)),fetch-gtk4android) fetch-virgl fetch-qemu $(if $(filter true,$(USE_EDK2)),fetch-edk2) $(if $(filter true,$(USE_ANGLE)),fetch-angle)
+fetch: fetch-glib fetch-libffi fetch-pixman $(if $(filter true,$(USE_SDL)),fetch-sdl2) fetch-slirp $(SPICE_FETCH_TARGETS) $(if $(filter true,$(USE_GTK)),fetch-gtk4android) fetch-virgl fetch-qemu $(if $(filter true,$(USE_EDK2)),fetch-edk2) $(if $(filter true,$(USE_ANGLE)),fetch-angle) $(if $(filter true,$(USE_VIRGL_ZINK)),fetch-mesa)
 
 fetch-virgl:
 	@if [ "$(USE_VIRGL)" != "true" ]; then \
@@ -1248,7 +1429,7 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-angle clean-ncat clean-edk2 clean-symbols clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-mesa clean-angle clean-ncat clean-edk2 clean-symbols clean-ndk
 
 clean: 
 	make clean-qemu 
@@ -1259,6 +1440,7 @@ clean:
 	make clean-spice
 	make clean-gtk
 	make clean-virgl
+	make clean-mesa
 	make clean-angle
 	make clean-edk2
 	make clean-symbols

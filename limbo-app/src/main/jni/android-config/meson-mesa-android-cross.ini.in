@@ -1,0 +1,42 @@
+# Mesa (zink) cross-compilation template for Android/Limbo
+# Generated from this template by the Makefile (android-limbo-build.mak)
+#
+# 只构建 Mesa 的 GL/GLES 实现（gallium 里仅 zink 一个驱动）：产物
+# libEGL_zink.so / libGLESv1_CM_zink.so / libGLESv2_zink.so 由 native 在运行时
+# 通过 libepoxy + SDL2 使用，把 virglrenderer 的 GL 调用转成设备 Vulkan 调用。
+# 不构建任何 Vulkan ICD（-Dvulkan-drivers=），zink 运行在系统 libvulkan.so 之上。
+#
+# 平台固定为 android：QEMU 的 SDL gl=on 用 Android 原生窗口创建 EGLDisplay /
+# EGLSurface，surfaceless 平台缺这部分入口。
+
+[binaries]
+# TARGET_PREFIX（不是 HOST_PREFIX）才是 NDK clang wrapper 的前缀：32 位 ARM 是
+# armv7a-linux-androideabiNN-clang，而 HOST_PREFIX 的普通三元组没有对应二进制。
+c = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@NDK_PLATFORM_API@-clang'
+cpp = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@NDK_PLATFORM_API@-clang++'
+ar = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ar'
+as = '@TOOLCHAIN_CLANG_PREFIX@/llvm-as'
+ranlib = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ranlib'
+ld = '@TOOLCHAIN_CLANG_PREFIX@/ld'
+strip = '@TOOLCHAIN_CLANG_PREFIX@/llvm-strip'
+
+[built-in options]
+prefix = '@MESA_INSTALL_DIR@'
+libdir = 'lib'
+buildtype = '@MESA_BUILDTYPE@'
+default_library = 'shared'
+# 16 KB page size: 这些 .so 会被 App 在 Android 15+ 的 16 KB 页设备上 dlopen
+c_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+cpp_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+
+# 不设置 sys_root：设置后 pkg-config 会给所有 -I/-L 加 sysroot 前缀，破坏
+# jni 下那些绝对路径（与 GTK4 / virglrenderer 的 cross file 同理）。
+[host_machine]
+system = 'android'
+cpu_family = '@MESON_CPU_FAMILY@'
+cpu = '@MESON_CPU@'
+endian = 'little'
+
+[properties]
+# 交叉构建不执行目标平台的可执行文件；Mesa 的代码生成全在 host 的 python 里跑。
+needs_exe_wrapper = true

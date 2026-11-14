@@ -1,0 +1,44 @@
+diff --git a/src/dispatch_common.c b/src/dispatch_common.c
+--- a/src/dispatch_common.c
++++ b/src/dispatch_common.c
+@@ -199,14 +199,37 @@
+ static char EGL_LIB[256] = "libEGL.so";
+ static char GLES1_LIB[256] = "libGLESv1_CM.so";
+ static char GLES2_LIB[256] = "libGLESv2.so";
+ 
++/*
++ * Limbo: 通用入口。ANGLE / Mesa zink 等后端只是库名不同，运行时把三个绝对
++ * 路径传进来即可；epoxy 之后的所有 EGL/GLES 入口都从这套库解析。
++ * gles1 / gles2 传 NULL 或空串时保留原值（GLES1 入口 QEMU/virgl 不走）。
++ */
++EPOXY_PUBLIC void
++epoxy_set_library_names(const char *egl, const char *gles1, const char *gles2)
++{
++    if (egl == NULL || egl[0] == '\0') {
++        return;
++    }
++    snprintf(EGL_LIB, sizeof(EGL_LIB), "%s", egl);
++    if (gles1 != NULL && gles1[0] != '\0') {
++        snprintf(GLES1_LIB, sizeof(GLES1_LIB), "%s", gles1);
++    }
++    if (gles2 != NULL && gles2[0] != '\0') {
++        snprintf(GLES2_LIB, sizeof(GLES2_LIB), "%s", gles2);
++    }
++}
++
+ EPOXY_PUBLIC void
+ epoxy_set_library_path(const char *path)
+ {
++    char egl[256], gles1[256], gles2[256];
++
+     if (path == NULL || path[0] == '\0') {
+         return;
+     }
+-    snprintf(EGL_LIB,   sizeof(EGL_LIB),   "%s/libEGL_angle.so", path);
+-    snprintf(GLES1_LIB, sizeof(GLES1_LIB), "%s/libGLESv1_CM_angle.so", path);
+-    snprintf(GLES2_LIB, sizeof(GLES2_LIB), "%s/libGLESv2_angle.so", path);
++    snprintf(egl,   sizeof(egl),   "%s/libEGL_angle.so", path);
++    snprintf(gles1, sizeof(gles1), "%s/libGLESv1_CM_angle.so", path);
++    snprintf(gles2, sizeof(gles2), "%s/libGLESv2_angle.so", path);
++    epoxy_set_library_names(egl, gles1, gles2);
+ }

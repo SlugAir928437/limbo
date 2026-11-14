@@ -363,14 +363,14 @@ public class LimboSettingsManager extends PreferenceActivity {
     }
 
     /**
-     * 显卡渲染后端：0 = 系统 GLES（默认），1 = ANGLE。
+     * 显卡渲染后端：0 = 系统 GLES（默认），1 = ANGLE，2 = Mesa zink。
      *
      * <p>对应 QEMU/virglrenderer 侧 libepoxy 的 EGL/GL 库选择，见
-     * VMExecutor#setVirglRenderBackend 与 patches/epoxy-android-angle-backend.patch。
+     * VMExecutor#setVirglRenderBackend 与 patches/epoxy-android-*.patch。
      */
     public static int getVirglRenderBackend(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        // settings.xml 里是 ListPreference，存的是字符串（"0"/"1"），这里按数值解析
+        // settings.xml 里是 ListPreference，存的是字符串（"0"/"1"/"2"），这里按数值解析
         String value = prefs.getString("virglRenderBackend", "0");
         try {
             return Integer.parseInt(value);

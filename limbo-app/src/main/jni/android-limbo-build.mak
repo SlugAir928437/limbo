@@ -168,6 +168,17 @@ VIRGL_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-virgl-android-cross.i
 VIRGL_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-virgl-android-cross.ini.in
 VIRGL_PKG_CONFIG_DIR := $(VIRGL_INSTALL_DIR)/lib/pkgconfig
 
+# Mesa（zink）：Mesa 的 GL/GLES 实现，运行时作为 virglrenderer 的 zink 渲染后端
+# （USE_VIRGL_ZINK）。和 ANGLE 一样与 virglrenderer 无编译期依赖，只随 APK
+# 分发，由 native 在启动前把 libepoxy / SDL2 指过去，因此不受构建顺序约束。
+MESA_SRC_DIR := $(LIMBO_JNI_ROOT)/mesa
+MESA_BUILD_DIR := $(LIMBO_JNI_ROOT)/mesa/build-android-$(APP_ABI)
+MESA_INSTALL_DIR := $(LIMBO_JNI_ROOT)/mesa/android-install/$(APP_ABI)
+MESA_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-mesa-android-cross.ini
+MESA_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-mesa-android-cross.ini.in
+MESA_PKG_CONFIG_DIR := $(MESA_INSTALL_DIR)/lib/pkgconfig
+MESA_BUILDTYPE := $(if $(filter 1,$(NDK_DEBUG)),debug,release)
+
 # pixman (shared with QEMU, meson build)
 PIXMAN_BUILD_DIR := $(LIMBO_JNI_ROOT)/pixman/build-android-$(APP_ABI)
 PIXMAN_INSTALL_DIR := $(LIMBO_JNI_ROOT)/pixman/android-install/$(APP_ABI)
@@ -353,6 +364,17 @@ CREATE_VIRGL_MESON_CROSS_FILE = \
 		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
 		"$(VIRGL_CROSS_FILE_TEMPLATE)" > "$(VIRGL_CROSS_FILE)"
 
+CREATE_MESA_MESON_CROSS_FILE = \
+	sed \
+		-e 's|@TOOLCHAIN_CLANG_PREFIX@|$(TOOLCHAIN_CLANG_PREFIX)|g' \
+		-e 's|@TARGET_PREFIX@|$(TARGET_PREFIX)|g' \
+		-e 's|@NDK_PLATFORM_API@|$(NDK_PLATFORM_API)|g' \
+		-e 's|@MESA_INSTALL_DIR@|$(MESA_INSTALL_DIR)|g' \
+		-e 's|@MESA_BUILDTYPE@|$(MESA_BUILDTYPE)|g' \
+		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \
+		-e 's|@MESON_CPU@|$(MESON_CPU)|g' \
+		"$(MESA_CROSS_FILE_TEMPLATE)" > "$(MESA_CROSS_FILE)"
+
 # The NDK ships libvulkan.so as one stub per API level.  They are versioned, and
 # venus calls 12 Vulkan 1.1 entry points directly (vkGetPhysicalDeviceProperties2,
 # vkEnumerateInstanceVersion, vkGetPhysicalDeviceExternalBufferProperties, ...)
@@ -396,6 +418,29 @@ CREATE_EGL_PC = \
 		'Libs: -L$(SYSROOT)/usr/lib/$(HOST_PREFIX)/$(VIRGL_VULKAN_STUB_API) -lvulkan' \
 		'' \
 		> "$(VIRGL_PKG_CONFIG_DIR)/vulkan.pc"
+
+# Mesa 的 meson 通过 pkg-config 找 vulkan（zink 的硬依赖）和 zlib，而 NDK 不带
+# .pc 文件。这里给 Mesa 单独写一份 shim（不污染 virgl 的目录）：vulkan 复用和
+# virgl venus 相同的 API 28 stub（理由见上面 VIRGL_VULKAN_STUB_API 的注释），
+# zlib 指向 NDK sysroot 的公开库 libz。
+CREATE_MESA_PC = \
+	mkdir -p "$(MESA_PKG_CONFIG_DIR)" && \
+	printf '%s\n' \
+		'Name: Vulkan' \
+		'Description: Android Vulkan loader (NDK sysroot stub, API $(VIRGL_VULKAN_STUB_API) variant)' \
+		'Version: 1.3.0' \
+		'Cflags: -I$(SYSROOT)/usr/include' \
+		'Libs: -L$(SYSROOT)/usr/lib/$(HOST_PREFIX)/$(VIRGL_VULKAN_STUB_API) -lvulkan' \
+		'' \
+		> "$(MESA_PKG_CONFIG_DIR)/vulkan.pc" && \
+	printf '%s\n' \
+		'Name: zlib' \
+		'Description: Android zlib (NDK sysroot stub)' \
+		'Version: 1.3' \
+		'Cflags: -I$(SYSROOT)/usr/include' \
+		'Libs: -L$(SYSROOT)/usr/lib/$(HOST_PREFIX)/$(NDK_PLATFORM_API) -lz' \
+		'' \
+		> "$(MESA_PKG_CONFIG_DIR)/zlib.pc"
 
 AR_FLAGS = crs
 ifeq ($(NDK_TOOLCHAIN_VERSION),clang)

@@ -18,7 +18,8 @@
             android:title="@string/orientation" />
 
         <!-- 显卡渲染后端：QEMU + virglrenderer 走 libepoxy 加载的 EGL/GLES 实现。
-             选 ANGLE 时改用 libEGL_angle.so / libGLESv2_angle.so，下次启动 VM 生效。 -->
+             选 ANGLE 时改用 libEGL_angle.so / libGLESv2_angle.so；选 Zink 时改用
+             随包分发的 Mesa libEGL_zink.so / libGLESv2_zink.so。下次启动 VM 生效。 -->
         <ListPreference
             android:defaultValue="0"
             android:entries="@array/virglBackendLabels"

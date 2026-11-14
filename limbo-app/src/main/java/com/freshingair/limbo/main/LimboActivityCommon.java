@@ -335,9 +335,13 @@ public class LimboActivityCommon {
                     .toMarkdown(FileUtils.LoadFile(context, "Changelog.md", false));
             TextView textView = new TextView(context);
             textView.setText(markwon);
+            int pad = (int) (16 * context.getResources().getDisplayMetrics().density);
+            textView.setPadding(pad, pad, pad, pad);
+            ScrollView scrollView = new ScrollView(context);
+            scrollView.addView(textView);
             new MaterialAlertDialogBuilder(context)
                     .setTitle(R.string.this_version)
-                    .setView(textView)
+                    .setView(scrollView)
                     .setPositiveButton(R.string.Ok, null)
                     .show();
         } catch (IOException e) {

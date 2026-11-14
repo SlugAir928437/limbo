@@ -25,6 +25,7 @@ import android.os.Looper;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.util.Log;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -177,9 +178,13 @@ public class UpdateChecker {
             Spanned markwon = Markwon.create(context).toMarkdown(content);
             TextView textView = new TextView(context);
             textView.setText(markwon);
+            int pad = (int) (16 * context.getResources().getDisplayMetrics().density);
+            textView.setPadding(pad, pad, pad, pad);
+            ScrollView scrollView = new ScrollView(context);
+            scrollView.addView(textView);
             new MaterialAlertDialogBuilder(context)
                     .setTitle(context.getString(R.string.NewVersion) + " v" + versionName)
-                    .setView(textView)
+                    .setView(scrollView)
                     .setPositiveButton(R.string.GenNewVersion, (dialog, which) ->
                             startDownload(context, apkUrl))
                     .setNegativeButton(R.string.DoNotShowAgain, (dialog, which) ->

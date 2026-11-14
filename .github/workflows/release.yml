@@ -339,6 +339,31 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: 检出代码（读取 Changelog）
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: 读取更新日志
+        id: changelog
+        run: |
+          set -euo pipefail
+          # 发版用 limbo-app/src/main/assets2/Changelog.md 作为 Release 正文。
+          # 用 GITHUB_OUTPUT 的 heredoc 多行格式（EOF_MARKER<<MARKER ... MARKER）直接写入，
+          # 避免 Markdown 里的 $、反引号、${{ 等特殊字符被 workflow 解析器当表达式求值。
+          SRC="limbo-app/src/main/assets2/Changelog.md"
+          if [ ! -f "$SRC" ]; then
+            echo "ERROR: 更新日志不存在：$SRC" >&2
+            exit 1
+          fi
+          SIZE=$(wc -c < "$SRC")
+          echo ">> 读取 $SRC（${SIZE} 字节）"
+          {
+            echo "content<<CHANGELOG_END"
+            cat "$SRC"
+            echo "CHANGELOG_END"
+          } >> "$GITHUB_OUTPUT"
+
       - name: 下载全部 APK
         uses: actions/download-artifact@v4
         with:
@@ -360,15 +385,7 @@ jobs:
           # 不指定时 generate-notes 会收到非法的 target_commitish 并报 422。
           target_commitish: ${{ github.sha }}
           name: Limbo ${{ github.event.inputs.version }}
-          body: |
-            手动触发的 release 工作流自动构建。
-
-            包含 2 个 APK：
-            - `official`：官方 QEMU v11.0.0，支持 x86_64 / i386 / arm / aarch64 客户机
-            - `ia64`：IA-64 fork，支持 ia64 客户机
-
-            重装/升级前请覆盖安装；`checksums.txt` 内附 SHA-256 校验和。
-            若未配置发布签名 Secrets，APK 使用 Android 调试密钥签名，仅用于测试安装。
+          body: ${{ steps.changelog.outputs.content }}
           files: |
             dist/*.apk
             dist/checksums.txt

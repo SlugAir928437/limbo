@@ -14,12 +14,9 @@ import com.freshingair.limbo.updates.UpdateChecker;
 
 import java.io.IOException;
 
-import io.noties.markwon.Markwon;
-
 /**
- * 关于页：应用图标/名称/版本号、当前版本更新日志，以及 QQ 群、GitHub 源码、
- * 检查更新几个入口。原先散落在主菜单里的「更新日志」和启动时的自动检查更新
- * 收敛到这里。
+ * 关于页：应用图标/名称/版本号，以及检查更新、更新日志、QQ 群、GitHub 源码、
+ * 许可证几个入口。原先主菜单里的「更新日志」收敛到这里。
  */
 public class AboutActivity extends AppCompatActivity {
     /** QEMU 虚拟机镜像交流 1 群（1046981534）的加群 key，由 QQ 群官网生成。 */
@@ -31,29 +28,36 @@ public class AboutActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_about);
 
-        findViewById(R.id.about_back).setOnClickListener(v -> finish());
-
-        ((TextView) findViewById(R.id.about_app_name)).setText(R.string.app_name);
         String version = LimboApplication.getLimboVersionString();
-        ((TextView) findViewById(R.id.about_version)).setText(
-                getString(R.string.about_version, version == null ? "" : version));
+        String versionText = getString(R.string.about_version, version == null ? "" : version);
 
-        TextView changelogView = findViewById(R.id.about_changelog);
-        try {
-            changelogView.setText(Markwon.create(this)
-                    .toMarkdown(FileUtils.LoadFile(this, "Changelog.md", false)));
-        } catch (IOException e) {
-            changelogView.setText(R.string.about_changelog_unavailable);
-        }
+        findViewById(R.id.about_back).setOnClickListener(v -> finish());
+        ((TextView) findViewById(R.id.about_app_name)).setText(R.string.app_name);
+        ((TextView) findViewById(R.id.about_version)).setText(versionText);
+        ((TextView) findViewById(R.id.about_check_update_version)).setText(versionText);
 
+        findViewById(R.id.about_check_update).setOnClickListener(
+                v -> new Thread(() -> UpdateChecker.checkNewVersion(this, true)).start());
+        findViewById(R.id.about_changelog).setOnClickListener(
+                v -> LimboActivityCommon.showChangelog(this));
         findViewById(R.id.about_qq_group).setOnClickListener(v -> {
             if (!joinQQGroup(QQ_GROUP_KEY))
                 ToastUtils.toastShort(this, getString(R.string.about_qq_not_installed));
         });
         findViewById(R.id.about_github).setOnClickListener(
                 v -> LimboActivityCommon.goToURL(this, SOURCE_URL));
-        findViewById(R.id.about_check_update).setOnClickListener(
-                v -> new Thread(() -> UpdateChecker.checkNewVersion(this, true)).start());
+        findViewById(R.id.about_license).setOnClickListener(v -> promptLicense(version));
+    }
+
+    private void promptLicense(String version) {
+        try {
+            LimboActivityCommon.promptLicense(this,
+                    Config.APP_NAME + " " + version + " QEMU "
+                            + LimboApplication.getQemuVersionString(),
+                    FileUtils.LoadFile(this, "LICENSE", false));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     /**

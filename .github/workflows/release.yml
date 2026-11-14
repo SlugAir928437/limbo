@@ -10,12 +10,20 @@ name: release
 # 原生库构建沿用 build.yml 的 20 步拆分（fetch -> ndk -> 各依赖 config-X + X
 # -> config-qemu -> qemu -> ncat -> install），失败时能直接定位到具体阶段。
 on:
+  # 仅手动触发：在 GitHub Actions 页面点 "Run workflow" 并填写版本号。
+  # 故意不写 push / pull_request / schedule / workflow_call / workflow_run /
+  # repository_dispatch，任何自动化事件都不应启动此发版工作流。
   workflow_dispatch:
     inputs:
       version:
         description: '版本号（如 1.2.0，同时用作 Release 标签与 APK versionName）'
         required: true
         type: string
+
+# 防止同一版本被重复手动触发：并发运行时只保留最新一个。
+concurrency:
+  group: release-${{ github.event.inputs.version || github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

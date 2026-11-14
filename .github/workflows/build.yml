@@ -51,6 +51,12 @@ jobs:
       BUILD_HOST: ${{ github.event.inputs.build_host || 'arm64-v8a' }}
       USE_GTK: 'true'
       USE_VIRGL: 'true'
+      # ANGLE（google/angle）作为 virglrenderer 的备选 EGL/GLES 后端：
+      # 编译 libEGL_angle.so / libGLESv2_angle.so 随 APK 分发，让 virtio-gpu-gl-pci
+      # 在不支持硬件 GLES 的设备上通过 ANGLE 转译到 Vulkan。
+      # ANGLE 需要额外的构建时间（~10min）和网络（首次拉 SwiftShader 等），
+      # 如需临时禁用可设为 'false'。
+      USE_ANGLE: 'true'
       # EDK2 客户机 UEFI 固件默认【不编译】；需要时在手动触发时把 build_edk2
       # 选为 true（Makefile 侧对应 USE_EDK2=true）。
       USE_EDK2: ${{ github.event.inputs.build_edk2 || 'false' }}
@@ -68,10 +74,10 @@ jobs:
       #   ia64              -> 下载 IA-64 fork（FreshingAir/qemu-system-ia64），
       #                        它自己的 Android 适配补丁仍由 fetch-qemu 应用
       #   gtk4android       -> 下载 SlugAir928437/gtk4android
-      # 构建链被拆成下面 20 个独立步骤：fetch -> ndk -> 每个依赖各自的
+      # 构建链被拆成下面 22 个独立步骤：fetch -> ndk -> 每个依赖各自的
       # config-X + X（libffi / glib / pixman / slirp / spice / gtk / virglrenderer，
-      # 保持 jni/Makefile 里 config-deps -> deps 的相对次序）-> config-qemu ->
-      # qemu -> ncat -> install。
+      # 保持 jni/Makefile 里 config-deps -> deps 的相对次序）-> config-angle ->
+      # angle -> config-qemu -> qemu -> ncat -> install。
       # EDK2 客户机 UEFI 固件（make edk2）不再是默认步骤：只有当 USE_EDK2=true
       # （手动触发时 build_edk2=true）时才会执行，见文末条件步骤。
       # 拆分的目的是让失败点直接定位到具体阶段（Actions 里一眼可见是哪一步、
@@ -103,7 +109,7 @@ jobs:
           sudo -E apt-get install -y --fix-missing \
             make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync patch \
-            gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev \
+            gtk-doc-tools python3-pip ninja-build cmake meson libglib2.0-dev \
             nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib
           # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉
           # 工具链）。EDK2 默认不编译，只有 USE_EDK2=true 时才安装这两个包：
@@ -142,61 +148,61 @@ jobs:
           echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL} USE_EDK2=${USE_EDK2}"
           echo ">> NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
-      - name: 1/20 拉取源码（make fetch）
+      - name: 1/22 拉取源码（make fetch）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make fetch 2>&1 | tee "$LOGDIR/01-fetch.log"
 
-      - name: 2/20 生成 NDK 中间目录（make ndk）
+      - name: 2/22 生成 NDK 中间目录（make ndk）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make ndk 2>&1 | tee "$LOGDIR/02-ndk.log"
 
-      - name: 3/20 配置 libffi（make config-ffi）
+      - name: 3/22 配置 libffi（make config-ffi）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-ffi 2>&1 | tee "$LOGDIR/03-config-ffi.log"
 
-      - name: 4/20 构建 libffi（make ffi）
+      - name: 4/22 构建 libffi（make ffi）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make ffi 2>&1 | tee "$LOGDIR/04-ffi.log"
 
-      - name: 5/20 配置 glib（make config-glib）
+      - name: 5/22 配置 glib（make config-glib）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-glib 2>&1 | tee "$LOGDIR/05-config-glib.log"
 
-      - name: 6/20 构建 glib（make glib）
+      - name: 6/22 构建 glib（make glib）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make glib 2>&1 | tee "$LOGDIR/06-glib.log"
 
-      - name: 7/20 配置 pixman（make config-pixman）
+      - name: 7/22 配置 pixman（make config-pixman）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-pixman 2>&1 | tee "$LOGDIR/07-config-pixman.log"
 
-      - name: 8/20 构建 pixman（make pixman）
+      - name: 8/22 构建 pixman（make pixman）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make pixman 2>&1 | tee "$LOGDIR/08-pixman.log"
 
-      - name: 9/20 配置 libslirp（make config-slirp）
+      - name: 9/22 配置 libslirp（make config-slirp）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-slirp 2>&1 | tee "$LOGDIR/09-config-slirp.log"
 
-      - name: 10/20 构建 libslirp（make slirp）
+      - name: 10/22 构建 libslirp（make slirp）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
@@ -205,28 +211,28 @@ jobs:
       # IA-64 客户机跳过 spice 栈与 VirGL/virtio-gpu 栈（见 jni/Makefile）：
       # spice 只服务于 qxl-vga，IA-64 的 QEMU 以 --disable-spice 配置，故这两步
       # 在 BUILD_GUEST=ia64-softmmu 时不执行。
-      - name: 11/20 配置 spice 栈（make config-spice）
+      - name: 11/22 配置 spice 栈（make config-spice）
         if: env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-spice 2>&1 | tee "$LOGDIR/11-config-spice.log"
 
-      - name: 12/20 构建 spice 栈（make spice）
+      - name: 12/22 构建 spice 栈（make spice）
         if: env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make spice 2>&1 | tee "$LOGDIR/12-spice.log"
 
-      - name: 13/20 配置 GTK4（make config-gtk）
+      - name: 13/22 配置 GTK4（make config-gtk）
         if: env.USE_GTK == 'true'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-gtk 2>&1 | tee "$LOGDIR/13-config-gtk.log"
 
-      - name: 14/20 构建 GTK4（make gtk）
+      - name: 14/22 构建 GTK4（make gtk）
         if: env.USE_GTK == 'true'
         working-directory: limbo-app/src/main/jni
         run: |
@@ -235,39 +241,58 @@ jobs:
 
       # virglrenderer 依赖 gtk4android 安装出来的 libepoxy，必须排在 gtk 之后，
       # 因此它在 Makefile 的 limbo 目标里也是独立于 config-deps/deps 的一环。
-      - name: 15/20 配置 virglrenderer（make config-virgl）
+      - name: 15/22 配置 virglrenderer（make config-virgl）
         if: env.USE_VIRGL == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-virgl 2>&1 | tee "$LOGDIR/15-config-virgl.log"
 
-      - name: 16/20 构建 virglrenderer（make virgl）
+      - name: 16/22 构建 virglrenderer（make virgl）
         if: env.USE_VIRGL == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make virgl 2>&1 | tee "$LOGDIR/16-virgl.log"
 
-      - name: 17/20 配置 QEMU（make config-qemu）
+      # ANGLE（google/angle）：OpenGL ES -> Vulkan 转译层，C++ 代码量很大、
+      # 首次 config 时 CMake FetchContent 会拉 SwiftShader 等依赖（几百 MB）。
+      # 与 virglrenderer 无编译期依赖，是运行时 libepoxy dlopen 的备选 EGL 实现，
+      # 所以排在 virglrenderer 之后、config-qemu 之前独立构建即可。
+      # 默认开启；想临时跳过设 USE_ANGLE=false（或在 ia64 构建矩阵里不装）。
+      - name: 16a/22 配置 ANGLE（make config-angle）
+        if: env.USE_ANGLE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-angle 2>&1 | tee "$LOGDIR/16a-config-angle.log"
+
+      - name: 16b/22 构建 ANGLE（make angle）
+        if: env.USE_ANGLE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make angle 2>&1 | tee "$LOGDIR/16b-angle.log"
+
+      - name: 17/22 配置 QEMU（make config-qemu）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-qemu 2>&1 | tee "$LOGDIR/17-config-qemu.log"
 
-      - name: 18/20 构建 QEMU 并部署库（make qemu）
+      - name: 18/22 构建 QEMU 并部署库（make qemu）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make qemu 2>&1 | tee "$LOGDIR/18-qemu.log"
 
-      - name: 19/20 构建 ncat（make ncat）
+      - name: 19/22 构建 ncat（make ncat）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make ncat 2>&1 | tee "$LOGDIR/19-ncat.log"
 
-      - name: 20/20 同步 jniLibs（make install）
+      - name: 20/22 同步 jniLibs（make install）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail

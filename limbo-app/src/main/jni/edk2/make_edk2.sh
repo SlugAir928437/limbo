@@ -311,10 +311,12 @@ apply_edk2_patches() {
     [ -d "$EDK2_PATCH_DIR" ] || return 0
     for p in "$EDK2_PATCH_DIR"/edk2-*.patch; do
         [ -f "$p" ] || continue
-        if git -C "$dir" apply --check "$p" 2>/dev/null; then
+        # edk2 里部分文件（如 BaseTools/Source/C/EfiRom/EfiRom.c）以 CRLF 入库，而补丁
+        # 文件在提交时被规范成 LF，行尾不一致会导致 context 匹配失败，故忽略空白差异。
+        if git -C "$dir" apply --ignore-whitespace --check "$p" 2>/dev/null; then
             msg "应用补丁 $(basename "$p")"
-            git -C "$dir" apply "$p"
-        elif git -C "$dir" apply --reverse --check "$p" 2>/dev/null; then
+            git -C "$dir" apply --ignore-whitespace "$p"
+        elif git -C "$dir" apply --ignore-whitespace --reverse --check "$p" 2>/dev/null; then
             msg "补丁 $(basename "$p") 已应用，跳过"
         else
             die "补丁 $(basename "$p") 无法应用（既不能正向应用，也不是已应用状态）"

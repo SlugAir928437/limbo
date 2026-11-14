@@ -420,6 +420,49 @@ public class VMExecutor extends MachineExecutor {
     }
 
     /**
+     * 运行期切换画面输出，见 {@link #switchDisplayOutput(int)}。
+     *
+     * <p>实现在 libqemu-system-*.so 的 ui/console.c（limbo_display_switch），
+     * 由 JNI 层用 dlsym() 找到后调用；切换本身会投递到 QEMU 主循环线程执行。
+     */
+    private static native void nativeSwitchDisplay(int delta);
+
+    /**
+     * 把画面切到下一块（{@code delta > 0}）/ 上一块（{@code delta < 0}）显卡的
+     * 控制台。
+     *
+     * <p>典型场景是 extra params 里加了 {@code -device ramfb}（供固件/开机阶段
+     * 显示）同时又挂了 virtio-gpu（客户机驱动加载后输出到这里）：QEMU 会为两块
+     * 显卡各建一个图形控制台，但 Android 的显示后端一次只能显示其中一个，
+     * 开机后需要手动切过去才能看到客户机系统的画面。
+     *
+     * <p>原生库还没加载（VM 未启动）或旧引擎没有该入口时只记日志，不抛异常。
+     */
+    public static void switchDisplayOutput(int delta) {
+        try {
+            nativeSwitchDisplay(delta);
+        } catch (Throwable t) {
+            Log.w(TAG, "switchDisplayOutput(" + delta + ") 失败: " + t);
+        }
+    }
+
+    /**
+     * 当前机器是否配置了多块显卡输出（需要“切换画面输出”）。
+     *
+     * <p>目前只有 ramfb 会与另一块显卡共存：它由 extra params 添加
+     * （{@code -device ramfb}），负责固件阶段（UEFI/BIOS）的画面，而
+     * virtio-gpu 负责客户机驱动加载后的画面，两者是两个独立的控制台。
+     */
+    public static boolean hasMultipleDisplayOutputs() {
+        Machine machine = MachineController.getInstance().getMachine();
+        if (machine == null) {
+            return false;
+        }
+        String extra = machine.getExtraParams();
+        return extra != null && extra.toLowerCase(Locale.US).contains("ramfb");
+    }
+
+    /**
      * 以 QEMU 格式打印参数，便于调试。
      *
      * @param params 参数数组

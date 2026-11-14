@@ -235,6 +235,10 @@ public class LimboGtkActivity extends ToplevelActivity
         if (machine == null || machine.getSoundCard() == null) {
             menu.removeItem(R.id.itemVolume);
         }
+        // 没有多块显卡输出（ramfb + virtio-gpu）时不需要切换菜单
+        if (!VMExecutor.hasMultipleDisplayOutputs()) {
+            menu.removeItem(R.id.itemSwitchDisplay);
+        }
         RefreshRateUtils.syncMenu(menu, LimboSettingsManager.getSDLRefreshRate(this));
         popup.setOnMenuItemClickListener(this::onMenuItemSelected);
         popup.setOnDismissListener(p -> vmMenu = null);
@@ -309,6 +313,9 @@ public class LimboGtkActivity extends ToplevelActivity
             LimboActivityCommon.promptPause(this, viewListener);
         } else if (id == R.id.itemViewLog) {
             Logger.viewLimboLog(this);
+        } else if (id == R.id.itemSwitchDisplay) {
+            // ramfb + virtio-gpu 等多显卡配置：把画面切到另一块显卡的控制台
+            VMExecutor.switchDisplayOutput(1);
         } else {
             Integer refreshMode = RefreshRateUtils.menuMode(id);
             if (refreshMode != null) {

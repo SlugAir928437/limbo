@@ -472,6 +472,29 @@ JNIEXPORT void JNICALL Java_com_limbo_emu_jni_AglDisplay_key(
     }
 }
 
+typedef void (*display_switch_fn)(int delta);
+
+/*
+ * 切换画面输出（多显卡场景，例如 extra params 里同时加了 ramfb 与
+ * virtio-gpu）：把当前显示后端的画面切到下一块（delta > 0）/ 上一块
+ * （delta < 0）显卡的控制台。
+ *
+ * 入口在 libqemu-system-*.so 里（ui/console.c 的 limbo_display_switch()），
+ * 真正的切换由它投递到 QEMU 主循环线程执行，因此这里可以从界面线程直接调。
+ * 旧引擎没有这个符号时只记日志，不影响虚拟机继续运行。
+ */
+JNIEXPORT void JNICALL Java_com_limbo_emu_jni_VMExecutor_nativeSwitchDisplay(
+        JNIEnv* env, jclass clazz, jint delta) {
+    display_switch_fn switch_display =
+            (display_switch_fn) get_qemu_symbol("limbo_display_switch");
+
+    if (switch_display == NULL) {
+        LOGE("limbo_display_switch not available in this engine\n");
+        return;
+    }
+    switch_display((int) delta);
+}
+
 /*
  * KernelSU root request, following the ALS reference implementation: the
  * reboot syscall with the KernelSU magic hands back the driver fd and

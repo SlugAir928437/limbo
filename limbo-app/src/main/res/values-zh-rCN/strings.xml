@@ -37,6 +37,7 @@
     <string name="hide_toolbar">隐藏工具栏</string>
     <string name="view_log">查看日志</string>
     <string name="display">显示</string>
+    <string name="switch_display_output">切换画面输出</string>
     <string name="absolutePointerInstructions">请确保客户操作系统支持触摸屏设备！\n\n启动虚拟机前，在 Limbo 中将鼠标设置为 \"usb-tablet\"。</string>
     <string name="externalMouseInstructions">将 USB/蓝牙 鼠标插入您的 Android 设备。</string>
     <string name="toggle_key_mapper">切换按键映射</string>

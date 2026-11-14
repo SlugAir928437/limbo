@@ -47,6 +47,11 @@
         android:title="@string/view_log" />
 
     <item
+        android:id="@+id/itemSwitchDisplay"
+        android:icon="@android:drawable/ic_menu_view"
+        android:title="@string/switch_display_output" />
+
+    <item
         android:id="@+id/itemHelp"
         android:icon="@drawable/help"
         android:title="@string/help" />

@@ -50,6 +50,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.limbo.emu.R;
 import com.limbo.emu.files.FileUtils;
 import com.limbo.emu.jni.AglDisplay;
+import com.limbo.emu.jni.VMExecutor;
 import com.limbo.emu.keyboard.KeyboardUtils;
 import com.limbo.emu.log.Logger;
 import com.limbo.emu.machine.Machine;
@@ -149,6 +150,10 @@ public class LimboAglActivity extends AppCompatActivity
         if (machine == null || machine.getSoundCard() == null) {
             menu.removeItem(R.id.itemVolume);
         }
+        // 没有多块显卡输出（ramfb + virtio-gpu）时不需要切换菜单
+        if (!VMExecutor.hasMultipleDisplayOutputs()) {
+            menu.removeItem(R.id.itemSwitchDisplay);
+        }
         RefreshRateUtils.syncMenu(menu, LimboSettingsManager.getSDLRefreshRate(this));
         popup.setOnMenuItemClickListener(this::onMenuItemSelected);
         popup.show();
@@ -178,6 +183,9 @@ public class LimboAglActivity extends AppCompatActivity
             LimboActivityCommon.promptPause(this, viewListener);
         } else if (id == R.id.itemViewLog) {
             Logger.viewLimboLog(this);
+        } else if (id == R.id.itemSwitchDisplay) {
+            // ramfb + virtio-gpu 等多显卡配置：把画面切到另一块显卡的控制台
+            VMExecutor.switchDisplayOutput(1);
         } else {
             // 可变刷新率子菜单：关闭 / 跟随屏幕 / 60 / 90 / 120 Hz
             Integer refreshMode = RefreshRateUtils.menuMode(id);

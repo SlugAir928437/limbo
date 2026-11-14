@@ -267,6 +267,9 @@ public class LimboSDLActivity extends SDLActivity
             applyScaleMode(Config.SDL_SCALE_ASPECT);
         } else if (item.getItemId() == R.id.itemOneToOne) {
             applyScaleMode(Config.SDL_SCALE_NATIVE);
+        } else if (item.getItemId() == R.id.itemSwitchDisplay) {
+            // ramfb + virtio-gpu 等多显卡配置：把画面切到另一块显卡的控制台
+            VMExecutor.switchDisplayOutput(1);
         } else {
             // 可变刷新率子菜单：关闭 / 跟随屏幕 / 60 / 90 / 120 Hz
             Integer refreshMode = RefreshRateUtils.menuMode(item.getItemId());
@@ -504,6 +507,11 @@ public class LimboSDLActivity extends SDLActivity
         // Remove Monitor console for SDL2 it creates 2 SDL windows and SDL for
         // android supports only 1
         menu.removeItem(menu.findItem(R.id.itemMonitor).getItemId());
+
+        // 没有多块显卡输出（ramfb + virtio-gpu）时不需要切换菜单
+        if (!VMExecutor.hasMultipleDisplayOutputs()) {
+            menu.removeItem(R.id.itemSwitchDisplay);
+        }
 
         // 显示方式（缩放模式）子菜单：同步当前选中项
         syncScaleModeMenu(menu);
@@ -854,6 +862,9 @@ public class LimboSDLActivity extends SDLActivity
         menu.removeItem(R.id.itemExternalMouse);
         menu.removeItem(R.id.itemCtrlAltDel);
         menu.removeItem(R.id.itemCtrlC);
+        if (!VMExecutor.hasMultipleDisplayOutputs()) {
+            menu.removeItem(R.id.itemSwitchDisplay);
+        }
         if (MachineController.getInstance().getMachine().getSoundCard() == null) {
             menu.removeItem(R.id.itemVolume);
         }

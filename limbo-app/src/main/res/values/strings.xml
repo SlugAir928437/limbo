@@ -37,6 +37,7 @@
     <string name="hide_toolbar">Hide Toolbar</string>
     <string name="view_log">View Log</string>
     <string name="display">Display</string>
+    <string name="switch_display_output">Switch Display Output</string>
     <string name="absolutePointerInstructions">Make sure the guest os supports touch screen devices!\n\n \
         Choose Mouse = \"usb-tablet\" from Limbo before you boot the machine.</string>
     <string name="externalMouseInstructions">Plug in your USB/Bluetooth Mouse in your Android device.</string>

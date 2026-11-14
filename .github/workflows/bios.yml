@@ -1,0 +1,349 @@
+name: bios
+on:
+  workflow_dispatch:
+    inputs:
+      archs:
+        description: '要构建的固件目标（空格或逗号分隔，可任意组合）：IA32 X64 ARM AARCH64 GUNYAH GZVM IA64，或填 all'
+        required: true
+        default: 'all'
+        type: string
+
+permissions:
+  contents: read
+
+# -----------------------------------------------------------------------------
+# 固件目标一览（matrix 由 plan 任务按输入生成）
+# -----------------------------------------------------------------------------
+#   IA32    edk2-i386-code.fd        本仓库 jni/edk2/make_edk2.sh（OvmfPkgIa32）
+#   X64     edk2-x86_64-code.fd      本仓库 jni/edk2/make_edk2.sh（OvmfPkgX64）
+#   ARM     edk2-arm-code.fd         本仓库 jni/edk2/make_edk2.sh（ArmVirtQemu）
+#   AARCH64 edk2-aarch64-code.fd     本仓库 jni/edk2/make_edk2.sh（ArmVirtQemu）
+#   GUNYAH  edk2-aarch64-gunyah.fd   AnyLaySys/edk2-aarch64-gunyah（ArmVirtGunyah.dsc）
+#   GZVM    edk2-aarch64-gzvm.fd     AnyLaySys/edk2-aarch64-gzvm（ArmVirtGzvm.dsc）
+#   IA64    ia64-firmware.bin        syunnPC/qemu-system-ia64（roms/ia64-firmware）
+#
+# 外部仓库的构建方式照搬各自 .github/workflows/build.yml：
+#   gunyah / gzvm  -> Ubuntu + aarch64 交叉编译器，BaseTools + BaseTools 版 edksetup
+#   IA64           -> Fedora 44 容器 + ia64-linux-gnu 交叉工具链，make 出裸二进制
+# 三者产物都收集到 dist/，由 publish 任务统一提交到 limbo-app/src/main/assets2/roms。
+# -----------------------------------------------------------------------------
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 解析用户输入 -> matrix（只有被选中的目标才会生成构建任务）
+  # -------------------------------------------------------------------------
+  plan:
+    name: 解析固件目标
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: 归一化并校验目标列表
+        id: plan
+        env:
+          RAW_ARCHS: ${{ github.event.inputs.archs }}
+        run: |
+          set -euo pipefail
+          # 统一大写，逗号/分号视作分隔符
+          norm="$(printf '%s' "$RAW_ARCHS" | tr 'a-z' 'A-Z' | tr ',;' '  ')"
+          targets=()
+          for a in $norm; do
+            case "$a" in
+              ALL)                 targets=(IA32 X64 ARM AARCH64 GUNYAH GZVM IA64); break ;;
+              IA32|X86|I386)       a=IA32 ;;
+              X64|X86_64)          a=X64 ;;
+              ARM|AARCH32)         a=ARM ;;
+              AARCH64|ARM64)       a=AARCH64 ;;
+              GUNYAH|GUNYAH-AARCH64) a=GUNYAH ;;
+              GZVM|GZVM-AARCH64)   a=GZVM ;;
+              IA64|IA-64|ITANIUM)  a=IA64 ;;
+              *) echo "ERROR: 未知目标 '$a'（可选：IA32 X64 ARM AARCH64 GUNYAH GZVM IA64，或 all）" >&2; exit 1 ;;
+            esac
+            # 去重
+            seen=0
+            for e in "${targets[@]:-}"; do
+              if [ "$e" = "$a" ]; then seen=1; fi
+            done
+            if [ "$seen" = 0 ]; then targets+=("$a"); fi
+          done
+          [ "${#targets[@]}" -gt 0 ] || { echo "ERROR: 至少选择一个目标（IA32 X64 ARM AARCH64 GUNYAH GZVM IA64）" >&2; exit 1; }
+
+          # 每个目标展开成一条完整的 matrix 项：
+          #   kind  edk2（本仓库脚本）| external-edk2（外部 edk2 平台）| ia64（裸二进制）
+          #   file  最终固件文件名（即 assets2/roms 里的名字）
+          #   repo  外部仓库（owner/name，仅 external-* / ia64）
+          #   dsc   edk2 平台描述符（仅 external-edk2）
+          #   fv    构建出的 FV 路径（仅 external-edk2，相对外部源码树）
+          json="$(python3 - "${targets[@]}" <<'PY'
+          import json, sys
+
+          table = {
+              "IA32":    {"kind": "edk2", "file": "edk2-i386-code.fd"},
+              "X64":     {"kind": "edk2", "file": "edk2-x86_64-code.fd"},
+              "ARM":     {"kind": "edk2", "file": "edk2-arm-code.fd"},
+              "AARCH64": {"kind": "edk2", "file": "edk2-aarch64-code.fd"},
+              "GUNYAH": {
+                  "kind": "external-edk2",
+                  "file": "edk2-aarch64-gunyah.fd",
+                  "repo": "AnyLaySys/edk2-aarch64-gunyah",
+                  "dsc": "ArmVirtPkg/ArmVirtGunyah.dsc",
+                  "fv": "Build/ArmVirtGunyah-AArch64/RELEASE_GCC5/FV/edk2-aarch64-gunyah.fd",
+              },
+              "GZVM": {
+                  "kind": "external-edk2",
+                  "file": "edk2-aarch64-gzvm.fd",
+                  "repo": "AnyLaySys/edk2-aarch64-gzvm",
+                  "dsc": "ArmVirtPkg/ArmVirtGzvm.dsc",
+                  # 上游 DSC 产出的 FV 名是 EDK2-AARCH64-GZVM.fd，收集时改名为 edk2-aarch64-gzvm.fd
+                  "fv": "Build/ArmVirtGzvm-AArch64/RELEASE_GCC5/FV/EDK2-AARCH64-GZVM.fd",
+              },
+              "IA64": {
+                  "kind": "ia64",
+                  "file": "ia64-firmware.bin",
+                  "repo": "syunnPC/qemu-system-ia64",
+              },
+          }
+
+          out = []
+          for name in sys.argv[1:]:
+              item = {"arch": name}
+              item.update(table[name])
+              out.append(item)
+          print(json.dumps(out, separators=(",", ":")))
+          PY
+          )"
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          echo ">> 计划并行构建目标：${targets[*]}"
+
+  # -------------------------------------------------------------------------
+  # 每目标一条任务，并行构建并各自上传产物
+  # -------------------------------------------------------------------------
+  build:
+    name: BIOS 固件 (${{ matrix.arch }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      LOGDIR: ${{ github.workspace }}/bios-logs
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      # 本仓库的 edk2 源码由 make_edk2.sh 自行克隆（主标签固定 edk2-stable202508，见
+      # jni/Makefile 与 make_edk2.sh 头部说明），这里只装宿主工具链：
+      #   通用       build-essential / git / make / python3 / uuid-dev /
+      #              acpica-tools(iasl) / nasm / device-tree-compiler
+      #   IA32       额外需要 32 位编译支持（gcc-multilib + libc6-dev-i386）
+      #   ARM        额外需要 arm-linux-gnueabi(gcc) 交叉编译器
+      #   AARCH64 / GUNYAH / GZVM
+      #              额外需要 aarch64-linux-gnu(gcc) 交叉编译器
+      # IA64 在 Fedora 容器里自备工具链（见下方 docker run），宿主无需安装。
+      - name: 安装构建依赖
+        if: matrix.kind != 'ia64'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # runner 预置的 apt 索引可能落后于镜像源，先刷新（失败重试）
+          for i in 1 2 3; do
+            sudo -E apt-get update -y && break
+            echo ">> apt-get update 第 ${i} 次失败，5s 后重试"
+            sleep 5
+          done
+          sudo -E apt-get install -y --fix-missing \
+            build-essential git make python3 python3-pip python3-venv \
+            uuid-dev acpica-tools nasm device-tree-compiler flex bison
+          case "${{ matrix.arch }}" in
+            IA32)
+              sudo -E apt-get install -y --fix-missing gcc-multilib libc6-dev-i386
+              ;;
+            ARM)
+              # edk2 的 ARM 平台按软浮点 ABI 构建，优先 gnueabi，部分发行版只有 gnueabihf
+              sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabi \
+                || sudo -E apt-get install -y --fix-missing gcc-arm-linux-gnueabihf
+              ;;
+            AARCH64|GUNYAH|GZVM)
+              sudo -E apt-get install -y --fix-missing gcc-aarch64-linux-gnu
+              ;;
+          esac
+
+      - name: 准备构建环境
+        run: |
+          mkdir -p "$LOGDIR"
+          echo "BUILD_THREADS=$(nproc)" >> "$GITHUB_ENV"
+          echo ">> 目标=${{ matrix.arch }} BUILD_THREADS=$(nproc)"
+
+      # 外部源码树（含 edk2 子模块）检出到 external-src/，与本仓库代码隔离。
+      - name: 检出外部源码（${{ matrix.arch }}）
+        if: matrix.kind != 'edk2'
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ matrix.repo }}
+          path: external-src
+          fetch-tags: false
+          fetch-depth: 1
+          filter: blob:none
+          show-progress: false
+          submodules: ${{ matrix.kind == 'external-edk2' && 'recursive' || 'false' }}
+
+      # 固件文件名固定（见 make_edk2.sh 的 arch_out）：
+      #   IA32 -> edk2-i386-code.fd     X64 -> edk2-x86_64-code.fd
+      #   ARM  -> edk2-arm-code.fd      AARCH64 -> edk2-aarch64-code.fd
+      - name: 构建客户机 UEFI 固件（${{ matrix.arch }}）
+        if: matrix.kind == 'edk2'
+        working-directory: limbo-app/src/main/jni/edk2
+        # 显式指定固件输出目录，与下方「收集产物」步骤读取的路径保持同一来源，
+        # 避免依赖脚本内部默认值（该默认值曾算错一级，把固件落到 jni/assets/roms）。
+        env:
+          EDK2_FIRMWARE_DIR: ${{ github.workspace }}/limbo-app/src/main/assets/roms
+        run: |
+          set -o pipefail
+          bash make_edk2.sh build "${{ matrix.arch }}" 2>&1 | tee "$LOGDIR/${{ matrix.arch }}.log"
+
+      # 外部 edk2 平台（gunyah / gzvm）：与上游 .github/workflows/build.yml 一致，
+      # 先构建 BaseTools，再 source edksetup.sh，最后用 GCC5 工具链构建 AARCH64 RELEASE。
+      - name: 构建外部 EDK2 平台固件（${{ matrix.arch }}）
+        if: matrix.kind == 'external-edk2'
+        working-directory: external-src
+        env:
+          LOG: ${{ github.workspace }}/bios-logs/${{ matrix.arch }}.log
+        run: |
+          set -euo pipefail
+          mkdir -p Conf
+          make -C BaseTools 2>&1 | tee "$LOG"
+          # edksetup.sh 会 source BaseTools/BuildEnv，其中有直接引用未定义变量的写法，
+          # 在 set -u 下会报 unbound variable，故 source 期间临时关闭 -u/-e。
+          set +eu
+          . ./edksetup.sh BaseTools
+          set -eu
+          GCC5_AARCH64_PREFIX=aarch64-linux-gnu- \
+            build -a AARCH64 -t GCC5 -b RELEASE -p "${{ matrix.dsc }}" 2>&1 | tee -a "$LOG"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          install -m 0644 "${{ matrix.fv }}" "$GITHUB_WORKSPACE/dist/${{ matrix.file }}"
+
+      # IA-64 固件：上游用 fedora:44 容器 + ia64-linux-gnu 交叉工具链构建裸二进制。
+      # 这里保持同样的环境（fedora 才有 binutils/gcc-ia64-linux-gnu 包），直接把
+      # 工作区挂载进容器，构建脚本落在容器内执行。
+      - name: 构建 IA-64 固件（${{ matrix.arch }}）
+        if: matrix.kind == 'ia64'
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cat > ia64-build.sh <<'SH'
+          set -euo pipefail
+          dnf --assumeyes --setopt=install_weak_deps=False install \
+            binutils-ia64-linux-gnu \
+            coreutils \
+            gcc-ia64-linux-gnu \
+            git \
+            gzip \
+            make \
+            python3 \
+            tar
+          firmware_dir="roms/ia64-firmware"
+          binary="$firmware_dir/ia64-firmware.bin"
+          elf="$firmware_dir/ia64-firmware.elf"
+          test -f "$(ia64-linux-gnu-gcc -print-libgcc-file-name)"
+          make -C "$firmware_dir" clean
+          make -C "$firmware_dir" -j"$(nproc)"
+          test -s "$binary"
+          test -s "$elf"
+          python3 tests/unit/test-ia64-firmware-layout.py "$binary" "$elf"
+          ia64-linux-gnu-readelf -h "$elf" > firmware-elf-header.txt
+          grep -Eiq 'Machine:.*IA-64' firmware-elf-header.txt
+          install -m 0644 "$binary" /work/dist/ia64-firmware.bin
+          SH
+          set -o pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work/external-src \
+            fedora:44 \
+            bash /work/ia64-build.sh 2>&1 | tee "$LOGDIR/${{ matrix.arch }}.log"
+
+      - name: 收集产物（固件 + 校验和）
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if [ "${{ matrix.kind }}" = "edk2" ]; then
+            cp -f "limbo-app/src/main/assets/roms/${{ matrix.file }}" dist/
+          fi
+          test -s "dist/${{ matrix.file }}"
+          ( cd dist && sha256sum "${{ matrix.file }}" > SHA256SUMS.txt )
+          ls -lh dist
+
+      - name: 上传失败日志
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: bios_log-${{ matrix.arch }}
+          path: bios-logs/
+
+      - name: 上传固件产物
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: bios-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # 汇总各目标固件并提交回仓库（assets2/roms）
+  #
+  # 由单一任务统一提交，而不是在每个 matrix 腿里各自推送：多腿并行 push 同一
+  # 分支会互相 non-fast-forward 冲突。这里 needs: build，只有全部所选目标都构建
+  # 成功才提交；任一失败则该任务跳过（不会写入半套固件）。
+  # 写入的目标目录 limbo-app/src/main/assets2/roms/ 随仓库跟踪（.gitignore 只
+  # 忽略 assets，不含 assets2），复制 .fd 固件与 IA-64 的 .bin 裸二进制，
+  # SHA256SUMS.txt 仍只随 artifact 上传、不落库。
+  # -------------------------------------------------------------------------
+  publish:
+    name: 提交固件到 assets2/roms
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          # workflow_dispatch 触发时 github.ref_name 即所选分支；用分支名显式检出，
+          # 保证后续 push 目标分支正确。
+          ref: ${{ github.ref_name }}
+
+      - name: 下载全部固件产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          # 每个目标一个 artifact，分别落到 dist/bios-<TARGET>/，避免同名
+          # SHA256SUMS.txt 合并冲突（故不启用 merge-multiple）。
+          pattern: bios-*
+
+      - name: 写入 assets2/roms
+        run: |
+          set -euo pipefail
+          DEST="limbo-app/src/main/assets2/roms"
+          mkdir -p "$DEST"
+          echo ">> 下载到的固件："
+          find dist -type f \( -name '*.fd' -o -name '*.bin' \) -print
+          find dist -type f \( -name '*.fd' -o -name '*.bin' \) -exec cp -f {} "$DEST/" \;
+          echo ">> $DEST 内容："
+          ls -lh "$DEST"
+
+      - name: 提交并推送
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add limbo-app/src/main/assets2/roms
+          if git diff --cached --quiet; then
+            echo ">> 固件无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore(bios): 更新客户机 BIOS 固件 [skip ci]
+          
+          Co-authored-by: traeagent <traeagent@users.noreply.github.com>"
+          # GITHUB_TOKEN 推送不会再次触发工作流（无递归），[skip ci] 为额外保险。
+          git push origin "HEAD:${{ github.ref_name }}"

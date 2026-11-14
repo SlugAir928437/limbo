@@ -10,9 +10,7 @@ on:
         default: 'arm64-v8a'
         type: choice
         options:
-          - armeabi-v7a
           - arm64-v8a
-          - x86
           - x86_64
       build_edk2:
         description: '是否编译 EDK2 客户机 UEFI 固件（默认否）'

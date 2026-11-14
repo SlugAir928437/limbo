@@ -186,6 +186,15 @@ SLIRP_INSTALL_DIR := $(LIMBO_JNI_ROOT)/slirp/android-install/$(APP_ABI)
 SLIRP_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-slirp-android-cross.ini
 SLIRP_PKG_CONFIG_DIR := $(SLIRP_INSTALL_DIR)/lib/pkgconfig
 
+# ANGLE (google/angle): OpenGL ES Translator layer for Android.
+# CMake + Ninja 构建（同 libjpeg），动态库安装到 jniLibs 供 APK 打包。
+# 产出 libEGL_angle.so / libGLESv2_angle.so / libGLESv1_CM_angle.so 以及 ANGLE
+# 自己的依赖库（libswiftshader_libvulkan.so 等）。USE_ANGLE=false 时全部跳过。
+ANGLE_BUILD_DIR    := $(LIMBO_JNI_ROOT)/angle/build-android-$(APP_ABI)
+ANGLE_INSTALL_DIR  := $(LIMBO_JNI_ROOT)/angle/android-install/$(APP_ABI)
+ANGLE_SRC_DIR      := $(LIMBO_JNI_ROOT)/angle
+ANGLE_BUILDTYPE    ?= $(if $(filter 1,$(NDK_DEBUG)),Debug,Release)
+
 # spice stack for the qxl-vga device (QEMU CONFIG_QXL).  All built static:
 #   spice-protocol (headers only) -> spice-server (libspice-server.a)
 #   openssl / libjpeg-turbo are spice-server's TLS / MJPEG deps.

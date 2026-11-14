@@ -172,6 +172,22 @@ USE_VIRGL ?= true
 # virtio-gpu-gl-pci device).
 USE_VIRGL_VENUS ?= true
 
+# ---------------------------------------------------------------------------
+# ANGLE 渲染后端（Translator layer: OpenGL ES -> Vulkan / D3D / Metal）
+# 编译 google/angle 产出 libEGL_angle.so / libGLESv2_angle.so，随 APK 分发
+# 让 virglrenderer 的 GL 后端在不支持 GLES 的设备上通过 ANGLE 转到 Vulkan。
+#
+# ANGLE 使用 CMake 交叉编译（参见 Makefile 的 config-angle），默认关闭：源码
+# 体积大、依赖完整的 CMake + Ninja 环境，且首次编译需要拉取 Chromium 子模块。
+# 开启：export USE_ANGLE=true && make limbo
+USE_ANGLE ?= false
+
+# ANGLE git 仓库。google/angle 官方仓库，用 depth 1 克隆；需要子模块再单独拉。
+ANGLE_URL ?= https://github.com/google/angle.git
+# 固定一个稳定 tag，避免 HEAD 上的 API 变动导致编译脚本失配。
+# 可用 export ANGLE_TAG=<tag> 覆盖。
+ANGLE_TAG ?= chromium/6721
+
 # SPICE 显示栈（false 时不下载/不编译 spice-server 栈，QEMU 以 --disable-spice 配置）
 USE_SPICE ?= true
 

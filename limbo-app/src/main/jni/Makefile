@@ -200,7 +200,8 @@ SYMBOLS_SRC_DIRS := $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI) \
 	$(GLIB_INSTALL_DIR)/lib \
 	$(PIXMAN_INSTALL_DIR)/lib \
 	$(GTK_INSTALL_DIR)/lib \
-	$(VIRGL_INSTALL_DIR)/lib
+	$(VIRGL_INSTALL_DIR)/lib \
+	$(if $(filter true,$(USE_ANGLE)),$(ANGLE_INSTALL_DIR)/lib)
 
 COLLECT_SYMBOLS= \
 	mkdir -p "$(SYMBOLS_DIR)" && \
@@ -250,7 +251,7 @@ endif
 
 export
 
-.PHONY: limbo symbols clean-symbols clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl edk2 fetch-edk2 clean-edk2
+.PHONY: limbo symbols clean-symbols clean distclean clean-ndk createdirs pkg-config-link clean-ffi clean-glib clean-qemu clean-pixman clean-slirp clean-spice clean-gtk clean-virgl ncat clean-ncat fetch fetch-glib fetch-libffi fetch-pixman fetch-sdl2 fetch-slirp fetch-openssl fetch-libjpeg fetch-spice-protocol fetch-spice fetch-qemu fetch-gtk4android fetch-virgl config-virgl virgl edk2 fetch-edk2 clean-edk2 fetch-angle config-angle angle clean-angle
 
 default: limbo
 	
@@ -670,6 +671,86 @@ virgl: ndk config-virgl
 clean-virgl:
 	-rm -rf "$(VIRGL_BUILD_DIR)" "$(VIRGL_INSTALL_DIR)" "$(VIRGL_CROSS_FILE)"
 
+# ---------------------------------------------------------------------------
+# ANGLE (google/angle): OpenGL ES -> Vulkan Translator layer for Android.
+# 作用：在不支持硬件 GLES 的设备上，让 virglrenderer 的 GL 后端通过 ANGLE
+# 转译到 Vulkan，实现 virtio-gpu-gl-pci 的软件渲染兜底。与运行时切换配合
+# 见 limbo/vm-executor-jni.c（epoxy_set_library_path + set_library_path）。
+#
+# 构建：CMake + Ninja（同 libjpeg-turbo），独立 CMakeLists.txt，不依赖 pkg-config。
+# 共享库安装到 $(ANGLE_INSTALL_DIR)/lib，ANGLE 自己拉 SwiftShader / volk 等依赖
+# （CMake FetchContent，首次 configure 时自动下载）。USE_ANGLE=false 时全部跳过。
+#
+# ANGLE 与 virglrenderer 无编译期依赖：ANGLE 只是 virgl 的运行时备选后端，
+# libepoxy 在运行时 dlopen 它。因此顺序上 ANGLE 可排在任何位置。
+# ---------------------------------------------------------------------------
+config-angle: ndk
+	@if [ "$(USE_ANGLE)" != "true" ]; then \
+		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 配置"; \
+	elif [ ! -f "$(ANGLE_SRC_DIR)/CMakeLists.txt" ]; then \
+		echo "ERROR: ANGLE 源码不存在（$(ANGLE_SRC_DIR)），先执行 make fetch-angle"; exit 1; \
+	else \
+		echo ">> ANGLE CMake 配置（$(ANGLE_BUILDTYPE), $(APP_ABI)）"; \
+		rm -rf "$(ANGLE_BUILD_DIR)" "$(ANGLE_INSTALL_DIR)"; \
+		mkdir -p "$(ANGLE_BUILD_DIR)"; \
+		cmake -S "$(ANGLE_SRC_DIR)" -B "$(ANGLE_BUILD_DIR)" -G Ninja \
+			-DCMAKE_TOOLCHAIN_FILE="$(NDK_ROOT)/build/cmake/android.toolchain.cmake" \
+			-DANDROID_ABI=$(APP_ABI) \
+			-DANDROID_PLATFORM=android-$(NDK_PLATFORM_API) \
+			-DCMAKE_INSTALL_PREFIX="$(ANGLE_INSTALL_DIR)" \
+			-DCMAKE_BUILD_TYPE="$(ANGLE_BUILDTYPE)" \
+			-DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+			-DBUILD_SHARED_LIBS=ON \
+			-DANGLE_ENABLE_VULKAN=ON \
+			-DANGLE_ENABLE_SWIFTSHADER=ON \
+			-DANGLE_ENABLE_OPENGL=OFF \
+			-DANGLE_ENABLE_D3D=OFF \
+			-DANGLE_ENABLE_METAL=OFF \
+			-DANGLE_ENABLE_NULL=OFF \
+			-DANGLE_USE_ABSEIL=OFF \
+			-DANGLE_USE_VOLK=OFF \
+			-DANGLE_USE_CMAKE_FILESYSTEM=ON \
+			-DANGLE_ENABLE_DYNAMIC_VULKAN_LOADING=ON \
+			-DANGLE_HAS_LIBANDROID=ON \
+			-DANGLE_HAS_PTHREAD=ON; \
+	fi
+
+angle: ndk config-angle
+	@if [ "$(USE_ANGLE)" = "true" ]; then \
+		echo ">> ANGLE 构建（ninja -C $(ANGLE_BUILD_DIR)）"; \
+		ninja -C "$(ANGLE_BUILD_DIR)" -j $(BUILD_THREADS); \
+		echo ">> ANGLE 安装到 $(ANGLE_INSTALL_DIR)"; \
+		cmake --install "$(ANGLE_BUILD_DIR)"; \
+		echo ">> ANGLE 部署 .so 到 jniLibs"; \
+		$(CREATE_LIBSDIR); \
+		cp -f "$(ANGLE_INSTALL_DIR)"/lib/*.so "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/" 2>/dev/null || true; \
+		cp -f "$(ANGLE_INSTALL_DIR)"/lib64/*.so "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/" 2>/dev/null || true; \
+		echo ">> ANGLE 完成"; \
+	else \
+		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 构建"; \
+	fi
+
+clean-angle:
+	-rm -rf "$(ANGLE_BUILD_DIR)" "$(ANGLE_INSTALL_DIR)"
+
+# ANGLE 源码获取：google/angle 官方仓库 + 指定 tag（depth 1）。
+# ANGLE 依赖 SwiftShader 等 Chromium 子项目，CMake FetchContent 会在
+# config-angle 阶段自动拉取；这里只做顶层仓库克隆（省网络）。
+# 需要完整仓库历史时（某些子模块脚本要），ANGLE_FETCH_DEPS=true 才拉子模块。
+fetch-angle:
+	@if [ "$(USE_ANGLE)" != "true" ]; then \
+		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 源码获取"; \
+	elif [ ! -f "$(ANGLE_SRC_DIR)/CMakeLists.txt" ]; then \
+		echo ">> GET ANGLE @ $(ANGLE_TAG) from $(ANGLE_URL)"; \
+		rm -rf "$(ANGLE_SRC_DIR)"; \
+		git clone --depth 1 --branch $(ANGLE_TAG) --single-branch $(ANGLE_URL) "$(ANGLE_SRC_DIR)"; \
+	else \
+		echo ">> ANGLE 源码已存在，跳过"; \
+	fi
+ifeq ($(ANGLE_FETCH_DEPS),true)
+	@cd "$(ANGLE_SRC_DIR)" && git submodule update --init --recursive || echo ">> ANGLE 子模块拉取失败，CMake FetchContent 会在 config-angle 时自动补"
+endif
+
 _qemu: ndk
 	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST)
 
@@ -776,6 +857,12 @@ limbo:
 ifeq ($(USE_VIRGL),true)
 	make config-virgl
 	make virgl
+endif
+# ANGLE 渲染后端：运行时动态替换 libepoxy 的 EGL/GLES 入口（见 vm-executor-jni.c），
+# 不参与 QEMU 编译，因此排在 virglrenderer 之后独立构建即可。
+ifeq ($(USE_ANGLE),true)
+	make config-angle
+	make angle
 endif
 	make config-qemu
 	make qemu
@@ -951,7 +1038,7 @@ EDK2_ENV = EDK2_FIRMWARE_DIR="$(EDK2_FIRMWARE_DIR)" EDK2_GIT_URL="$(EDK2_GIT_URL
 	EDK2_TAG="$(EDK2_TAG)" EDK2_TOOLCHAIN="$(EDK2_TOOLCHAIN)" \
 	BUILD_THREADS="$(BUILD_THREADS)" bash "$(EDK2_SCRIPT)"
 
-fetch: fetch-glib fetch-libffi fetch-pixman $(if $(filter true,$(USE_SDL)),fetch-sdl2) fetch-slirp $(SPICE_FETCH_TARGETS) $(if $(filter true,$(USE_GTK)),fetch-gtk4android) fetch-virgl fetch-qemu $(if $(filter true,$(USE_EDK2)),fetch-edk2)
+fetch: fetch-glib fetch-libffi fetch-pixman $(if $(filter true,$(USE_SDL)),fetch-sdl2) fetch-slirp $(SPICE_FETCH_TARGETS) $(if $(filter true,$(USE_GTK)),fetch-gtk4android) fetch-virgl fetch-qemu $(if $(filter true,$(USE_EDK2)),fetch-edk2) $(if $(filter true,$(USE_ANGLE)),fetch-angle)
 
 fetch-virgl:
 	@if [ "$(USE_VIRGL)" != "true" ]; then \
@@ -1161,7 +1248,7 @@ ndk-gdb:
 	$(COPY_GDB_SETUP_LIBS)
 	$(ndkgdb) --attach $(PKG_NAME) --verbose -t
 
-distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-ncat clean-edk2 clean-symbols clean-ndk
+distclean: clean-qemu clean-ffi clean-glib clean-pixman clean-slirp clean-spice clean-gtk clean-virgl clean-angle clean-ncat clean-edk2 clean-symbols clean-ndk
 
 clean: 
 	make clean-qemu 
@@ -1172,6 +1259,7 @@ clean:
 	make clean-spice
 	make clean-gtk
 	make clean-virgl
+	make clean-angle
 	make clean-edk2
 	make clean-symbols
 	make clean-ndk

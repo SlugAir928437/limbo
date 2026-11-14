@@ -1,8 +1,7 @@
 diff --git a/src/dispatch_common.c b/src/dispatch_common.c
 --- a/src/dispatch_common.c
 +++ b/src/dispatch_common.c
-@@ -199,14 +199,37 @@
- static char EGL_LIB[256] = "libEGL.so";
+@@ -192,15 +192,38 @@ static char EGL_LIB[256] = "libEGL.so";
  static char GLES1_LIB[256] = "libGLESv1_CM.so";
  static char GLES2_LIB[256] = "libGLESv2.so";
  
@@ -42,3 +41,5 @@ diff --git a/src/dispatch_common.c b/src/dispatch_common.c
 +    snprintf(gles2, sizeof(gles2), "%s/libGLESv2_angle.so", path);
 +    epoxy_set_library_names(egl, gles1, gles2);
  }
+ #elif defined(_WIN32)
+ #define EGL_LIB "libEGL.dll"

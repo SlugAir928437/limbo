@@ -1,0 +1,25 @@
+diff --git a/src/android_stub/hardware_stub.cpp b/src/android_stub/hardware_stub.cpp
+--- a/src/android_stub/hardware_stub.cpp
++++ b/src/android_stub/hardware_stub.cpp
+@@ -1,10 +1,20 @@
++#include <errno.h>
+ #include <hardware/hardware.h>
+ 
+ extern "C" {
+ 
+ int hw_get_module(const char *id, const struct hw_module_t **module)
+ {
+-   return 0;
++   /* Limbo: 这个 stub 随 APK 分发时会真的被调用（进程里没有系统
++    * libhardware.so），而进程也加载不到 /vendor/lib64/hw 下的 gralloc HAL。
++    * 原来的 return 0 谎报成功却不写出参，Mesa 的 u_gralloc_cros_api_create()
++    * 拿到 NULL 就去 strcmp(module->common.name, "CrOS Gralloc")，
++    * eglInitialize() 里直接 SIGSEGV。这里如实返回 -ENOENT 并把出参置空，
++    * u_gralloc_create() 会一路落到不需要 HAL 的 fallback 实现。 */
++   if (module != NULL)
++      *module = NULL;
++   (void)id;
++   return -ENOENT;
+ }
+ 
+ }

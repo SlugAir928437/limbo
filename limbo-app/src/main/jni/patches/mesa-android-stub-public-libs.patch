@@ -1,0 +1,45 @@
+diff --git a/src/android_stub/meson.build b/src/android_stub/meson.build
+--- a/src/android_stub/meson.build
++++ b/src/android_stub/meson.build
+@@ -6,18 +6,30 @@ if with_android_stub
+     lib_names += ['backtrace']
+   endif
+ 
++  # Limbo: 只有 libcutils / libhardware 编成静态 stub。这两个不是标准 public
++  # 库，普通 App 的 linker 命名空间加载不到（随包分发又会用空实现顶掉系统库）。
++  # liblog / libnativewindow / libsync 都是 public 库，保留 shared：产物只对它们
++  # 留 DT_NEEDED，运行时由系统的真实实现满足。Mesa 的 Android EGL 平台建窗、
++  # 取 dma-buf、等 fence 全靠这几个真实实现，换成空 stub 会在 eglInitialize()
++  # 或首帧 dequeueBuffer 时崩掉/画出花屏。
++  static_stub_libs = ['cutils', 'hardware']
++
+   foreach lib : lib_names
+-    # Limbo: 这些 stub 只用来满足链接。普通 APK 的 linker namespace 既 dlopen
+-    # 不到 /system 下的同名平台库（libcutils/libhardware/libsync 等都不在
+-    # public.libraries.txt 里），随包分发又会用这些空实现顶掉系统 liblog 等库，
+-    # 所以改编成静态库直接链进 Mesa 的 .so；符号会被 egl.sym / dri.sym 版本
+-    # 脚本挡住不导出，产物也不再对上述平台库产生 DT_NEEDED。
+-    stub_libs += static_library(
+-      lib,
+-      files(lib + '_stub.cpp'),
+-      include_directories : inc_include,
+-      install : false,
+-    )
++    if static_stub_libs.contains(lib)
++      stub_libs += static_library(
++        lib,
++        files(lib + '_stub.cpp'),
++        include_directories : inc_include,
++        install : false,
++      )
++    else
++      stub_libs += shared_library(
++        lib,
++        files(lib + '_stub.cpp'),
++        include_directories : inc_include,
++        install : false,
++      )
++    endif
+   endforeach
+ 
+   dep_android = declare_dependency(

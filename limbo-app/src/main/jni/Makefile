@@ -785,6 +785,18 @@ config-mesa: ndk
 			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_STUB_PATCH)" \
 				|| { echo 'ERROR: Mesa 的 android-stub 补丁没打上'; exit 1; }; \
 		fi; \
+		if [ -f "$(MESA_STUB_MESON)" ] && \
+		   ! grep -q 'static_stub_libs' "$(MESA_STUB_MESON)"; then \
+			echo ">> Mesa: 应用 android-stub public 库回退为动态加载补丁"; \
+			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_STUB_PUBLIC_PATCH)" \
+				|| { echo 'ERROR: Mesa 的 android-stub public 库补丁没打上'; exit 1; }; \
+		fi; \
+		if [ -f "$(MESA_HW_STUB)" ] && \
+		   ! grep -q 'return -ENOENT' "$(MESA_HW_STUB)"; then \
+			echo ">> Mesa: 应用 hw_get_module() 如实失败补丁"; \
+			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_HW_STUB_PATCH)" \
+				|| { echo 'ERROR: Mesa 的 hw_get_module() 补丁没打上'; exit 1; }; \
+		fi; \
 		$(CREATE_MESA_MESON_CROSS_FILE); \
 		rm -rf "$(MESA_BUILD_DIR)" "$(MESA_INSTALL_DIR)"; \
 		$(CREATE_MESA_PC); \

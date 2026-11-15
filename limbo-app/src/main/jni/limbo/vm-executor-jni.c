@@ -175,6 +175,58 @@ static int limbo_gl_lib_loadable(const char *dir, const char *name) {
 }
 
 /*
+ * 真的走一遍 eglGetDisplay() + eglInitialize()，确认这套 EGL 能初始化。
+ *
+ * 能 dlopen 不等于能用：Mesa 的 Android EGL 平台（platform_android.c）初始化时
+ * 要通过 libhardware 找 vendor 的 gralloc HAL、再打开 /dev/dri 的 DRM 渲染节点。
+ * 随 APK 分发时这两件事在普通 App 的 linker 命名空间里都做不到（gralloc HAL 在
+ * /vendor 分区，App 加载不到），eglInitialize() 会返回失败。这时如果还让
+ * libepoxy / SDL 用这套库，QEMU 会在建 SDL 窗口时失败、虚拟机直接起不来，
+ * 所以先探一次，失败就回退系统 GLES。
+ *
+ * 只探 zink：ANGLE 的 Android EGL 后端本来就是给 App 用的（只要设备有 Vulkan），
+ * 不需要 gralloc，探它反而可能把本来能用的 ANGLE 判死。
+ *
+ * 不引 EGL 头（QEMU 自己有 egl.h，路径容易打架）：EGL_DEFAULT_DISPLAY 和
+ * EGL_NO_DISPLAY 都是 NULL，eglInitialize 的返回值按 EGLBoolean(0/1) 判断。
+ */
+static int limbo_gl_egl_initialize_ok(const char *dir, const limbo_gl_libs *libs) {
+    char path[MAX_STRING_LEN + 64];
+    void *egl = NULL;
+    void *(*get_display)(void *) = NULL;
+    unsigned int (*initialize)(void *, int *, int *) = NULL;
+    unsigned int (*terminate)(void *) = NULL;
+    void *dpy = NULL;
+
+    snprintf(path, sizeof(path), "%s/%s", dir, libs->egl);
+    egl = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (egl == NULL) {
+        LOGD("VirGL 后端：%s 不可加载: %s", path, dlerror());
+        return 0;
+    }
+    get_display = (void *(*)(void *))dlsym(egl, "eglGetDisplay");
+    initialize = (unsigned int (*)(void *, int *, int *))
+        dlsym(egl, "eglInitialize");
+    terminate = (unsigned int (*)(void *))dlsym(egl, "eglTerminate");
+    if (get_display == NULL || initialize == NULL || terminate == NULL) {
+        LOGD("VirGL 后端：%s 缺 EGL 入口，无法探测", path);
+        return 0;
+    }
+
+    dpy = get_display(NULL);
+    if (dpy == NULL) {
+        return 0;
+    }
+    if (!initialize(dpy, NULL, NULL)) {
+        /* 失败时 EGLDisplay 仍是合法句柄，按 EGL 规范要继续 eglTerminate。 */
+        terminate(dpy);
+        return 0;
+    }
+    terminate(dpy);
+    return 1;
+}
+
+/*
  * 判断 dir 下是不是一整套能用的 EGL/GLES 实现（ANGLE 或 zink）。
  * EGL 和 GLESv2 都必须能加载：epoxy 是分别 dlopen 的，少了任何一个都会在
  * 第一次 GL 调用时 abort。GLESv1 只有 GLES1 入口才会用到，QEMU/virgl 不走
@@ -323,6 +375,29 @@ static int limbo_apply_gl_backend(void) {
         limbo_set_mesa_env(0, NULL);
         limbo_gl_backend_applied = -2;
         return -2;
+    }
+
+    /* zink 还要过了这一关：Mesa 的 Android EGL 平台初始化在建屏之前就要拿到
+     * vendor 的 gralloc HAL，普通 App 拿不到（详见 limbo_gl_egl_initialize_ok）。
+     * 探不过就说明这套库在本进程里根本没法用，回退系统 GLES，别让 QEMU 带着
+     * 一套初始化不了的 EGL 去建窗口。
+     *
+     * 先设 GALLIUM_DRIVER / MESA_LOADER_DRIVER_OVERRIDE：eglInitialize() 里
+     * disp->Options.Zink 就是看 MESA_LOADER_DRIVER_OVERRIDE 决定的，不设的话
+     * 探针走的是"按 DRM 设备猜 gallium 驱动"那条路，探不过会把本来能用的 zink
+     * 判死。 */
+    if (backend == LIMBO_GL_BACKEND_ZINK) {
+        limbo_set_mesa_env(1, gl_dir);
+        if (!limbo_gl_egl_initialize_ok(gl_dir, libs)) {
+            LOGE("VirGL 后端：%s 的 eglInitialize() 失败（%s），这套 Mesa 库在"
+                 "本进程里用不了（Mesa 的 Android EGL 需要 vendor 的 gralloc HAL，"
+                 "App 的 linker 命名空间加载不到），回退系统 GLES",
+                 limbo_gl_backend_name(backend), gl_dir);
+            limbo_set_sdl_gl_driver(NULL, NULL);
+            limbo_set_mesa_env(0, NULL);
+            limbo_gl_backend_applied = -5;
+            return -5;
+        }
     }
 
     /* libepoxy 是 libqemu-system-*.so 的 DT_NEEDED，libqemu 一 dlopen 它就在

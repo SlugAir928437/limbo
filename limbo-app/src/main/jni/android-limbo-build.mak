@@ -189,10 +189,19 @@ MESA_EMUTLS_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-emutls-glapi-exports
 MESA_DRI_SYM := $(MESA_SRC_DIR)/src/gallium/targets/dri/dri.sym.in
 # Mesa 的 android-stub 默认把 libcutils/libhardware/liblog/libnativewindow/libsync
 # 编成 .so 并让产物 DT_NEEDED 它们（上游假设这些库在设备 system/vendor 分区里）。
-# 普通 APK 的 linker namespace 加载不到这些私有库，随包分发又会用空实现覆盖系统
-# liblog 等库，所以补丁把它们改成静态库链进 Mesa 的 .so。
+# 普通 APK 的 linker namespace 加载不到 libcutils/libhardware 这类私有库，随包
+# 分发又会用空实现覆盖系统库，所以这两个改成静态库链进 Mesa 的 .so；
+# liblog/libnativewindow/libsync 是 public 库，保留 DT_NEEDED 交给系统实现。
 MESA_STUB_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-stub-static.patch
 MESA_STUB_MESON := $(MESA_SRC_DIR)/src/android_stub/meson.build
+# 接着把 liblog / libnativewindow / libsync 改回 shared stub：这三个是标准
+# public 库，App 能直接加载系统里那份真实实现，Mesa 的 Android EGL 平台要靠
+# 它们建窗 / 取 dma-buf / 等 fence。只有 cutils、hardware 继续静态链入。
+MESA_STUB_PUBLIC_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-stub-public-libs.patch
+# hw_get_module() 的 stub 原来 return 0 却不写出参，Mesa 的 u_gralloc_* 会拿
+# NULL 去 strcmp 模块名，eglInitialize() 直接 SIGSEGV。补丁让它如实返回失败。
+MESA_HW_STUB_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-stub-honest-hwmodule.patch
+MESA_HW_STUB := $(MESA_SRC_DIR)/src/android_stub/hardware_stub.cpp
 MESA_BUILDTYPE := $(if $(filter 1,$(NDK_DEBUG)),debug,release)
 
 # pixman (shared with QEMU, meson build)

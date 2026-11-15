@@ -1,0 +1,17 @@
+diff --git a/src/android_stub/meson.build b/src/android_stub/meson.build
+--- a/src/android_stub/meson.build
++++ b/src/android_stub/meson.build
+@@ -7,7 +7,12 @@
+   endif
+ 
+   foreach lib : lib_names
+-    stub_libs += shared_library(
++    # Limbo: 这些 stub 只用来满足链接。普通 APK 的 linker namespace 既 dlopen
++    # 不到 /system 下的同名平台库（libcutils/libhardware/libsync 等都不在
++    # public.libraries.txt 里），随包分发又会用这些空实现顶掉系统 liblog 等库，
++    # 所以改编成静态库直接链进 Mesa 的 .so；符号会被 egl.sym / dri.sym 版本
++    # 脚本挡住不导出，产物也不再对上述平台库产生 DT_NEEDED。
++    stub_libs += static_library(
+       lib,
+       files(lib + '_stub.cpp'),
+       include_directories : inc_include,

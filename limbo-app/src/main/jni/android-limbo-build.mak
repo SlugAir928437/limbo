@@ -187,6 +187,12 @@ MESA_SW_DRI_WINSYS := $(MESA_SRC_DIR)/src/gallium/winsys/sw/dri/dri_sw_winsys.c
 # 它们（dri.sym）；补丁把这两个名字加进导出列表。
 MESA_EMUTLS_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-emutls-glapi-exports.patch
 MESA_DRI_SYM := $(MESA_SRC_DIR)/src/gallium/targets/dri/dri.sym.in
+# Mesa 的 android-stub 默认把 libcutils/libhardware/liblog/libnativewindow/libsync
+# 编成 .so 并让产物 DT_NEEDED 它们（上游假设这些库在设备 system/vendor 分区里）。
+# 普通 APK 的 linker namespace 加载不到这些私有库，随包分发又会用空实现覆盖系统
+# liblog 等库，所以补丁把它们改成静态库链进 Mesa 的 .so。
+MESA_STUB_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-stub-static.patch
+MESA_STUB_MESON := $(MESA_SRC_DIR)/src/android_stub/meson.build
 MESA_BUILDTYPE := $(if $(filter 1,$(NDK_DEBUG)),debug,release)
 
 # pixman (shared with QEMU, meson build)

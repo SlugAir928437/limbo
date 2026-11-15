@@ -779,6 +779,12 @@ config-mesa: ndk
 			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_EMUTLS_PATCH)" \
 				|| { echo 'ERROR: Mesa 的 emutls 导出补丁没打上'; exit 1; }; \
 		fi; \
+		if [ -f "$(MESA_STUB_MESON)" ] && \
+		   ! grep -q 'stub_libs += static_library(' "$(MESA_STUB_MESON)"; then \
+			echo ">> Mesa: 应用 android-stub 静态链接补丁"; \
+			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_STUB_PATCH)" \
+				|| { echo 'ERROR: Mesa 的 android-stub 补丁没打上'; exit 1; }; \
+		fi; \
 		$(CREATE_MESA_MESON_CROSS_FILE); \
 		rm -rf "$(MESA_BUILD_DIR)" "$(MESA_INSTALL_DIR)"; \
 		$(CREATE_MESA_PC); \

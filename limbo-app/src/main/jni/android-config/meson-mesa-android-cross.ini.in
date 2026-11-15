@@ -39,7 +39,10 @@ default_library = 'shared'
 # --undefined-version：dri.sym 同时列出原生 TLS 名与 emutls 名，实际只会定义
 # 其中一套；GNU ld 容忍缺失项，ld.lld 默认报错，这里放行。
 c_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,--undefined-version']
-cpp_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,--undefined-version']
+# -static-libstdc++：android-stub 的桩代码是 C++，默认会 DT_NEEDED libc++_shared.so，
+# 而 APK 里没有这个库（其它依赖都是纯 C），dlopen 会因缺依赖失败。静态链入 libc++
+# 后 Mesa 的产物只依赖 libc/libm/libdl/libz 这些随包或系统公开的库。
+cpp_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,--undefined-version', '-static-libstdc++']
 
 # 不设置 sys_root：设置后 pkg-config 会给所有 -I/-L 加 sysroot 前缀，破坏
 # jni 下那些绝对路径（与 GTK4 / virglrenderer 的 cross file 同理）。

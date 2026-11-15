@@ -166,7 +166,7 @@ jobs:
             libtool-bin pkg-config flex bison gettext texinfo rsync patch \
             gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev \
             nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib \
-            xz-utils patchelf python3-mako
+            xz-utils patchelf python3-mako glslang-tools
           # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉
           # 工具链）。EDK2 默认不编译，只有 USE_EDK2=true 时才安装这两个包：
           # 32 位 ARM 的软浮点工具链在部分发行版上缺失，故容错安装；真的缺工具链时
@@ -179,12 +179,14 @@ jobs:
             echo ">> USE_EDK2=${USE_EDK2}：跳过 EDK2 交叉工具链安装"
           fi
           # ubuntu-latest 自带的 meson (1.3.2) 太旧: glib 2.89.3 要求 >= 1.4.0
-          # （mako 已随上面的 python3-mako 安装，Mesa/zink 的代码生成需要它）
+          # （mako 已随上面的 python3-mako 安装，Mesa/zink 的代码生成需要它；
+          #  glslang-tools 提供 glslangValidator，Mesa 的 Vulkan/zink 内部着色器
+          #  编译需要它，否则 meson setup 在 meson.build 里直接报找不到程序）
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           # verify the host glib tools are present: the Makefile's glib target
           # replaces the Android-ELF tools in the installed bindir with these
           # (fail early instead of mid-build)
-          command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
+          command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen glslangValidator
 
       # ANGLE 的 DEPS（chromium build/、vulkan-deps、SwiftShader、NDK、clang 等）
       # 首次 gclient sync 要占 4GB 左右，runner 自带的预装工具先清掉腾空间。

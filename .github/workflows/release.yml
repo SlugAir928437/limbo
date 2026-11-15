@@ -403,7 +403,7 @@ jobs:
           set -euo pipefail
           # 发版用 limbo-app/src/main/assets2/Changelog.md 作为 Release 正文。
           # 用 GITHUB_OUTPUT 的 heredoc 多行格式（EOF_MARKER<<MARKER ... MARKER）直接写入，
-          # 避免 Markdown 里的 $、反引号、${{ 等特殊字符被 workflow 解析器当表达式求值。
+          # 避免 Markdown 里的 $、反引号、表达式符号等特殊字符被 workflow 解析器求值。
           SRC="limbo-app/src/main/assets2/Changelog.md"
           if [ ! -f "$SRC" ]; then
             echo "ERROR: 更新日志不存在：$SRC" >&2

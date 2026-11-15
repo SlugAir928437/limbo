@@ -12,8 +12,13 @@
 [binaries]
 # TARGET_PREFIX（不是 HOST_PREFIX）才是 NDK clang wrapper 的前缀：32 位 ARM 是
 # armv7a-linux-androideabiNN-clang，而 HOST_PREFIX 的普通三元组没有对应二进制。
-c = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@NDK_PLATFORM_API@-clang'
-cpp = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@NDK_PLATFORM_API@-clang++'
+# 这里的 NN 用 MESA_PLATFORM_SDK（默认 max(ANDROID_API,26)）而不是 ANDROID_API：
+# Mesa 25 在 platform-sdk-version >= 26 时会用到 sync_file_info/sync_merge 等
+# API 26 才有的 bionic 接口（src/util/libsync.h），target triple 必须与
+# -Dplatform-sdk-version 一致，否则 bionic 头文件会按 API 24 把它们标成
+# unavailable 直接编译失败。代价是 Mesa(zink) 的产物要求 Android 8.0+。
+c = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@MESA_PLATFORM_SDK@-clang'
+cpp = '@TOOLCHAIN_CLANG_PREFIX@/@TARGET_PREFIX@@MESA_PLATFORM_SDK@-clang++'
 ar = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ar'
 as = '@TOOLCHAIN_CLANG_PREFIX@/llvm-as'
 ranlib = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ranlib'
@@ -25,9 +30,16 @@ prefix = '@MESA_INSTALL_DIR@'
 libdir = 'lib'
 buildtype = '@MESA_BUILDTYPE@'
 default_library = 'shared'
+# -fno-emulated-tls 不用：NDK 在 API < 29 时把 thread_local 编成 emutls，而
+# Mesa 的 libEGL/libGLESv2 依赖 libgallium_dri 导出的 glapi TLS 变量（见
+# dri.sym）。这里保持 NDK 默认的 emutls（API 26 即可，原生 TLS 在 dlopen 场景
+# 下要 API 29+），符号名差异由 patches/mesa-android-emutls-glapi-exports.patch
+# 在 dri.sym 里补上 __emutls_v.* 解决。
 # 16 KB page size: 这些 .so 会被 App 在 Android 15+ 的 16 KB 页设备上 dlopen
-c_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
-cpp_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384']
+# --undefined-version：dri.sym 同时列出原生 TLS 名与 emutls 名，实际只会定义
+# 其中一套；GNU ld 容忍缺失项，ld.lld 默认报错，这里放行。
+c_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,--undefined-version']
+cpp_link_args = ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-Wl,--undefined-version']
 
 # 不设置 sys_root：设置后 pkg-config 会给所有 -I/-L 加 sysroot 前缀，破坏
 # jni 下那些绝对路径（与 GTK4 / virglrenderer 的 cross file 同理）。

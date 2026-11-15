@@ -202,10 +202,11 @@ MESA_TGZ_ALT ?= https://github.com/Mesa3D/mesa/archive/refs/tags/mesa-$(MESA_VER
 MESA_PLATFORMS ?= android
 
 # 传给 Mesa 的 -Dplatform-sdk-version（只影响 Mesa 内部按 API 版本裁剪代码）。
-# 下限有两个：Mesa 25.2 的 meson 直接拒绝小于 25 的值（"less than minimum
-# value 25"），而 Android EGL 平台用到的 AHardwareBuffer / libnativewindow
-# 又要 API 26 才有，所以默认取 max(ANDROID_API, 26)。注意本地的 C 链接 API 仍
-# 是 ANDROID_API，Mesa 按更高 API 编出来的库要求设备系统版本也相应提高。
+# 下限取 26：Mesa 25.2 的 meson 直接拒绝小于 25 的值，而 Android EGL 平台用到的
+# AHardwareBuffer / libnativewindow（以及 src/util/libsync.h 里的 sync_*）都是
+# API 26 起才有。交叉文件里的 clang target triple 用同一个值，二者必须一致。
+# 注意：本地的 C 链接 API 仍是 ANDROID_API，Mesa 按更高 API 编出来的库要求
+# 设备系统版本也相应提高。
 MESA_PLATFORM_SDK ?= $(shell if [ $(NDK_PLATFORM_API) -lt 26 ]; then echo 26; else echo $(NDK_PLATFORM_API); fi)
 
 # ---------------------------------------------------------------------------

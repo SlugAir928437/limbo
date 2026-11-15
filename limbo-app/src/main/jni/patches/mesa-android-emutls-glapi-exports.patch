@@ -1,0 +1,17 @@
+diff --git a/src/gallium/targets/dri/dri.sym.in b/src/gallium/targets/dri/dri.sym.in
+--- a/src/gallium/targets/dri/dri.sym.in
++++ b/src/gallium/targets/dri/dri.sym.in
+@@ -8,6 +8,13 @@
+                 _mesa_glapi_set_dispatch;
+                 _mesa_glapi_tls_Context;
+                 _mesa_glapi_tls_Dispatch;
++                # Limbo: NDK 在 API < 29 时把 thread_local 编成 emutls，libEGL/
++                # libGLESv2 引用的是 __emutls_v.* 控制块而不是上面的原生 TLS
++                # 名字，必须一并导出，否则链接报 undefined symbol。
++                # 原生 TLS 构建时这两个名字没有定义，由链接参数
++                # --undefined-version 放行（见 meson-mesa-android-cross.ini.in）。
++                __emutls_v._mesa_glapi_tls_Context;
++                __emutls_v._mesa_glapi_tls_Dispatch;
+ 
+ 		ddebug_screen_create;
+ 		noop_screen_create;

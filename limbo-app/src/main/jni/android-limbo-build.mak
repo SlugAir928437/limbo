@@ -182,6 +182,11 @@ MESA_PKG_CONFIG_DIR := $(MESA_INSTALL_DIR)/lib/pkgconfig
 # 声明而编不过；补丁在 Android 上把它关掉，走 align_malloc 回退路径。
 MESA_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-no-sysv-shm.patch
 MESA_SW_DRI_WINSYS := $(MESA_SRC_DIR)/src/gallium/winsys/sw/dri/dri_sw_winsys.c
+# NDK 在 API < 29 时 thread_local 走 emutls，glapi 的 TLS 变量符号名变成
+# __emutls_v._mesa_glapi_tls_*，而 libEGL/libGLESv2 依赖 libgallium_dri 导出
+# 它们（dri.sym）；补丁把这两个名字加进导出列表。
+MESA_EMUTLS_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-emutls-glapi-exports.patch
+MESA_DRI_SYM := $(MESA_SRC_DIR)/src/gallium/targets/dri/dri.sym.in
 MESA_BUILDTYPE := $(if $(filter 1,$(NDK_DEBUG)),debug,release)
 
 # pixman (shared with QEMU, meson build)
@@ -390,7 +395,7 @@ CREATE_MESA_MESON_CROSS_FILE = \
 	sed \
 		-e 's|@TOOLCHAIN_CLANG_PREFIX@|$(TOOLCHAIN_CLANG_PREFIX)|g' \
 		-e 's|@TARGET_PREFIX@|$(TARGET_PREFIX)|g' \
-		-e 's|@NDK_PLATFORM_API@|$(NDK_PLATFORM_API)|g' \
+		-e 's|@MESA_PLATFORM_SDK@|$(MESA_PLATFORM_SDK)|g' \
 		-e 's|@MESA_INSTALL_DIR@|$(MESA_INSTALL_DIR)|g' \
 		-e 's|@MESA_BUILDTYPE@|$(MESA_BUILDTYPE)|g' \
 		-e 's|@MESON_CPU_FAMILY@|$(MESON_CPU_FAMILY)|g' \

@@ -177,6 +177,11 @@ MESA_INSTALL_DIR := $(LIMBO_JNI_ROOT)/mesa/android-install/$(APP_ABI)
 MESA_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-mesa-android-cross.ini
 MESA_CROSS_FILE_TEMPLATE := $(LIMBO_JNI_ROOT)/android-config/meson-mesa-android-cross.ini.in
 MESA_PKG_CONFIG_DIR := $(MESA_INSTALL_DIR)/lib/pkgconfig
+# Android(bionic) 没有 SysV 共享内存，但 sys/shm.h 头文件存在，meson 的 header
+# 探测仍会定义 HAVE_SYS_SHM_H，导致 dri_sw_winsys.c 里的 shmget/shmat 变成隐式
+# 声明而编不过；补丁在 Android 上把它关掉，走 align_malloc 回退路径。
+MESA_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-no-sysv-shm.patch
+MESA_SW_DRI_WINSYS := $(MESA_SRC_DIR)/src/gallium/winsys/sw/dri/dri_sw_winsys.c
 MESA_BUILDTYPE := $(if $(filter 1,$(NDK_DEBUG)),debug,release)
 
 # pixman (shared with QEMU, meson build)

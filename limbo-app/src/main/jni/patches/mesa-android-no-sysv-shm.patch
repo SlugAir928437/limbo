@@ -1,0 +1,19 @@
+diff --git a/src/gallium/winsys/sw/dri/dri_sw_winsys.c b/src/gallium/winsys/sw/dri/dri_sw_winsys.c
+--- a/src/gallium/winsys/sw/dri/dri_sw_winsys.c
++++ b/src/gallium/winsys/sw/dri/dri_sw_winsys.c
+@@ -27,5 +27,15 @@
+  **************************************************************************/
+ 
++#ifdef __ANDROID__
++/*
++ * Limbo: bionic 没有 SysV 共享内存（shmget/shmat/shmctl/shmdt 未实现），但
++ * sys/shm.h 头文件是存在的，meson 的 header 探测照样会定义 HAVE_SYS_SHM_H，
++ * 编译这些调用时就会变成隐式声明直接失败。Android 上强制关掉它，走下面
++ * align_malloc 的软件回退路径（zink 用不到 DRI sw winsys 的 shm 传输）。
++ */
++#undef HAVE_SYS_SHM_H
++#endif
++
+ #ifdef HAVE_SYS_SHM_H
+ #include <sys/ipc.h>
+ #include <sys/shm.h>

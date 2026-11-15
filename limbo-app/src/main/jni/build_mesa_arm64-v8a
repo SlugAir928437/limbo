@@ -1,0 +1,33 @@
+#!/bin/bash
+# 临时脚本：只构建 Mesa(zink) 这一环（config-mesa + mesa），用于单独验证
+# Mesa 的 meson 选项 / 补丁，不跑整条 limbo 构建链。
+#
+# 用法（WSL/Linux）：
+#   ./build_mesa_arm64-v8a            # 用默认 NDK_ROOT
+#   ./build_mesa_arm64-v8a /path/to/ndk
+#
+# 注意：用 -o ndk 跳过 ndk-build（Mesa 只依赖 NDK 的 clang 与 sysroot，
+# 不需要 jniLibs 里现有的库）；产物在 mesa/android-install/<abi>/lib，
+# 同时会以 libEGL_zink.so / libGLESv1_CM_zink.so / libGLESv2_zink.so 的名字
+# 复制到 ../jniLibs/<abi>/。
+set -e
+cd "$(dirname "$0")"
+
+export NDK_ROOT="${1:-${NDK_ROOT:-/home/huang/android-ndk-r28c}}"
+export BUILD_HOST="${BUILD_HOST:-arm64-v8a}"
+export BUILD_GUEST="${BUILD_GUEST:-x86_64-softmmu}"
+export USE_GTK=true
+export USE_VIRGL=true
+export USE_VIRGL_ZINK=true
+export USE_ANGLE=false
+export BUILD_THREADS="$(nproc)"
+
+if [ ! -d "$NDK_ROOT" ]; then
+	echo "ERROR: NDK_ROOT 不存在: $NDK_ROOT"
+	exit 1
+fi
+
+echo ">> NDK_ROOT=$NDK_ROOT"
+echo ">> BUILD_HOST=$BUILD_HOST BUILD_THREADS=$BUILD_THREADS"
+
+make -o ndk mesa

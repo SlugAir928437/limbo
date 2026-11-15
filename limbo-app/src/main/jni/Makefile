@@ -767,6 +767,12 @@ config-mesa: ndk
 		exit 1; \
 	else \
 		echo ">> Mesa 配置（$(MESA_BUILDTYPE), $(APP_ABI), platforms=$(MESA_PLATFORMS)）"; \
+		if [ -f "$(MESA_SW_DRI_WINSYS)" ] && \
+		   ! grep -q '#undef HAVE_SYS_SHM_H' "$(MESA_SW_DRI_WINSYS)"; then \
+			echo ">> Mesa: 应用 Android 无 SysV shm 补丁"; \
+			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_PATCH)" \
+				|| { echo 'ERROR: Mesa 的 shm 补丁没打上'; exit 1; }; \
+		fi; \
 		$(CREATE_MESA_MESON_CROSS_FILE); \
 		rm -rf "$(MESA_BUILD_DIR)" "$(MESA_INSTALL_DIR)"; \
 		$(CREATE_MESA_PC); \

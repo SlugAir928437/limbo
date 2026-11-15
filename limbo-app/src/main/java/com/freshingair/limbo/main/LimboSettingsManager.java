@@ -28,7 +28,7 @@ import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.preference.ListPreference;
+import android.preference.MultiSelectListPreference;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
 import android.preference.PreferenceManager;
@@ -51,9 +51,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public class LimboSettingsManager extends PreferenceActivity {
@@ -112,72 +110,93 @@ public class LimboSettingsManager extends PreferenceActivity {
     // 看门狗绑定的物理核心（仅 KVM）：CPU 列表如 "4-7"，空串表示自动选簇
     public static String getWatchdogCpuAffinity(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        return prefs.getString("watchdogCpuAffinity", "");
+        try {
+            Set<String> cpus = prefs.getStringSet("watchdogCpuAffinity", null);
+            if (cpus == null || cpus.isEmpty())
+                return "";
+            List<Integer> list = new ArrayList<>();
+            for (String cpu : cpus) {
+                try {
+                    list.add(Integer.parseInt(cpu));
+                } catch (NumberFormatException ignored) {
+                    // 忽略无法解析的项
+                }
+            }
+            return formatCpuList(list);
+        } catch (ClassCastException e) {
+            // 旧版本用 ListPreference 存的是 "0-3" 字符串
+            String legacy = prefs.getString("watchdogCpuAffinity", "");
+            return legacy == null ? "" : legacy;
+        }
     }
 
     /**
-     * 按设备实际在线 CPU 填充「看门狗绑定核心」的选项。
-     *
-     * <p>分组方式与 native 侧选簇一致：优先 cpufreq/related_cpus（一个 cpufreq
-     * policy 就是一个物理簇），其次 cpu_capacity（EAS 算力相同即同簇），都读不到
-     * 就按单个 CPU 列出。值为 CPU 列表（如 "0-3"），空串表示自动。
+     * 按设备实际在线 CPU 填充「看门狗绑定核心」：每个物理核心一项，用户可多选，
+     * 一项都不选表示自动选簇。
      */
     private void setupCpuAffinityPreference() {
         Preference preference = getPreferenceManager().findPreference("watchdogCpuAffinity");
-        if (!(preference instanceof ListPreference))
+        if (!(preference instanceof MultiSelectListPreference))
             return;
-        final ListPreference list = (ListPreference) preference;
+        final MultiSelectListPreference multi = (MultiSelectListPreference) preference;
 
-        List<String> labels = new ArrayList<>();
-        List<String> values = new ArrayList<>();
-        labels.add(getString(R.string.WatchdogCpuAffinityAuto));
-        values.add("");
-
-        Map<String, List<Integer>> groups = new LinkedHashMap<>();
+        List<CharSequence> entries = new ArrayList<>();
+        List<CharSequence> values = new ArrayList<>();
         for (int cpu : readOnlineCpus()) {
-            String key = readCpuGroupKey(cpu);
-            List<Integer> group = groups.get(key);
-            if (group == null) {
-                group = new ArrayList<>();
-                groups.put(key, group);
-            }
-            group.add(cpu);
+            entries.add(getString(R.string.WatchdogCpuAffinityCore, cpu));
+            values.add(String.valueOf(cpu));
         }
-        for (List<Integer> group : groups.values()) {
-            String value = formatCpuList(group);
-            labels.add(getString(R.string.WatchdogCpuAffinityGroup, value));
-            values.add(value);
-        }
-
-        // 保存的可能是别的设备的核心号：保留成自定义条目，别让用户的选择静默丢失
-        String current = getWatchdogCpuAffinity(this);
-        if (current != null && !current.isEmpty() && !values.contains(current)) {
-            labels.add(getString(R.string.WatchdogCpuAffinityCustom, current));
-            values.add(current);
-        }
-
-        list.setEntries(labels.toArray(new CharSequence[0]));
-        list.setEntryValues(values.toArray(new CharSequence[0]));
-        list.setOnPreferenceChangeListener((pref, newValue) -> {
-            updateCpuAffinitySummary(list, (String) newValue);
+        multi.setEntries(entries.toArray(new CharSequence[0]));
+        multi.setEntryValues(values.toArray(new CharSequence[0]));
+        multi.setOnPreferenceChangeListener((pref, newValue) -> {
+            updateCpuAffinitySummary(multi,
+                    newValue instanceof Set ? (Set<String>) newValue : null);
             return true;
         });
-        updateCpuAffinitySummary(list, list.getValue());
+        updateCpuAffinitySummary(multi, multi.getValues());
     }
 
-    private void updateCpuAffinitySummary(ListPreference list, String value) {
-        if (value == null)
-            value = "";
-        CharSequence[] entries = list.getEntries();
-        int index = list.findIndexOfValue(value);
-        CharSequence label = index >= 0 && entries != null ? entries[index] : value;
-        list.setSummary(getString(R.string.WatchdogCpuAffinitySummary, label));
+    /** 旧版本用 ListPreference 存 "0-3" 字符串，这里迁移成 StringSet。 */
+    private void migrateCpuAffinityPreference() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        Object old = prefs.getAll().get("watchdogCpuAffinity");
+        if (!(old instanceof String))
+            return;
+        Set<String> cpus = new HashSet<>();
+        for (int cpu : parseCpuList((String) old))
+            cpus.add(String.valueOf(cpu));
+        SharedPreferences.Editor edit = prefs.edit().remove("watchdogCpuAffinity");
+        if (!cpus.isEmpty())
+            edit.putStringSet("watchdogCpuAffinity", cpus);
+        edit.apply();
+    }
+
+    private void updateCpuAffinitySummary(MultiSelectListPreference pref, Set<String> values) {
+        List<Integer> cpus = new ArrayList<>();
+        if (values != null) {
+            for (String value : values) {
+                try {
+                    cpus.add(Integer.parseInt(value));
+                } catch (NumberFormatException ignored) {
+                    // 忽略无法解析的项
+                }
+            }
+        }
+        if (cpus.isEmpty()) {
+            pref.setSummary(R.string.WatchdogCpuAffinitySummaryDefault);
+            return;
+        }
+        pref.setSummary(getString(R.string.WatchdogCpuAffinitySummary, formatCpuList(cpus)));
     }
 
     /** 读 /sys/devices/system/cpu/online（"0-3,5" -> [0,1,2,3,5]）。 */
     private static List<Integer> readOnlineCpus() {
+        return parseCpuList(readSysfsText("/sys/devices/system/cpu/online"));
+    }
+
+    /** "0-3,5" -> [0,1,2,3,5] */
+    private static List<Integer> parseCpuList(String text) {
         List<Integer> cpus = new ArrayList<>();
-        String text = readSysfsText("/sys/devices/system/cpu/online");
         if (text == null)
             return cpus;
         for (String part : text.trim().split(",")) {
@@ -198,19 +217,6 @@ public class LimboSettingsManager extends PreferenceActivity {
             }
         }
         return cpus;
-    }
-
-    /** 与 native 侧 limbo_cpu_cluster_key() 一致的分组键。 */
-    private static String readCpuGroupKey(int cpu) {
-        String related = readSysfsText(
-                "/sys/devices/system/cpu/cpu" + cpu + "/cpufreq/related_cpus");
-        if (related != null && !related.trim().isEmpty())
-            return "policy:" + related.trim();
-        String capacity = readSysfsText(
-                "/sys/devices/system/cpu/cpu" + cpu + "/cpu_capacity");
-        if (capacity != null && !capacity.trim().isEmpty())
-            return "capacity:" + capacity.trim();
-        return "cpu:" + cpu;
     }
 
     private static String readSysfsText(String path) {
@@ -482,6 +488,9 @@ public class LimboSettingsManager extends PreferenceActivity {
         super.onCreate(savedInstanceState);
         Intent data = new Intent();
         setResult(Config.SETTINGS_RETURN_CODE, data);
+        // 必须在加载 settings.xml 之前迁移：MultiSelectListPreference 读到的
+        // 若是旧版字符串值会直接 ClassCastException。
+        migrateCpuAffinityPreference();
         addPrefs();
         setupCpuAffinityPreference();
         getPreferenceManager().findPreference("enableVNCPassword").setOnPreferenceChangeListener(

@@ -764,44 +764,39 @@ config-mesa: ndk
 		$(CREATE_MESA_PC); \
 		cd $(MESA_SRC_DIR) && \
 		mesa_opts=""; \
+		opts_file=meson_options.txt; \
+		[ -f "$$opts_file" ] || opts_file=meson.options; \
+		if [ ! -f "$$opts_file" ]; then \
+			echo "ERROR: Mesa 源码里既没有 meson_options.txt 也没有 meson.options"; exit 1; \
+		fi; \
 		has_opt() { \
-			grep -qE "option\('$$1'" meson_options.txt 2>/dev/null || \
-			grep -qE "^[[:space:]]*'$$1'[[:space:]]*," meson_options.txt 2>/dev/null; \
-		}; \
-		opt_type() { \
-			grep -A4 -E "option\('$$1'|^[[:space:]]*'$$1'[[:space:]]*," meson_options.txt 2>/dev/null | \
-				sed -n "s/.*type *: *'\([a-z]*\)'.*/\1/p" | head -n1; \
+			grep -qE "option\('$$1'" "$$opts_file" 2>/dev/null || \
+			grep -qE "^[[:space:]]*'$$1'[[:space:]]*," "$$opts_file" 2>/dev/null; \
 		}; \
 		add_opt() { \
-			if has_opt "$$1"; then \
-				t=$$(opt_type "$$1"); \
-				case "$$t" in \
-					feature) mesa_opts="$$mesa_opts -D$$1=$$2" ;; \
-					boolean) mesa_opts="$$mesa_opts -D$$1=$$3" ;; \
-					*)       mesa_opts="$$mesa_opts -D$$1=$$4" ;; \
-				esac; \
-			fi; \
+			if has_opt "$$1"; then mesa_opts="$$mesa_opts -D$$1=$$2"; fi; \
 		}; \
-		add_opt platforms enabled true "$(MESA_PLATFORMS)"; \
-		add_opt platform-sdk-version enabled true "$(MESA_PLATFORM_SDK)"; \
-		add_opt android-stub enabled true false; \
-		add_opt android-libbacktrace enabled false disabled; \
-		add_opt gallium-drivers enabled true zink; \
-		add_opt vulkan-drivers enabled true ""; \
-		add_opt egl enabled true enabled; \
-		add_opt gbm enabled true disabled; \
-		add_opt glx enabled true disabled; \
-		add_opt glvnd enabled true disabled; \
-		add_opt opengl enabled true disabled; \
-		add_opt gles1 enabled true disabled; \
-		add_opt gles2 enabled true enabled; \
-		add_opt llvm enabled true disabled; \
-		add_opt lmsensors enabled true disabled; \
-		add_opt valgrind enabled true disabled; \
-		add_opt zlib enabled true enabled; \
-		add_opt shared-glapi enabled true enabled; \
-		add_opt tests enabled true false; \
-		add_opt tools enabled true ""; \
+		add_opt platforms "$(MESA_PLATFORMS)"; \
+		add_opt platform-sdk-version "$(MESA_PLATFORM_SDK)"; \
+		add_opt android-stub true; \
+		add_opt android-libbacktrace disabled; \
+		add_opt gallium-drivers zink; \
+		add_opt vulkan-drivers ""; \
+		add_opt egl enabled; \
+		add_opt gbm disabled; \
+		add_opt glx disabled; \
+		add_opt glvnd disabled; \
+		add_opt opengl false; \
+		add_opt gles1 enabled; \
+		add_opt gles2 enabled; \
+		add_opt llvm disabled; \
+		add_opt lmsensors disabled; \
+		add_opt valgrind disabled; \
+		add_opt zlib enabled; \
+		add_opt shared-glapi enabled; \
+		add_opt build-tests false; \
+		add_opt tests disabled; \
+		add_opt tools ""; \
 		echo ">> Mesa meson options:$$mesa_opts"; \
 		PKG_CONFIG_PATH="$(MESA_PKG_CONFIG_DIR)" \
 		PKG_CONFIG_LIBDIR="$(MESA_PKG_CONFIG_DIR)" \

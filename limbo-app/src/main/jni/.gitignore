@@ -13,6 +13,12 @@ spice
 spice-protocol
 virglrenderer
 mesa
+angle
+depot_tools
+
+# gclient 配置（fetch-angle 自动生成，solutions 指向 angle/）
+.gclient
+.gclient_entries
 
 # EDK2 源码树（由 jni/edk2/make_edk2.sh 按标签克隆，如 edk2-202508 / edk2-201808）；
 # 脚本本身 make_edk2.sh 需要提交，故只忽略 edk2-* 前缀的目录

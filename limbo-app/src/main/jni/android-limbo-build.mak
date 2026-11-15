@@ -198,13 +198,30 @@ SLIRP_CROSS_FILE := $(LIMBO_JNI_ROOT)/android-config/meson-slirp-android-cross.i
 SLIRP_PKG_CONFIG_DIR := $(SLIRP_INSTALL_DIR)/lib/pkgconfig
 
 # ANGLE (google/angle): OpenGL ES Translator layer for Android.
-# CMake + Ninja 构建（同 libjpeg），动态库安装到 jniLibs 供 APK 打包。
-# 产出 libEGL_angle.so / libGLESv2_angle.so / libGLESv1_CM_angle.so 以及 ANGLE
-# 自己的依赖库（libswiftshader_libvulkan.so 等）。USE_ANGLE=false 时全部跳过。
-ANGLE_BUILD_DIR    := $(LIMBO_JNI_ROOT)/angle/build-android-$(APP_ABI)
-ANGLE_INSTALL_DIR  := $(LIMBO_JNI_ROOT)/angle/android-install/$(APP_ABI)
+# 构建链路与其它依赖不同：ANGLE 只有 GN 工程（仓库里没有 CMakeLists.txt），
+# 所以由 depot_tools 提供 gclient/gn：gclient sync 拉 DEPS（vulkan-deps、
+# SwiftShader、NDK 等，见 fetch-angle），gn gen 生成 out/android-<abi>，
+# ninja 编出 libEGL_angle.so / libGLESv2_angle.so / libGLESv1_CM_angle.so。
+# Android 上 ANGLE 的库名后缀默认是 _angle（gni/angle.gni 的
+# angle_libs_suffix），与 libepoxy 补丁里 dlopen 的名字一致。
+# 产物复制到 jniLibs 供 APK 打包，并留一份在 ANGLE_INSTALL_DIR/lib 供符号表
+# 收集（见 SYMBOLS_SRC_DIRS）。USE_ANGLE=false 时全部跳过。
 ANGLE_SRC_DIR      := $(LIMBO_JNI_ROOT)/angle
-ANGLE_BUILDTYPE    ?= $(if $(filter 1,$(NDK_DEBUG)),Debug,Release)
+ANGLE_BUILD_DIR    := $(ANGLE_SRC_DIR)/out/android-$(APP_ABI)
+ANGLE_INSTALL_DIR  := $(ANGLE_SRC_DIR)/android-install/$(APP_ABI)
+ANGLE_DEPOT_TOOLS  := $(LIMBO_JNI_ROOT)/depot_tools
+ANGLE_GCLIENT_FILE := $(LIMBO_JNI_ROOT)/.gclient
+ANGLE_LIBS         := libEGL_angle.so libGLESv2_angle.so libGLESv1_CM_angle.so
+# GN 的 target_cpu 命名与 Android ABI 不同
+ifeq ($(APP_ABI),arm64-v8a)
+ANGLE_TARGET_CPU   := arm64
+else ifeq ($(APP_ABI),armeabi-v7a)
+ANGLE_TARGET_CPU   := arm
+else ifeq ($(APP_ABI),x86_64)
+ANGLE_TARGET_CPU   := x64
+else
+ANGLE_TARGET_CPU   := x86
+endif
 
 # spice stack for the qxl-vga device (QEMU CONFIG_QXL).  All built static:
 #   spice-protocol (headers only) -> spice-server (libspice-server.a)

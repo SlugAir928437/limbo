@@ -7,8 +7,9 @@ name: release
 #               spice / VirGL）
 # 两条任务各自构建原生库并打包 Release APK，全部成功后在 GitHub 上创建
 # Release、上传 APK 与 SHA-256 校验和。
-# 原生库构建沿用 build.yml 的 20 步拆分（fetch -> ndk -> 各依赖 config-X + X
-# -> config-qemu -> qemu -> ncat -> install），失败时能直接定位到具体阶段。
+# 原生库构建沿用 build.yml 的步骤拆分（fetch -> ndk -> 各依赖 config-X + X
+# -> config-angle -> angle -> config-mesa -> mesa -> config-qemu -> qemu ->
+# ncat -> install），失败时能直接定位到具体阶段。
 on:
   # 仅手动触发：在 GitHub Actions 页面点 "Run workflow" 并填写版本号。
   # 故意不写 push / pull_request / schedule / workflow_call / workflow_run /
@@ -57,10 +58,16 @@ jobs:
       BUILD_GUEST: ${{ matrix.guest }}
       USE_GTK: 'true'
       USE_VIRGL: 'true'
-      # ANGLE（google/angle）：同 build.yml，CI 里【暂不编译】，固定为 false。
-      # ANGLE 官方只支持 GN + depot_tools 构建，仓库内没有 CMakeLists.txt，
-      # 打开前需先把 Makefile 的 ANGLE 目标改成 GN 流程或改用预编译产物。
-      USE_ANGLE: 'false'
+      # ANGLE（google/angle）：与 build.yml 一致，默认【编译】。ANGLE 只有 GN
+      # 工程，源码/DEPS 由 `make fetch`（fetch-angle：depot_tools + gclient sync）
+      # 准备，这里执行 gn gen 与 ninja，产物随 APK 打包供运行时把 libepoxy 的
+      # EGL/GLES 入口切到 ANGLE（GLES -> Vulkan）。ia64 任务由 Makefile 强制关闭。
+      USE_ANGLE: 'true'
+      # Mesa zink（GL/GLES over Vulkan）：与 build.yml 一致，默认【编译】。
+      # 源码由 `make fetch`（fetch-mesa）准备，config-mesa / mesa 产出
+      # libEGL_zink.so / libGLESv2_zink.so / libgallium_dri.so 等随 APK 分发，
+      # 运行时可在设置里把 VirGL 渲染后端切到 Zink。ia64 任务由 Makefile 关闭。
+      USE_VIRGL_ZINK: 'true'
       # 固件已随仓库提交在 assets2/roms，发版时无需重新编译 EDK2。
       USE_EDK2: 'false'
       LOGDIR: ${{ github.workspace }}/ci-logs
@@ -96,8 +103,10 @@ jobs:
             make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync patch \
             gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev \
-            nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib
+            nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib \
+            xz-utils patchelf python3-mako
           # ubuntu-latest 自带的 meson 太旧：glib 要求 >= 1.4.0
+          # （mako 已随上面的 python3-mako 安装，Mesa/zink 的代码生成需要它）
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
 
@@ -113,63 +122,63 @@ jobs:
           echo "BUILD_THREADS=$(nproc)" >> "$GITHUB_ENV"
           echo "PATH=$PATH:${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           mkdir -p "$LOGDIR"
-          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL}"
+          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL} USE_VIRGL_ZINK=${USE_VIRGL_ZINK}"
 
-      - name: 1/20 拉取源码（make fetch）
+      - name: 1/22 拉取源码（make fetch）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make fetch 2>&1 | tee "$LOGDIR/01-fetch.log"
 
-      - name: 2/20 生成 NDK 中间目录（make ndk）
+      - name: 2/22 生成 NDK 中间目录（make ndk）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make ndk 2>&1 | tee "$LOGDIR/02-ndk.log"
 
-      - name: 3/20 配置 libffi（make config-ffi）
+      - name: 3/22 配置 libffi（make config-ffi）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-ffi 2>&1 | tee "$LOGDIR/03-config-ffi.log"
 
-      - name: 4/20 构建 libffi（make ffi）
+      - name: 4/22 构建 libffi（make ffi）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make ffi 2>&1 | tee "$LOGDIR/04-ffi.log"
 
-      - name: 5/20 配置 glib（make config-glib）
+      - name: 5/22 配置 glib（make config-glib）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-glib 2>&1 | tee "$LOGDIR/05-config-glib.log"
 
-      - name: 6/20 构建 glib（make glib）
+      - name: 6/22 构建 glib（make glib）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make glib 2>&1 | tee "$LOGDIR/06-glib.log"
 
-      - name: 7/20 配置 pixman（make config-pixman）
+      - name: 7/22 配置 pixman（make config-pixman）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-pixman 2>&1 | tee "$LOGDIR/07-config-pixman.log"
 
-      - name: 8/20 构建 pixman（make pixman）
+      - name: 8/22 构建 pixman（make pixman）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make pixman 2>&1 | tee "$LOGDIR/08-pixman.log"
 
-      - name: 9/20 配置 libslirp（make config-slirp）
+      - name: 9/22 配置 libslirp（make config-slirp）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-slirp 2>&1 | tee "$LOGDIR/09-config-slirp.log"
 
-      - name: 10/20 构建 libslirp（make slirp）
+      - name: 10/22 构建 libslirp（make slirp）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
@@ -177,28 +186,28 @@ jobs:
 
       # IA-64 客户机跳过 spice 栈与 VirGL/virtio-gpu 栈（见 jni/Makefile）：
       # spice 只服务于 qxl-vga，IA-64 的 QEMU 以 --disable-spice 配置。
-      - name: 11/20 配置 spice 栈（make config-spice）
+      - name: 11/22 配置 spice 栈（make config-spice）
         if: env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-spice 2>&1 | tee "$LOGDIR/11-config-spice.log"
 
-      - name: 12/20 构建 spice 栈（make spice）
+      - name: 12/22 构建 spice 栈（make spice）
         if: env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make spice 2>&1 | tee "$LOGDIR/12-spice.log"
 
-      - name: 13/20 配置 GTK4（make config-gtk）
+      - name: 13/22 配置 GTK4（make config-gtk）
         if: env.USE_GTK == 'true'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-gtk 2>&1 | tee "$LOGDIR/13-config-gtk.log"
 
-      - name: 14/20 构建 GTK4（make gtk）
+      - name: 14/22 构建 GTK4（make gtk）
         if: env.USE_GTK == 'true'
         working-directory: limbo-app/src/main/jni
         run: |
@@ -206,39 +215,69 @@ jobs:
           make gtk 2>&1 | tee "$LOGDIR/14-gtk.log"
 
       # virglrenderer 依赖 gtk4android 安装出来的 libepoxy，必须排在 gtk 之后。
-      - name: 15/20 配置 virglrenderer（make config-virgl）
+      - name: 15/22 配置 virglrenderer（make config-virgl）
         if: env.USE_VIRGL == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-virgl 2>&1 | tee "$LOGDIR/15-config-virgl.log"
 
-      - name: 16/20 构建 virglrenderer（make virgl）
+      - name: 16/22 构建 virglrenderer（make virgl）
         if: env.USE_VIRGL == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make virgl 2>&1 | tee "$LOGDIR/16-virgl.log"
 
-      - name: 17/20 配置 QEMU（make config-qemu）
+      - name: 16a/22 配置 ANGLE（make config-angle）
+        if: env.USE_ANGLE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-angle 2>&1 | tee "$LOGDIR/16a-config-angle.log"
+
+      - name: 16b/22 构建 ANGLE（make angle）
+        if: env.USE_ANGLE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make angle 2>&1 | tee "$LOGDIR/16b-angle.log"
+
+      # Mesa zink（GL/GLES -> Vulkan）：源码由 `make fetch`（fetch-mesa）下载，
+      # 这里 meson setup + ninja，并把产物改名（libEGL_zink.so 等）部署到 jniLibs。
+      - name: 16c/22 配置 Mesa zink（make config-mesa）
+        if: env.USE_VIRGL_ZINK == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-mesa 2>&1 | tee "$LOGDIR/16c-config-mesa.log"
+
+      - name: 16d/22 构建 Mesa zink（make mesa）
+        if: env.USE_VIRGL_ZINK == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make mesa 2>&1 | tee "$LOGDIR/16d-mesa.log"
+
+      - name: 17/22 配置 QEMU（make config-qemu）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make config-qemu 2>&1 | tee "$LOGDIR/17-config-qemu.log"
 
-      - name: 18/20 构建 QEMU 并部署库（make qemu）
+      - name: 18/22 构建 QEMU 并部署库（make qemu）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make qemu 2>&1 | tee "$LOGDIR/18-qemu.log"
 
-      - name: 19/20 构建 ncat（make ncat）
+      - name: 19/22 构建 ncat（make ncat）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail
           make ncat 2>&1 | tee "$LOGDIR/19-ncat.log"
 
-      - name: 20/20 同步 jniLibs（make install）
+      - name: 20/22 同步 jniLibs（make install）
         working-directory: limbo-app/src/main/jni
         run: |
           set -o pipefail

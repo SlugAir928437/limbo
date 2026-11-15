@@ -213,16 +213,18 @@ MESA_PLATFORM_SDK ?= $(NDK_PLATFORM_API)
 # 编译 google/angle 产出 libEGL_angle.so / libGLESv2_angle.so，随 APK 分发
 # 让 virglrenderer 的 GL 后端在不支持 GLES 的设备上通过 ANGLE 转到 Vulkan。
 #
-# 注意：ANGLE 官方【只支持 GN + depot_tools 构建】（见其 doc/DevSetupAndroid.md），
-# 仓库里没有 CMakeLists.txt，所以下面 config-angle 目标当前的 CMake 流程跑不通，
-# 默认关闭；等改成 GN 流程或改用预编译产物后再打开。CI 里 USE_ANGLE 固定 false。
+# 构建走 ANGLE 官方的 GN 流程（doc/DevSetupAndroid.md）：fetch-angle 用
+# depot_tools 的 gclient 同步 DEPS，config-angle 用 gn gen，angle 用 ninja。
+# 注意 Android 目标只能在 Linux 上构建，且首次 gclient sync 约 1~2GB。
+# 默认关闭（本地不想拉 depot_tools/ANGLE 依赖时保持 false）；CI 里由
+# build.yml / release.yml 的 USE_ANGLE 打开。
 # 开启：export USE_ANGLE=true && make limbo
 USE_ANGLE ?= false
 
-# ANGLE git 仓库。google/angle 官方仓库，用 depth 1 克隆；需要子模块再单独拉。
+# ANGLE git 仓库。google/angle 官方仓库（GitHub 镜像），浅克隆指定分支。
 ANGLE_URL ?= https://github.com/google/angle.git
-# 固定一个稳定 tag，避免 HEAD 上的 API 变动导致编译脚本失配。
-# 可用 export ANGLE_TAG=<tag> 覆盖。
+# 固定一个稳定的 chromium/XXXX 分支，避免 HEAD 上的 API 变动导致编译脚本失配。
+# 可用 export ANGLE_TAG=<tag|branch> 覆盖。
 ANGLE_TAG ?= chromium/6721
 
 # SPICE 显示栈（false 时不下载/不编译 spice-server 栈，QEMU 以 --disable-spice 配置）

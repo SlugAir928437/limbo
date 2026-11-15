@@ -29,6 +29,9 @@ ifeq ($(IA64_GUEST),yes)
 USE_VIRGL := false
 USE_VIRGL_ZINK := false
 USE_SPICE := false
+# ANGLE 是 virtio-gpu-gl-pci 的运行时 GL 后端，IA-64 机型用不到；
+# 关掉后 fetch/config/build 都不会拉 depot_tools 与 ANGLE DEPS。
+USE_ANGLE := false
 endif
 
 ifeq ($(strip $(USE_SPICE)),true)
@@ -850,53 +853,56 @@ clean-mesa:
 # 见 limbo/vm-executor-jni.c（epoxy_set_library_path + set_library_path）。
 #
 # 构建：ANGLE 官方只支持 GN + depot_tools（仓库内无 CMakeLists.txt，见其
-# doc/DevSetupAndroid.md），下面这套 CMake 流程目前跑不通，仅作为占位保留；
-# USE_ANGLE 默认 false，CI 里也固定 false。等改成 GN 流程或改用预编译产物再启用。
+# doc/DevSetupAndroid.md，且 Android 目标只能在 Linux 上构建），所以走：
+#   fetch-angle  -> 浅克隆 google/angle@$(ANGLE_TAG) 与 depot_tools，写 .gclient
+#                   （target_os = ["android"]）后 gclient sync 拉 DEPS 里的
+#                   vulkan-deps / SwiftShader / NDK 等第三方源码
+#   config-angle -> gn gen 出 $(ANGLE_BUILD_DIR)
+#   angle        -> ninja 编出 libEGL_angle.so / libGLESv2_angle.so /
+#                   libGLESv1_CM_angle.so（Android 上 ANGLE 默认带 _angle 后缀，
+#                   见 gni/angle.gni 的 angle_libs_suffix），再部署到 jniLibs
+# 与其它依赖一样保持在 Makefile 里，CI 只需 USE_ANGLE=true（见 build.yml）。
 #
 # ANGLE 与 virglrenderer 无编译期依赖：ANGLE 只是 virgl 的运行时备选后端，
 # libepoxy 在运行时 dlopen 它。因此顺序上 ANGLE 可排在任何位置。
 # ---------------------------------------------------------------------------
+# GN 参数（--args）说明：
+#   * target_os/target_cpu：Android 交叉编译目标，target_cpu 见 ANGLE_TARGET_CPU；
+#   * is_component_build=false：编成自包含 .so（libc++ 静态链入），APK 里只带
+#     这三个库即可，和运行时 dlopen 的方式一致；
+#   * use_remoteexec=false：ANGLE 上游 CI 用 RBE，本地/开源 runner 没有；
+#   * angle_enable_vulkan=true：Android 上唯一可用的后端（GLES -> Vulkan）；
+#   * angle_enable_swiftshader=false：不打包 SwiftShader Vulkan ICD（体积大，
+#     运行时直接用设备自带的 Vulkan 驱动）；
+#   * treat_warnings_as_errors=false：NDK/编译器版本与 ANGLE 上游 CI 不同，
+#     避免新增告警直接中断构建。
+ANGLE_GN_ARGS = is_debug=false target_os="android" target_cpu="$(ANGLE_TARGET_CPU)" is_component_build=false use_remoteexec=false angle_enable_vulkan=true angle_enable_swiftshader=false treat_warnings_as_errors=false
+
 config-angle: ndk
 	@if [ "$(USE_ANGLE)" != "true" ]; then \
 		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 配置"; \
 	elif [ ! -f "$(ANGLE_SRC_DIR)/BUILD.gn" ]; then \
 		echo "ERROR: ANGLE 源码不存在（$(ANGLE_SRC_DIR)），先执行 make fetch-angle"; exit 1; \
+	elif [ ! -x "$(ANGLE_DEPOT_TOOLS)/gn" ]; then \
+		echo "ERROR: depot_tools 不存在（$(ANGLE_DEPOT_TOOLS)），先执行 make fetch-angle"; exit 1; \
 	else \
-		echo ">> ANGLE CMake 配置（$(ANGLE_BUILDTYPE), $(APP_ABI)）"; \
+		echo ">> ANGLE GN 配置（target_cpu=$(ANGLE_TARGET_CPU), $(APP_ABI)）"; \
 		rm -rf "$(ANGLE_BUILD_DIR)" "$(ANGLE_INSTALL_DIR)"; \
-		mkdir -p "$(ANGLE_BUILD_DIR)"; \
-		cmake -S "$(ANGLE_SRC_DIR)" -B "$(ANGLE_BUILD_DIR)" -G Ninja \
-			-DCMAKE_TOOLCHAIN_FILE="$(NDK_ROOT)/build/cmake/android.toolchain.cmake" \
-			-DANDROID_ABI=$(APP_ABI) \
-			-DANDROID_PLATFORM=android-$(NDK_PLATFORM_API) \
-			-DCMAKE_INSTALL_PREFIX="$(ANGLE_INSTALL_DIR)" \
-			-DCMAKE_BUILD_TYPE="$(ANGLE_BUILDTYPE)" \
-			-DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-			-DBUILD_SHARED_LIBS=ON \
-			-DANGLE_ENABLE_VULKAN=ON \
-			-DANGLE_ENABLE_SWIFTSHADER=ON \
-			-DANGLE_ENABLE_OPENGL=OFF \
-			-DANGLE_ENABLE_D3D=OFF \
-			-DANGLE_ENABLE_METAL=OFF \
-			-DANGLE_ENABLE_NULL=OFF \
-			-DANGLE_USE_ABSEIL=OFF \
-			-DANGLE_USE_VOLK=OFF \
-			-DANGLE_USE_CMAKE_FILESYSTEM=ON \
-			-DANGLE_ENABLE_DYNAMIC_VULKAN_LOADING=ON \
-			-DANGLE_HAS_LIBANDROID=ON \
-			-DANGLE_HAS_PTHREAD=ON; \
+		mkdir -p "$(ANGLE_INSTALL_DIR)/lib"; \
+		PATH="$(ANGLE_DEPOT_TOOLS):$$PATH" "$(ANGLE_DEPOT_TOOLS)/gn" gen "$(ANGLE_BUILD_DIR)" \
+			--args='$(ANGLE_GN_ARGS)'; \
 	fi
 
 angle: ndk config-angle
 	@if [ "$(USE_ANGLE)" = "true" ]; then \
-		echo ">> ANGLE 构建（ninja -C $(ANGLE_BUILD_DIR)）"; \
-		ninja -C "$(ANGLE_BUILD_DIR)" -j $(BUILD_THREADS); \
-		echo ">> ANGLE 安装到 $(ANGLE_INSTALL_DIR)"; \
-		cmake --install "$(ANGLE_BUILD_DIR)"; \
+		echo ">> ANGLE 构建（ninja -C $(ANGLE_BUILD_DIR) $(ANGLE_LIBS)）"; \
+		ninja -C "$(ANGLE_BUILD_DIR)" -j $(BUILD_THREADS) $(ANGLE_LIBS); \
 		echo ">> ANGLE 部署 .so 到 jniLibs"; \
 		$(CREATE_LIBSDIR); \
-		cp -f "$(ANGLE_INSTALL_DIR)"/lib/*.so "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/" 2>/dev/null || true; \
-		cp -f "$(ANGLE_INSTALL_DIR)"/lib64/*.so "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/" 2>/dev/null || true; \
+		for lib in $(ANGLE_LIBS); do \
+			cp -f "$(ANGLE_BUILD_DIR)/$$lib" "$(NDK_PROJECT_PATH)/jniLibs/$(APP_ABI_DIR)/"; \
+			cp -f "$(ANGLE_BUILD_DIR)/$$lib" "$(ANGLE_INSTALL_DIR)/lib/"; \
+		done; \
 		echo ">> ANGLE 完成"; \
 	else \
 		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 构建"; \
@@ -905,22 +911,44 @@ angle: ndk config-angle
 clean-angle:
 	-rm -rf "$(ANGLE_BUILD_DIR)" "$(ANGLE_INSTALL_DIR)"
 
-# ANGLE 源码获取：google/angle 官方仓库 + 指定 tag（depth 1）。
-# 注意：ANGLE 的第三方依赖由 DEPS 管理（需 gclient sync），顶层克隆只是占位。
-# 需要子模块时 ANGLE_FETCH_DEPS=true 才拉子模块。
+# ANGLE 源码获取：google/angle（GitHub 镜像，$(ANGLE_TAG) 是 chromium/XXXX 分支
+# 或 tag）+ depot_tools（提供 gclient/gn）。
+# ANGLE 的第三方依赖全靠 DEPS，顶层浅克隆本身是不完整的，必须再 gclient sync：
+# .gclient 放在 jni 根目录（solutions 指向 angle/，managed=False 表示不要
+# gclient 去更新我们这个固定 tag 的 clone，只同步 DEPS），target_os 声明
+# android 才会把 NDK / Android 相关依赖拉下来。首次同步约 1~2GB。
 fetch-angle:
 	@if [ "$(USE_ANGLE)" != "true" ]; then \
 		echo ">> USE_ANGLE=$(USE_ANGLE)，跳过 ANGLE 源码获取"; \
-	elif [ ! -f "$(ANGLE_SRC_DIR)/BUILD.gn" ]; then \
-		echo ">> GET ANGLE @ $(ANGLE_TAG) from $(ANGLE_URL)"; \
-		rm -rf "$(ANGLE_SRC_DIR)"; \
-		git clone --depth 1 --branch $(ANGLE_TAG) --single-branch $(ANGLE_URL) "$(ANGLE_SRC_DIR)"; \
 	else \
-		echo ">> ANGLE 源码已存在，跳过"; \
+		if [ ! -x "$(ANGLE_DEPOT_TOOLS)/gclient" ]; then \
+			echo ">> GET depot_tools"; \
+			rm -rf "$(ANGLE_DEPOT_TOOLS)"; \
+			git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git \
+				"$(ANGLE_DEPOT_TOOLS)"; \
+		fi; \
+		if [ ! -f "$(ANGLE_SRC_DIR)/BUILD.gn" ]; then \
+			echo ">> GET ANGLE @ $(ANGLE_TAG) from $(ANGLE_URL)"; \
+			rm -rf "$(ANGLE_SRC_DIR)"; \
+			git clone --depth 1 --branch "$(ANGLE_TAG)" --single-branch "$(ANGLE_URL)" \
+				"$(ANGLE_SRC_DIR)" || { echo 'ERROR: ANGLE 克隆失败（检查 ANGLE_TAG）'; exit 1; }; \
+		fi; \
+		echo ">> gclient sync（$(ANGLE_GCLIENT_FILE)）"; \
+		printf '%s\n' \
+			'solutions = [' \
+			'  {' \
+			'    "name": "angle",' \
+			'    "url": "$(ANGLE_URL)",' \
+			'    "managed": False,' \
+			'    "custom_deps": {},' \
+			'  },' \
+			']' \
+			'target_os = ["android"]' \
+			> "$(ANGLE_GCLIENT_FILE)"; \
+		cd "$(LIMBO_JNI_ROOT)" && PATH="$(ANGLE_DEPOT_TOOLS):$$PATH" \
+			"$(ANGLE_DEPOT_TOOLS)/gclient" sync --no-history -j $(BUILD_THREADS) \
+			|| { echo 'ERROR: gclient sync 失败（ANGLE DEPS 没拉全）'; exit 1; }; \
 	fi
-ifeq ($(ANGLE_FETCH_DEPS),true)
-	@cd "$(ANGLE_SRC_DIR)" && git submodule update --init --recursive || echo ">> ANGLE 子模块拉取失败，CMake FetchContent 会在 config-angle 时自动补"
-endif
 
 _qemu: ndk
 	cd $(LIMBO_JNI_ROOT)/qemu && $(MAKE) all -j $(BUILD_THREADS) BUILD_GUEST=$(BUILD_GUEST)

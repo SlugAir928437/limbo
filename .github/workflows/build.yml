@@ -45,13 +45,21 @@ on:
           - 'true'
           - 'false'
       use_angle:
-        description: '是否编译 ANGLE 转译层（注意：ANGLE 只支持 GN 构建，当前 Makefile 的 CMake 流程跑不通，选 true 会失败）'
+        description: '是否编译 ANGLE 转译层（GN + depot_tools 构建，会额外拉取约 1~2GB DEPS 并显著延长构建时间）'
         required: false
-        default: 'false'
+        default: 'true'
         type: choice
         options:
-          - 'false'
           - 'true'
+          - 'false'
+      use_zink:
+        description: '是否编译 Mesa zink 渲染后端（GL over Vulkan，随包分发 libEGL_zink.so 等；关闭则设置里该后端回退系统 GLES）'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   build_linux:
@@ -81,18 +89,27 @@ jobs:
     env:
       BUILD_GUEST: ${{ matrix.guest }}
       BUILD_HOST: ${{ github.event.inputs.build_host || 'arm64-v8a' }}
-      # SDL / GTK / SPICE / ANGLE 由手动触发时的四个开关决定；push / pull_request
-      # 事件没有 inputs，统一回落到默认值（SDL/GTK/SPICE 开，ANGLE 关）。
+      # SDL / GTK / SPICE / ANGLE / zink 由手动触发时的五个开关决定；push /
+      # pull_request 事件没有 inputs，统一回落到默认值（全部开启）。
       USE_SDL: ${{ github.event.inputs.use_sdl || 'true' }}
       USE_GTK: ${{ github.event.inputs.use_gtk || 'true' }}
       USE_SPICE: ${{ github.event.inputs.use_spice || 'true' }}
-      # ANGLE（google/angle）：默认关闭。ANGLE 官方只支持 GN + depot_tools 构建
-      # （仓库内无 CMakeLists.txt），Makefile 侧现有的 CMake 目标仍是占位实现，
-      # 打开后会卡在 config-angle，等改造成 GN 流程或改用预编译产物再启用。
-      USE_ANGLE: ${{ github.event.inputs.use_angle || 'false' }}
+      # ANGLE（google/angle）：默认【编译】。ANGLE 只有 GN 工程，构建链是
+      # depot_tools(gclient sync 拉 DEPS) -> gn gen -> ninja，见 jni/Makefile 的
+      # fetch-angle / config-angle / angle；产物 libEGL_angle.so /
+      # libGLESv2_angle.so / libGLESv1_CM_angle.so 会随 APK 打包，供运行时把
+      # libepoxy 的 EGL/GLES 入口切到 ANGLE（GLES -> Vulkan 转译）。
+      # ia64 任务在 Makefile 里强制 USE_ANGLE=false（没有 virtio-gpu-gl-pci）。
+      USE_ANGLE: ${{ github.event.inputs.use_angle || 'true' }}
       # virglrenderer 需要 gtk4android 安装出来的 libepoxy（CONFIG_OPENGL），
       # 因此 USE_GTK=false 时把 VirGL 一起自动关掉，避免缺 epoxy 导致链接失败。
       USE_VIRGL: ${{ github.event.inputs.use_gtk == 'false' && 'false' || 'true' }}
+      # Mesa zink（GL/GLES over Vulkan）：默认【编译】。源码由 `make fetch`
+      # （fetch-mesa：官方 release 压缩包）准备，随后 config-mesa / mesa 产出
+      # libEGL_zink.so / libGLESv2_zink.so 等并落到 jniLibs，供运行时把 libepoxy
+      # 的 EGL/GLES 入口切到 Mesa zink。zink 只是 virgl 的渲染后端，所以
+      # USE_VIRGL=false（GTK 关闭）时也一并关掉；ia64 任务由 Makefile 强制关闭。
+      USE_VIRGL_ZINK: ${{ github.event.inputs.use_gtk == 'false' && 'false' || github.event.inputs.use_zink || 'true' }}
       # EDK2 客户机 UEFI 固件默认【不编译】；需要时在手动触发时把 build_edk2
       # 选为 true（Makefile 侧对应 USE_EDK2=true）。
       USE_EDK2: ${{ github.event.inputs.build_edk2 || 'false' }}
@@ -110,12 +127,12 @@ jobs:
       #   ia64              -> 下载 IA-64 fork（FreshingAir/qemu-system-ia64），
       #                        它自己的 Android 适配补丁仍由 fetch-qemu 应用
       #   gtk4android       -> 下载 SlugAir928437/gtk4android
-      # 构建链被拆成下面 22 个独立步骤：fetch -> ndk -> 每个依赖各自的
+      # 构建链被拆成下面这些独立步骤：fetch -> ndk -> 每个依赖各自的
       # config-X + X（libffi / glib / pixman / slirp / spice / gtk / virglrenderer，
       # 保持 jni/Makefile 里 config-deps -> deps 的相对次序）-> config-angle ->
-      # angle -> config-qemu -> qemu -> ncat -> install。
-      # 其中 spice / gtk / virgl / angle 四组步骤会按 use_spice / use_gtk /
-      # use_angle 三个开关（env 里的 USE_*）显示为 skipped，不影响其余步骤。
+      # angle -> config-mesa -> mesa -> config-qemu -> qemu -> ncat -> install。
+      # 其中 spice / gtk / virgl / angle / mesa 五组步骤会按 use_spice / use_gtk /
+      # use_angle / use_zink 四个开关（env 里的 USE_*）显示为 skipped，不影响其余步骤。
       # EDK2 客户机 UEFI 固件（make edk2）不再是默认步骤：只有当 USE_EDK2=true
       # （手动触发时 build_edk2=true）时才会执行，见文末条件步骤。
       # 拆分的目的是让失败点直接定位到具体阶段（Actions 里一眼可见是哪一步、
@@ -148,7 +165,8 @@ jobs:
             make autoconf automake git binutils python3 \
             libtool-bin pkg-config flex bison gettext texinfo rsync patch \
             gtk-doc-tools python3-pip ninja-build meson libglib2.0-dev \
-            nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib
+            nasm acpica-tools uuid-dev device-tree-compiler gcc-multilib \
+            xz-utils patchelf python3-mako
           # EDK2 固件的交叉编译器（x86/x86_64 用宿主 gcc；Arm/Aarch64 需要交叉
           # 工具链）。EDK2 默认不编译，只有 USE_EDK2=true 时才安装这两个包：
           # 32 位 ARM 的软浮点工具链在部分发行版上缺失，故容错安装；真的缺工具链时
@@ -161,11 +179,23 @@ jobs:
             echo ">> USE_EDK2=${USE_EDK2}：跳过 EDK2 交叉工具链安装"
           fi
           # ubuntu-latest 自带的 meson (1.3.2) 太旧: glib 2.89.3 要求 >= 1.4.0
+          # （mako 已随上面的 python3-mako 安装，Mesa/zink 的代码生成需要它）
           sudo python3 -m pip install --upgrade 'meson>=1.4.0'
           # verify the host glib tools are present: the Makefile's glib target
           # replaces the Android-ELF tools in the installed bindir with these
           # (fail early instead of mid-build)
           command -v glib-compile-resources glib-compile-schemas glib-genmarshal glib-mkenums gdbus-codegen
+
+      # ANGLE 的 DEPS（chromium build/、vulkan-deps、SwiftShader、NDK、clang 等）
+      # 首次 gclient sync 要占 4GB 左右，runner 自带的预装工具先清掉腾空间。
+      - name: 释放磁盘空间（ANGLE DEPS 用）
+        if: env.USE_ANGLE == 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android/sdk/emulator /usr/local/lib/android/sdk/system-images \
+            /opt/ghc /usr/local/lib/node_modules
+          sudo apt-get clean
+          df -h /
 
       # 依赖源码（glib/libffi/pixman/SDL2）与 QEMU/gtk4android 源码均已由
       # 第 1 步 `make fetch` 下载；QEMU 那份是【已打好补丁】的仓库，构建时不再
@@ -183,7 +213,7 @@ jobs:
           echo "BUILD_THREADS=$(nproc)" >> "$GITHUB_ENV"
           echo "PATH=$PATH:${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           mkdir -p "$LOGDIR"
-          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL} USE_EDK2=${USE_EDK2}"
+          echo ">> BUILD_GUEST=${BUILD_GUEST} BUILD_HOST=${BUILD_HOST} USE_GTK=${USE_GTK} USE_VIRGL=${USE_VIRGL} USE_ANGLE=${USE_ANGLE} USE_VIRGL_ZINK=${USE_VIRGL_ZINK} USE_EDK2=${USE_EDK2}"
           echo ">> NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
       - name: 1/22 拉取源码（make fetch）
@@ -293,9 +323,12 @@ jobs:
           set -o pipefail
           make virgl 2>&1 | tee "$LOGDIR/16-virgl.log"
 
-      # ANGLE（google/angle）：默认关闭（USE_ANGLE 输入默认 false）。注意 Makefile
-      # 里的 config-angle 目前仍是 CMake 流程，而 ANGLE 官方只支持 GN，选 true
-      # 会在这里失败；保留这两步是为了将来换成 GN/预编译产物后可直接复用开关。
+      # ANGLE（google/angle）：USE_ANGLE=true 时编译（默认开，ia64 任务由
+      # Makefile 强制关闭）。ANGLE 只有 GN 工程：源码与 DEPS 由第 1 步的
+      # `make fetch`（fetch-angle：克隆 depot_tools + gclient sync）准备好，
+      # 这里依次执行 gn gen（config-angle）与 ninja（angle），产物
+      # libEGL_angle.so / libGLESv2_angle.so / libGLESv1_CM_angle.so 直接落到
+      # jniLibs，随后由 Gradle 打进 APK。
       - name: 16a/22 配置 ANGLE（make config-angle）
         if: env.USE_ANGLE == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
         working-directory: limbo-app/src/main/jni
@@ -309,6 +342,26 @@ jobs:
         run: |
           set -o pipefail
           make angle 2>&1 | tee "$LOGDIR/16b-angle.log"
+
+      # Mesa zink（GL/GLES -> Vulkan）：USE_VIRGL_ZINK=true 时编译（默认开；
+      # GTK 关闭时 env 里自动变 false，ia64 任务由 Makefile 强制关闭）。
+      # 源码由第 1 步 `make fetch`（fetch-mesa）下载，这里执行 meson setup
+      # （config-mesa）与 ninja + 改名部署（mesa），产物 libEGL_zink.so /
+      # libGLESv1_CM_zink.so / libGLESv2_zink.so / libgallium_dri.so 直接落到
+      # jniLibs，随后由 Gradle 打进 APK。
+      - name: 16c/22 配置 Mesa zink（make config-mesa）
+        if: env.USE_VIRGL_ZINK == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make config-mesa 2>&1 | tee "$LOGDIR/16c-config-mesa.log"
+
+      - name: 16d/22 构建 Mesa zink（make mesa）
+        if: env.USE_VIRGL_ZINK == 'true' && env.BUILD_GUEST != 'ia64-softmmu'
+        working-directory: limbo-app/src/main/jni
+        run: |
+          set -o pipefail
+          make mesa 2>&1 | tee "$LOGDIR/16d-mesa.log"
 
       - name: 17/22 配置 QEMU（make config-qemu）
         working-directory: limbo-app/src/main/jni

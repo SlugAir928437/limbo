@@ -745,6 +745,14 @@ fetch-mesa:
 		rm -f /tmp/mesa-$(MESA_VERSION).tar.xz /tmp/mesa-$(MESA_VERSION).tar.gz; \
 	fi
 
+# 注意 -D 选项的取法：Mesa 25 起 meson_options.txt 改名为 meson.options，选项
+# 名字也变过（tests -> build-tests），所以下面用 add_opt 先探测再传，只传源码树
+# 里真实存在的选项（传不存在的选项 meson 会直接报错）。
+# libdrm：Mesa 25 把 android 也算进 system_has_kms_drm，只要编 gallium(zink) +
+# egl 就会 with_dri=true 并要求 libdrm，而 NDK 不带 libdrm。这里打开依赖回退，
+# 让 meson 用 Mesa 自带的 subprojects/libdrm.wrap 现场编译，并让 libdrm 静态
+# 链进 Mesa 的 .so —— 否则多出来的 libdrm.so.2 还得一起打进 APK（SONAME 带
+# 版本号，Android 的 dlopen 路径解析反而更麻烦）。
 config-mesa: ndk
 	@if [ "$(USE_VIRGL_ZINK)" != "true" ]; then \
 		echo ">> USE_VIRGL_ZINK=$(USE_VIRGL_ZINK)，跳过 Mesa 配置"; \
@@ -797,6 +805,8 @@ config-mesa: ndk
 		add_opt build-tests false; \
 		add_opt tests disabled; \
 		add_opt tools ""; \
+		add_opt allow-fallback-for libdrm; \
+		mesa_opts="$$mesa_opts -Dlibdrm:default_library=static"; \
 		echo ">> Mesa meson options:$$mesa_opts"; \
 		PKG_CONFIG_PATH="$(MESA_PKG_CONFIG_DIR)" \
 		PKG_CONFIG_LIBDIR="$(MESA_PKG_CONFIG_DIR)" \

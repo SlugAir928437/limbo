@@ -889,8 +889,10 @@ config-angle: ndk
 		echo ">> ANGLE GN 配置（target_cpu=$(ANGLE_TARGET_CPU), $(APP_ABI)）"; \
 		rm -rf "$(ANGLE_BUILD_DIR)" "$(ANGLE_INSTALL_DIR)"; \
 		mkdir -p "$(ANGLE_INSTALL_DIR)/lib"; \
-		PATH="$(ANGLE_DEPOT_TOOLS):$$PATH" "$(ANGLE_DEPOT_TOOLS)/gn" gen "$(ANGLE_BUILD_DIR)" \
-			--args='$(ANGLE_GN_ARGS)'; \
+		cd "$(ANGLE_SRC_DIR)" && PATH="$(ANGLE_DEPOT_TOOLS):$$PATH" \
+			"$(ANGLE_DEPOT_TOOLS)/gn" gen "$(ANGLE_BUILD_DIR)" \
+			--args='$(ANGLE_GN_ARGS)' || { \
+				echo 'ERROR: gn gen 失败（检查上面的 GN 参数/DEPS 是否完整）'; exit 1; }; \
 	fi
 
 angle: ndk config-angle

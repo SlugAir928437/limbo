@@ -20,6 +20,16 @@ Limbo 是一款运行在 Android 上的虚拟机模拟器，基于 [QEMU](https:
  * [FreshingAir](https://github.com/FreshingAir)
  * <img width="32" height="32" alt="深度求索" src=".github/deepseek-color.svg" />
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=slugair928437%2Flimbo&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=slugair928437/limbo&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=slugair928437/limbo&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=slugair928437/limbo&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## License
 
 本项目沿用 Limbo/QEMU 的相关开源 License，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。

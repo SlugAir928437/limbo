@@ -1159,8 +1159,8 @@ else
 ACCEL_MESON_FLAGS    := -Dgunyah=enabled -Dgzvm=enabled
 endif
 # virglrenderer (host side of QEMU's virtio-gpu-gl-pci / CONFIG_VIRGL).
-# Override the tag with e.g. export VIRGL_TAG=1.1.1 to follow upstream.
-VIRGL_TAG           ?= 1.1.0
+# Override the tag with e.g. export VIRGL_TAG=1.3.1 to follow upstream.
+VIRGL_TAG           ?= 1.3.0
 VIRGL_URL           := https://gitlab.freedesktop.org/virgl/virglrenderer.git
 # Android 上 virglrenderer 必须带 EGL winsys：它没有 gbm/libdrm，上游 meson 的
 # 通用分支（have_egl = gbm_dep.found() and ...）会静默把 EGL 关掉、
@@ -1168,6 +1168,12 @@ VIRGL_URL           := https://gitlab.freedesktop.org/virgl/virglrenderer.git
 # "EGL is not supported on this platform"，virtio-gpu-gl-pci 无法渲染。
 # 该补丁把 Android 并入 Windows/macOS 那条 have_egl = true 分支（QEMU 通过
 # get_egl_display 回调把自己的 EGLDisplay 交给它，不需要 gbm/render node）。
+#
+# 补丁同时带 venus 的 Android 适配（SDL2 参考补丁的同一套做法）：厂商 Vulkan
+# 驱动不导出 dma-buf，host blob 改用 AHardwareBuffer 分配/导入再以 dma-buf fd
+# 交给客户机，并把 dma_buf / drm_format_modifier 扩展以线性布局的方式对客户机
+# 伪装。这部分由 ANDROID_VENUS 环境变量开启（vm-executor-jni.c 在 qemu_init()
+# 之前设置），否则保持上游行为。
 VIRGL_PATCH         := $(LIMBO_JNI_ROOT)/patches/virglrenderer-android-egl.patch
 # libepoxy（QEMU 的 CONFIG_OPENGL 与 virglrenderer 的 vrend 都用它做 EGL/GL
 # 入口分发）默认按编译期写死的 "libEGL.so"/"libGLESv2.so" dlopen。

@@ -1,27 +1,8 @@
 diff --git a/meson.build b/meson.build
-index 10be099..a7dba4d 100644
+index 69c1bb8..8d0a1bf 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -107,7 +107,17 @@ endif
- 
- with_drm_renderers = drm_renderers.length() > 0
- 
--libdrm_dep = dependency('libdrm', version : '>=2.4.50', required: with_drm_renderers or get_option('venus'))
-+# Venus makes upstream require libdrm, but Android ships neither the library
-+# (no libdrm.so / libdrm.pc anywhere in the NDK) nor its xf86drm.h header, so
-+# requiring it would abort the configure step.  Nothing on the Android
-+# configuration calls into libdrm: its only real users are the DRM
-+# native-context renderers below (drm-renderers, off on Android) and the GBM
-+# path of vrend_winsys_egl.c, which is compiled out without gbm.
-+libdrm_required = with_drm_renderers
-+if host_machine.system() != 'android'
-+   libdrm_required = libdrm_required or get_option('venus')
-+endif
-+libdrm_dep = dependency('libdrm', version : '>=2.4.50', required: libdrm_required)
- libdrm_amdgpu_dep = dependency('libdrm_amdgpu', version : '>=2.4.121', required: with_drm_amdgpu)
- conf_data.set('ENABLE_DRM', libdrm_dep.found())
- 
-@@ -273,7 +283,13 @@ endif
+@@ -295,7 +295,13 @@ have_glx = false
  
  if with_egl
     if cc.has_header('epoxy/egl.h', dependencies: epoxy_dep) and epoxy_dep.get_variable(pkgconfig: 'epoxy_has_egl') == '1'
@@ -36,63 +17,69 @@ index 10be099..a7dba4d 100644
           have_egl = true
        else
           if libdrm_dep.found()
-diff --git a/src/mesa/util/anon_file.c b/src/mesa/util/anon_file.c
-index d4faa2f..6f41293 100644
---- a/src/mesa/util/anon_file.c
-+++ b/src/mesa/util/anon_file.c
-@@ -36,14 +36,14 @@
+diff --git a/src/mesa/util/os_misc.c b/src/mesa/util/os_misc.c
+index ca9bf7d..4c03952 100644
+--- a/src/mesa/util/os_misc.c
++++ b/src/mesa/util/os_misc.c
+@@ -55,8 +55,21 @@
+ #if DETECT_OS_ANDROID
+ #  define LOG_TAG "MESA"
+ #  include <unistd.h>
+-#  include <log/log.h>
+-#  include <cutils/properties.h>
++   /* The NDK ships neither bionic's log/log.h nor cutils/properties.h; use the
++    * public android/log.h plus sys/system_properties.h instead. */
++#  include <android/log.h>
++#  include <sys/system_properties.h>
++#  define LOG_PRI(prio, tag, ...) __android_log_print(prio, tag, __VA_ARGS__)
++#  define PROPERTY_VALUE_MAX PROP_VALUE_MAX
++#  define PROPERTY_KEY_MAX PROP_NAME_MAX
++static inline int
++property_get(const char *key, char *value, const char *default_value)
++{
++   int len = __system_property_get(key, value);
++   if (len <= 0 && default_value)
++      len = strlcpy(value, default_value, PROPERTY_VALUE_MAX);
++   return len;
++}
+ #elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD
+ #  include <unistd.h>
+ #elif DETECT_OS_OPENBSD || DETECT_OS_FREEBSD
+diff --git a/src/meson.build b/src/meson.build
+index 138301c..ca4d62a 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -167,6 +167,13 @@ virgl_depends = [
+    dl_dep,
+ ]
  
- #if defined(HAVE_MEMFD_CREATE) || defined(__FreeBSD__) || defined(__OpenBSD__)
- #include <sys/mman.h>
--#elif defined(ANDROID)
-+#elif defined(__ANDROID__)
- #include <sys/syscall.h>
- #include <linux/memfd.h>
- #else
- #include <stdio.h>
- #endif
- 
--#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(HAVE_MKOSTEMP) || defined(ANDROID))
-+#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(HAVE_MKOSTEMP) || defined(__ANDROID__))
- static int
- set_cloexec_or_close(int fd)
- {
-@@ -67,7 +67,7 @@ err:
- }
- #endif
- 
--#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(ANDROID))
-+#if !(defined(__FreeBSD__) || defined(HAVE_MEMFD_CREATE) || defined(__ANDROID__))
- static int
- create_tmpfile_cloexec(char *tmpname)
- {
-@@ -118,7 +118,7 @@ os_create_anonymous_file(off_t size, const char *debug_name)
-    if (!debug_name)
-       debug_name = "mesa-shared";
-    fd = memfd_create(debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
--#elif defined(ANDROID)
-+#elif defined(__ANDROID__)
-    if (!debug_name)
-       debug_name = "mesa-shared";
-    fd = syscall(SYS_memfd_create, debug_name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
++# Android's bionic log is a separate library.  The NDK has no AOSP-internal
++# log/log.h, so the Mesa os_misc.c Android path calls __android_log_print()
++# directly and needs liblog at link time.
++if host_machine.system() == 'android'
++   virgl_depends += [cc.find_library('log')]
++endif
++
+ if with_tracing == 'perfetto'
+    virgl_depends += [vperfetto_min_dep]
+ endif
 diff --git a/src/venus/vkr_buffer.c b/src/venus/vkr_buffer.c
-index 9e466f8..1b10068 100644
+index 9e466f8..e0f7d4a 100644
 --- a/src/venus/vkr_buffer.c
 +++ b/src/venus/vkr_buffer.c
-@@ -37,6 +37,19 @@ vkr_dispatch_vkCreateBuffer(struct vn_dispatch_context *dispatch,
+@@ -37,6 +37,18 @@ vkr_dispatch_vkCreateBuffer(struct vn_dispatch_context *dispatch,
      * vkr_physical_device_init_memory_properties as well.
      */
  
-+#if defined(__ANDROID__)
-+   /* The guest chains external memory create info for dma-buf-backed buffers,
-+    * but on Android the memory is an imported AHardwareBuffer (see
-+    * vkr_device_memory.c) which the driver must not see as external. */
-+   VkExternalMemoryBufferCreateInfo *handle_info = vkr_find_struct(
-+      args->pCreateInfo->pNext, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO);
-+   if (handle_info) {
-+      VkBaseInStructure *prev_of_handle_info = vkr_find_prev_struct(
-+         args->pCreateInfo, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO);
-+      prev_of_handle_info->pNext = handle_info->pNext;
++#if defined (__ANDROID__)
++   if (getenv("ANDROID_VENUS")) {
++      VkExternalMemoryBufferCreateInfo *handle_info = vkr_find_struct(
++         args->pCreateInfo->pNext, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO);
++      if (handle_info) {
++         VkBaseInStructure *prev_of_handle_info = vkr_find_prev_struct(
++            args->pCreateInfo, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO);
++         prev_of_handle_info->pNext = handle_info->pNext;
++      }
 +   }
 +#endif
 +
@@ -100,23 +87,20 @@ index 9e466f8..1b10068 100644
  }
  
 diff --git a/src/venus/vkr_device.c b/src/venus/vkr_device.c
-index cd62fe8..a6d3ba1 100644
+index 9144180..98b8648 100644
 --- a/src/venus/vkr_device.c
 +++ b/src/venus/vkr_device.c
-@@ -146,6 +146,20 @@ vkr_dispatch_vkCreateDevice(struct vn_dispatch_context *dispatch,
+@@ -150,6 +150,17 @@ vkr_dispatch_vkCreateDevice(struct vn_dispatch_context *dispatch,
        if (physical_dev->KHR_external_fence_fd)
           exts[ext_count++] = "VK_KHR_external_fence_fd";
  
-+#if defined(__ANDROID__)
-+      /* Venus on Android backs the guest blobs with AHardwareBuffers (see
-+       * vkr_device_memory.c), so enable the Android hardware buffer extension
-+       * instead of the dma-buf one and drop the DRM format modifier extension,
-+       * which is emulated with a linear layout and not supported by the driver. */
-+      for (uint32_t i = 0; i < ext_count; i++) {
-+         if (!strcmp(exts[i], "VK_EXT_external_memory_dma_buf")) {
-+            exts[i] = "VK_ANDROID_external_memory_android_hardware_buffer";
-+         } else if (!strcmp(exts[i], "VK_EXT_image_drm_format_modifier")) {
-+            exts[i--] = exts[--ext_count];
++#if defined (__ANDROID__)
++      if (getenv("ANDROID_VENUS")) {
++         for (unsigned i = 0u; i < ext_count; i++) {
++            if (!strcmp(exts[i], "VK_EXT_external_memory_dma_buf"))
++               exts[i] = "VK_ANDROID_external_memory_android_hardware_buffer";
++            if (!strcmp(exts[i], "VK_EXT_image_drm_format_modifier"))
++               exts[i--] = exts[--ext_count];
 +         }
 +      }
 +#endif
@@ -125,168 +109,147 @@ index cd62fe8..a6d3ba1 100644
        ((VkDeviceCreateInfo *)args->pCreateInfo)->enabledExtensionCount = ext_count;
     }
 diff --git a/src/venus/vkr_device_memory.c b/src/venus/vkr_device_memory.c
-index 03f84b6..3328f6e 100644
+index ffe621b..5525d4d 100644
 --- a/src/venus/vkr_device_memory.c
 +++ b/src/venus/vkr_device_memory.c
-@@ -10,6 +10,21 @@
- #include "vkr_device_memory_gen.h"
- #include "vkr_physical_device.h"
+@@ -134,71 +134,129 @@ vkr_udmabuf_get_fd_info_from_allocation_info(
  
-+#if defined(__ANDROID__)
-+#include <android/hardware_buffer.h>
+ #endif /* HAVE_LINUX_UDMABUF_H && HAVE_MEMFD_CREATE */
+ 
+-#ifdef ENABLE_GBM_ALLOCATION
+-#include <gbm.h>
+-
+-#define GBM_BO_USE_SW_READ_RARELY (1 << 10)
+-#define GBM_BO_USE_SW_WRITE_RARELY (1 << 12)
+-
+-static inline int
++#if defined (__ANDROID__)
++
 +#include <dlfcn.h>
 +#include <unistd.h>
++#include <android/hardware_buffer.h>
 +#include <vulkan/vulkan_android.h>
 +
-+/* The NDK does not expose cutils/native_handle.h; the layout is stable ABI. */
-+struct vkr_native_handle {
-+   int version;
-+   int num_fds;
-+   int num_ints;
-+   int data[];
-+};
++typedef struct native_handle {
++  int version; /* sizeof(native_handle_t) */
++  int numFds;  /* number of file-descriptors at &data[0] */
++  int numInts; /* number of ints at &data[numFds] */
++#if defined(__clang__)
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wzero-length-array"
 +#endif
++  int data[0]; /* numFds + numInts ints */
++#if defined(__clang__)
++#pragma clang diagnostic pop
++#endif
++} native_handle_t;
 +
- static bool
- vkr_get_fd_info_from_resource_info(struct vkr_context *ctx,
-                                    const VkImportMemoryResourceInfoMESA *res_info,
-@@ -52,6 +67,10 @@ vkr_get_fd_info_from_resource_info(struct vkr_context *ctx,
- #include <linux/udmabuf.h>
- #include <sys/ioctl.h>
- #include <sys/mman.h>
-+#if defined(__ANDROID__) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 30)
-+#include <sys/syscall.h>
-+#include <unistd.h>
-+#endif
- 
- static VkResult
- vkr_udmabuf_get_fd_info_from_allocation_info(struct vkr_physical_device *physical_dev,
-@@ -63,7 +82,15 @@ vkr_udmabuf_get_fd_info_from_allocation_info(struct vkr_physical_device *physica
-    int udmabuf_fd = -1;
-    int fd = -1;
- 
-+#if defined(__ANDROID__) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 30)
-+   /* bionic declares - and exports - memfd_create() only from API 30, while the
-+    * kernel syscall has been there since Linux 3.17, which every kernel in the
-+    * api24+ window provides.  Issue it directly, the same way mesa's
-+    * anon_file.c does for Android. */
-+   memfd = syscall(SYS_memfd_create, "vkr-udmabuf", MFD_CLOEXEC | MFD_ALLOW_SEALING);
-+#else
-    memfd = memfd_create("vkr-udmabuf", MFD_CLOEXEC | MFD_ALLOW_SEALING);
-+#endif
-    if (memfd < 0) {
-       vkr_log("memfd_create failed (%s)", strerror(errno));
-       goto fail;
-@@ -134,6 +161,143 @@ vkr_udmabuf_get_fd_info_from_allocation_info(
- 
- #endif /* HAVE_LINUX_UDMABUF_H */
- 
-+#if defined(__ANDROID__)
-+/*
-+ * Venus on Android: the vendor Vulkan drivers do not export dma-bufs (Adreno
-+ * supports dma-buf import only, and VK_EXT_external_memory_dma_buf is often
-+ * not advertised at all), so the upstream fd export/import paths cannot back
-+ * the guest blobs.  The Android way to get a host allocation that can be
-+ * shared as a dma-buf is an AHardwareBuffer: allocate a GPU_DATA_BUFFER blob,
-+ * import it into Vulkan through VK_ANDROID_external_memory_android_hardware_buffer,
-+ * and hand the dma-buf fd of its native handle to the guest.
-+ *
-+ * This is the same approach the Termux venus set-ups use (virglrenderer
-+ * "virglrenderer-venus-android.patch"); without it the guest fails to create
-+ * its ring shmem with VK_ERROR_OUT_OF_HOST_MEMORY.
-+ */
-+struct vkr_ahb_bo {
-+   AHardwareBuffer *buffer;
++typedef int (*pfnAHardwareBuffer_allocate)(const AHardwareBuffer_Desc *desc, AHardwareBuffer **outBuffer);
++typedef void (*pfnAHardwareBuffer_release)(AHardwareBuffer *buffer);
++typedef const native_handle_t *(*pfnAHardwareBuffer_getNativeHandle)(const AHardwareBuffer *buffer);
++
++struct fake_gbm_bo {
++   AHardwareBuffer *base;
++   void *handle;
 +   size_t size;
-+   void *libandroid;
-+   void (*release)(AHardwareBuffer *buffer);
-+   const struct vkr_native_handle *(*get_native_handle)(
-+      const AHardwareBuffer *buffer);
++   pfnAHardwareBuffer_allocate allocate;
++   pfnAHardwareBuffer_release release;
++   pfnAHardwareBuffer_getNativeHandle getNativeHandle;
 +};
 +
-+static void
-+vkr_ahb_bo_destroy(void *ahb_bo)
-+{
-+   struct vkr_ahb_bo *bo = ahb_bo;
++static int
+ vkr_gbm_bo_get_fd(void *gbm_bo)
+ {
+-   assert(gbm_bo);
++   struct fake_gbm_bo *bo = gbm_bo;
+ 
+-   /* gbm_bo_get_fd returns negative error code on failure */
+-   return gbm_bo_get_fd(gbm_bo);
++   const native_handle_t *bo_handle = bo->getNativeHandle(bo->base);
++   if (bo_handle) {
++      for (int i = 0u; i < bo_handle->numFds; i++) {
++         size_t size = lseek(bo_handle->data[i], 0, SEEK_END);
++         if (size < bo->size)
++            continue;
 +
++         return os_dupfd_cloexec(bo_handle->data[i]);
++      }
++   }
++
++   return -1;
+ }
+ 
+-static inline void
++static void
+ vkr_gbm_bo_destroy(void *gbm_bo)
+ {
+-   gbm_bo_destroy(gbm_bo);
++   struct fake_gbm_bo *bo = gbm_bo;
 +   if (!bo)
 +      return;
 +
-+   if (bo->buffer && bo->release)
-+      bo->release(bo->buffer);
-+   if (bo->libandroid)
-+      dlclose(bo->libandroid);
-+   free(bo);
-+}
-+
-+static int
-+vkr_ahb_bo_get_fd(void *ahb_bo)
-+{
-+   struct vkr_ahb_bo *bo = ahb_bo;
-+   const struct vkr_native_handle *handle;
-+
-+   if (!bo || !bo->get_native_handle)
-+      return -1;
-+
-+   handle = bo->get_native_handle(bo->buffer);
-+   if (!handle) {
-+      vkr_log("AHardwareBuffer has no native handle");
-+      return -1;
-+   }
-+
-+   for (int i = 0; i < handle->num_fds; i++) {
-+      /* dma-buf fds report their size through lseek; the allocation may be
-+       * rounded up by gralloc, so only reject fds that are too small. */
-+      const int fd = handle->data[i];
-+      const off_t size = lseek(fd, 0, SEEK_END);
-+      if (size < 0 || (uint64_t)size < bo->size)
-+         continue;
-+
-+      return os_dupfd_cloexec(fd);
-+   }
-+
-+   vkr_log("AHardwareBuffer has no dma-buf fd large enough (%zu bytes)", bo->size);
-+   return -1;
-+}
-+
-+static VkResult
-+vkr_ahb_get_fd_info_from_allocation_info(
-+   UNUSED struct vkr_physical_device *physical_dev,
-+   const VkMemoryAllocateInfo *alloc_info,
-+   void **out_ahb_bo,
-+   VkImportAndroidHardwareBufferInfoANDROID *out_import_info)
-+{
-+   struct vkr_ahb_bo *bo;
-+   int (*allocate)(const AHardwareBuffer_Desc *, AHardwareBuffer **);
-+
-+   /* AHardwareBuffer_Desc::width is 32-bit; reject larger allocations. */
-+   if (alloc_info->allocationSize > UINT32_MAX)
-+      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-+
-+   bo = calloc(1, sizeof(*bo));
++   if (bo->base)
++      bo->release(bo->base);
++   dlclose(bo->handle);
++   free(gbm_bo);
+ }
+ 
+ static VkResult
+-vkr_gbm_get_fd_info_from_allocation_info(struct vkr_physical_device *physical_dev,
++vkr_gbm_get_fd_info_from_allocation_info(UNUSED struct vkr_physical_device *physical_dev,
+                                          const VkMemoryAllocateInfo *alloc_info,
+                                          void **out_gbm_bo,
+                                          VkImportMemoryFdInfoKHR *out_fd_info)
+ {
+-   const uint32_t gbm_bo_use_flags =
+-      GBM_BO_USE_LINEAR | GBM_BO_USE_SW_READ_RARELY | GBM_BO_USE_SW_WRITE_RARELY;
+-   struct gbm_bo *gbm_bo;
+-   int fd = -1;
+-
+-   assert(physical_dev->gbm_device);
+-
+-   /*
+-    * Reject here for simplicity. Letting VkPhysicalDeviceVulkan11Properties return
+-    * min(maxMemoryAllocationSize, UINT32_MAX) will affect unmappable scenarios.
+-    */
+-   if (alloc_info->allocationSize > UINT32_MAX)
+-      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+-
+-   /* 4K alignment is used on all implementations we support. */
+-   gbm_bo = gbm_bo_create(physical_dev->gbm_device,
+-                          align(alloc_info->allocationSize, getpagesize()), 1,
+-                          GBM_FORMAT_R8, gbm_bo_use_flags);
+-   if (!gbm_bo)
+-      return VK_ERROR_OUT_OF_DEVICE_MEMORY;
++   struct fake_gbm_bo *bo = malloc(sizeof(*bo));
 +   if (!bo)
 +      return VK_ERROR_OUT_OF_HOST_MEMORY;
 +
-+   bo->libandroid = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);
-+   if (!bo->libandroid) {
-+      vkr_log("failed to load libandroid.so for AHardwareBuffer");
-+      goto err_init;
++   if ((bo->handle = dlopen("libandroid.so", RTLD_NOW)) != NULL) {
++#define LOAD_SYMBOL(func)                                                                \
++   if ((bo->func = (pfnAHardwareBuffer_##func)dlsym(                                     \
++           bo->handle, "AHardwareBuffer_" #func)) == NULL) {                             \
++      dlclose(bo->handle);                                                               \
++      free(bo);                                                                          \
++      return VK_ERROR_INITIALIZATION_FAILED;                                             \
 +   }
+ 
+-   fd = vkr_gbm_bo_get_fd(gbm_bo);
+-   if (fd < 0) {
+-      vkr_gbm_bo_destroy(gbm_bo);
+-      return fd == -EMFILE ? VK_ERROR_TOO_MANY_OBJECTS : VK_ERROR_OUT_OF_HOST_MEMORY;
++   LOAD_SYMBOL(allocate)
++   LOAD_SYMBOL(release)
++   LOAD_SYMBOL(getNativeHandle)
++#undef LOAD_SYMBOL
++   } else {
++      free(bo);
++      return VK_ERROR_INITIALIZATION_FAILED;
+    }
++   bo->size = alloc_info->allocationSize;
 +
-+   allocate = (int (*)(const AHardwareBuffer_Desc *, AHardwareBuffer **))dlsym(
-+      bo->libandroid, "AHardwareBuffer_allocate");
-+   bo->release = (void (*)(AHardwareBuffer *))dlsym(bo->libandroid,
-+                                                    "AHardwareBuffer_release");
-+   bo->get_native_handle =
-+      (const struct vkr_native_handle *(*)(const AHardwareBuffer *))dlsym(
-+         bo->libandroid, "AHardwareBuffer_getNativeHandle");
-+   if (!allocate || !bo->release || !bo->get_native_handle) {
-+      vkr_log("AHardwareBuffer entry points are missing from libandroid.so");
-+      goto err_init;
-+   }
-+
-+   const AHardwareBuffer_Desc desc = {
-+      .width = (uint32_t)alloc_info->allocationSize,
++   AHardwareBuffer_Desc bo_desc = {
++      .width = alloc_info->allocationSize,
 +      .height = 1,
 +      .layers = 1,
 +      .format = AHARDWAREBUFFER_FORMAT_BLOB,
@@ -294,149 +257,99 @@ index 03f84b6..3328f6e 100644
 +               AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
 +               AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY,
 +   };
-+   if (allocate(&desc, &bo->buffer) || !bo->buffer) {
-+      vkr_log("AHardwareBuffer_allocate(%u) failed", desc.width);
-+      goto err_alloc;
-+   }
+ 
+-   *out_gbm_bo = (void *)gbm_bo;
+-   *out_fd_info = (VkImportMemoryFdInfoKHR){
+-      .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
++   if (bo->allocate(&bo_desc, &bo->base))
++      goto error_free_bo;
 +
-+   bo->size = alloc_info->allocationSize;
-+
-+   *out_ahb_bo = bo;
-+   *out_import_info = (VkImportAndroidHardwareBufferInfoANDROID){
++   VkImportAndroidHardwareBufferInfoANDROID *out_hwb_info = (void *)out_fd_info;
++   *out_gbm_bo = bo;
++   *out_hwb_info = (VkImportAndroidHardwareBufferInfoANDROID){
 +      .sType = VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID,
-+      .pNext = alloc_info->pNext,
-+      .buffer = bo->buffer,
-+   };
-+   return VK_SUCCESS;
+       .pNext = alloc_info->pNext,
+-      .fd = fd,
+-      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
++      .buffer = bo->base,
+    };
+    return VK_SUCCESS;
 +
-+err_alloc:
-+   vkr_ahb_bo_destroy(bo);
++error_free_bo:
++   vkr_gbm_bo_destroy(bo);
 +   return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-+err_init:
-+   vkr_ahb_bo_destroy(bo);
-+   return VK_ERROR_INITIALIZATION_FAILED;
-+}
-+#endif /* __ANDROID__ */
-+
- #ifdef ENABLE_MINIGBM_ALLOCATION
- #include <gbm.h>
+ }
  
-@@ -200,6 +364,19 @@ vkr_gbm_get_fd_info_from_allocation_info(struct vkr_physical_device *physical_de
+-#else
++#else /* __ANDROID__ */
  
- #else
- 
-+#if defined(__ANDROID__)
-+static inline int
-+vkr_gbm_bo_get_fd(void *gbm_bo)
-+{
-+   return vkr_ahb_bo_get_fd(gbm_bo);
-+}
-+
-+static inline void
-+vkr_gbm_bo_destroy(void *gbm_bo)
-+{
-+   vkr_ahb_bo_destroy(gbm_bo);
-+}
-+#else
  static inline int
  vkr_gbm_bo_get_fd(ASSERTED void *gbm_bo)
- {
-@@ -214,6 +391,7 @@ vkr_gbm_bo_destroy(ASSERTED void *gbm_bo)
-    vkr_log("minigbm_allocation is not enabled");
-    assert(!gbm_bo);
+@@ -225,7 +283,7 @@ vkr_gbm_get_fd_info_from_allocation_info(UNUSED struct vkr_physical_device *phys
+    return VK_ERROR_OUT_OF_DEVICE_MEMORY;
  }
-+#endif
  
- static inline VkResult
- vkr_gbm_get_fd_info_from_allocation_info(UNUSED struct vkr_physical_device *physical_dev,
-@@ -245,6 +423,9 @@ vkr_dispatch_vkAllocateMemory(struct vn_dispatch_context *dispatch,
+-#endif /* ENABLE_GBM_ALLOCATION */
++#endif /* __ANDROID__ */
  
-    /* translate VkImportMemoryResourceInfoMESA into VkImportMemoryFdInfoKHR in place */
-    VkImportMemoryFdInfoKHR local_import_info = { .fd = -1 };
-+#if defined(__ANDROID__)
-+   VkImportAndroidHardwareBufferInfoANDROID local_ahb_info;
-+#endif
-    VkImportMemoryResourceInfoMESA *res_info = NULL;
-    VkBaseInStructure *prev_of_res_info = vkr_find_prev_struct(
-       alloc_info, VK_STRUCTURE_TYPE_IMPORT_MEMORY_RESOURCE_INFO_MESA);
-@@ -274,10 +455,34 @@ vkr_dispatch_vkAllocateMemory(struct vn_dispatch_context *dispatch,
-    uint32_t valid_fd_types = 0;
-    int udmabuf_fd = -1;
-    void *gbm_bo = NULL;
-+#if !defined(__ANDROID__)
-    VkExportMemoryAllocateInfo local_export_info;
-+#endif
-    VkExportMemoryAllocateInfo *export_info =
-       vkr_find_struct(alloc_info->pNext, VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO);
-    if ((property_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) && !res_info) {
-+#if defined(__ANDROID__)
-+      /* Android: allocate an AHardwareBuffer and import it (see the comment on
-+       * vkr_ahb_get_fd_info_from_allocation_info).  It is exported back to the
-+       * guest as a dma-buf through vkr_gbm_bo_get_fd(), which is exactly what
-+       * QEMU's blob resource mapping expects. */
-+      if (export_info) {
-+         /* Strip export info: the memory is imported, not exported. */
-+         VkBaseInStructure *prev_of_export_info = vkr_find_prev_struct(
-+            alloc_info, VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO);
+ static void
+ vkr_dispatch_vkAllocateMemory(struct vn_dispatch_context *dispatch,
+@@ -365,6 +423,23 @@ vkr_dispatch_vkAllocateMemory(struct vn_dispatch_context *dispatch,
+          valid_fd_types |= 1 << VIRGL_RESOURCE_FD_DMABUF;
+    }
+ 
++#if defined (__ANDROID__)
++   if (getenv("ANDROID_VENUS") && export_info) {
++      VkBaseInStructure *prev_of_export_info =
++         vkr_find_prev_struct(alloc_info, VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO);
 +
-+         prev_of_export_info->pNext = export_info->pNext;
-+         export_info = NULL;
-+      }
++      prev_of_export_info->pNext = export_info->pNext;
 +
-+      args->ret = vkr_ahb_get_fd_info_from_allocation_info(
-+         physical_dev, alloc_info, &gbm_bo, &local_ahb_info);
++      args->ret = vkr_gbm_get_fd_info_from_allocation_info(physical_dev, alloc_info, &gbm_bo,
++                                                           &local_import_info);
 +      if (args->ret != VK_SUCCESS)
 +         return;
 +
-+      alloc_info->pNext = &local_ahb_info;
++      alloc_info->pNext = &local_import_info;
 +      valid_fd_types = 1 << VIRGL_RESOURCE_FD_DMABUF;
-+#else
-       /* An implementation can support dma_buf import along with opaque fd export/import.
-        * If the client driver is using external memory and requesting dma_buf, without
-        * dma_buf fd export support, we must use gbm bo import path instead of forcing
-@@ -333,6 +538,7 @@ vkr_dispatch_vkAllocateMemory(struct vn_dispatch_context *dispatch,
-          alloc_info->pNext = &local_import_info;
-          valid_fd_types = 1 << VIRGL_RESOURCE_FD_DMABUF;
-       }
-+#endif /* __ANDROID__ */
-    }
- 
-    if (export_info) {
++   }
++#endif
++
+    struct vkr_device_memory *mem = vkr_device_memory_create_and_add(ctx, args);
+    if (!mem) {
+       if (local_import_info.fd >= 0)
 diff --git a/src/venus/vkr_image.c b/src/venus/vkr_image.c
-index 7d9aad0..41751c5 100644
+index 2b627e3..b4b3dae 100644
 --- a/src/venus/vkr_image.c
 +++ b/src/venus/vkr_image.c
-@@ -31,6 +31,21 @@ vkr_dispatch_vkCreateImage(struct vn_dispatch_context *dispatch,
+@@ -31,6 +31,20 @@ vkr_dispatch_vkCreateImage(struct vn_dispatch_context *dispatch,
      * situation because the app does not consider the memory external.
      */
  
-+#if defined(__ANDROID__)
-+   /* Venus on Android imports AHardwareBuffer blobs as device memory (see
-+    * vkr_device_memory.c), and such memory can only back linear images.  Drop
-+    * the external memory create info the guest chains when it wants a
-+    * dma-buf-backed image, and force the linear layout. */
-+   VkExternalMemoryImageCreateInfo *handle_info = vkr_find_struct(
-+      args->pCreateInfo->pNext, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
-+   if (handle_info) {
-+      VkBaseInStructure *prev_of_handle_info = vkr_find_prev_struct(
-+         args->pCreateInfo, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
-+      prev_of_handle_info->pNext = handle_info->pNext;
++#if defined (__ANDROID__)
++   if (getenv("ANDROID_VENUS")) {
++      VkExternalMemoryImageCreateInfo *handle_info = vkr_find_struct(
++         args->pCreateInfo->pNext, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
++      if (handle_info) {
++         VkBaseInStructure *prev_of_handle_info = vkr_find_prev_struct(
++            args->pCreateInfo, VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
++         prev_of_handle_info->pNext = handle_info->pNext;
++      }
++      VkImageCreateInfo *image_info = (void *)args->pCreateInfo;
++      image_info->tiling = VK_IMAGE_TILING_LINEAR;
 +   }
-+   ((VkImageCreateInfo *)args->pCreateInfo)->tiling = VK_IMAGE_TILING_LINEAR;
 +#endif
 +
     vkr_image_create_and_add(dispatch->data, args);
  }
  
-@@ -162,6 +177,16 @@ vkr_dispatch_vkGetImageDrmFormatModifierPropertiesEXT(
+@@ -162,6 +176,14 @@ vkr_dispatch_vkGetImageDrmFormatModifierPropertiesEXT(
     struct vkr_device *dev = vkr_device_from_handle(args->device);
     struct vn_device_proc_table *vk = &dev->proc_table;
  
-+#if defined(__ANDROID__)
-+   /* The driver has no VK_EXT_image_drm_format_modifier; images are created
-+    * linear (see vkr_dispatch_vkCreateImage), so report the linear modifier. */
-+   if (args->pProperties) {
-+      args->pProperties->drmFormatModifier = 0 /* DRM_FORMAT_MOD_LINEAR */;
++#if defined (__ANDROID__)
++   if (getenv("ANDROID_VENUS")) {
++      args->pProperties->drmFormatModifier = 0 /* DRM_FORMAT_MOD_LINEAR */ ;
 +      args->ret = VK_SUCCESS;
 +      return;
 +   }
@@ -446,10 +359,10 @@ index 7d9aad0..41751c5 100644
     args->ret = vk->GetImageDrmFormatModifierPropertiesEXT(args->device, args->image,
                                                            args->pProperties);
 diff --git a/src/venus/vkr_instance.c b/src/venus/vkr_instance.c
-index 187937d..2edeec5 100644
+index a5002a3..ef1ace9 100644
 --- a/src/venus/vkr_instance.c
 +++ b/src/venus/vkr_instance.c
-@@ -55,7 +55,12 @@ vkr_dispatch_vkEnumerateInstanceExtensionProperties(
+@@ -58,7 +58,12 @@ vkr_dispatch_vkEnumerateInstanceExtensionProperties(
     args->ret = count == ARRAY_SIZE(private_extensions) ? VK_SUCCESS : VK_INCOMPLETE;
  }
  
@@ -464,102 +377,47 @@ index 187937d..2edeec5 100644
                          UNUSED VkDebugUtilsMessageTypeFlagsEXT messageTypes,
                          const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
 diff --git a/src/venus/vkr_physical_device.c b/src/venus/vkr_physical_device.c
-index 5c4c23b..5e667c1 100644
+index e2c3baa..78279f1 100644
 --- a/src/venus/vkr_physical_device.c
 +++ b/src/venus/vkr_physical_device.c
-@@ -253,6 +253,14 @@ vkr_physical_device_init_extensions(struct vkr_physical_device *physical_dev,
-    }
- 
-    uint32_t advertised_count = 0;
-+#if defined(__ANDROID__)
-+   /* Android: the vendor driver may support neither dma-buf export nor the DRM
-+    * format modifier extension, but it can import AHardwareBuffers.  The venus
-+    * device memory code turns every host-visible allocation into an
-+    * AHardwareBuffer in that case, so advertise the dma-buf / modifier
-+    * extensions the guest driver expects and let it use the linear layout. */
-+   bool android_ahb_supported = false;
-+#endif
-    for (uint32_t i = 0; i < count; i++) {
-       VkExtensionProperties *props = &exts[i];
- 
-@@ -262,6 +270,11 @@ vkr_physical_device_init_extensions(struct vkr_physical_device *physical_dev,
-          physical_dev->EXT_external_memory_dma_buf = true;
-       else if (!strcmp(props->extensionName, "VK_KHR_external_fence_fd"))
-          physical_dev->KHR_external_fence_fd = true;
-+#if defined(__ANDROID__)
-+      else if (!strcmp(props->extensionName,
-+                       "VK_ANDROID_external_memory_android_hardware_buffer"))
-+         android_ahb_supported = true;
-+#endif
- 
-       const uint32_t spec_ver = vkr_extension_get_spec_version(props->extensionName);
-       if (spec_ver) {
-@@ -271,6 +284,48 @@ vkr_physical_device_init_extensions(struct vkr_physical_device *physical_dev,
+@@ -284,6 +284,22 @@ vkr_physical_device_init_extensions(struct vkr_physical_device *physical_dev)
        }
     }
  
-+#if defined(__ANDROID__)
-+   if (android_ahb_supported) {
-+      bool have_dma_buf = false;
-+      bool have_drm_modifier = false;
-+
-+      for (uint32_t i = 0; i < advertised_count; i++) {
-+         if (!strcmp(exts[i].extensionName, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME))
-+            have_dma_buf = true;
-+         else if (!strcmp(exts[i].extensionName,
-+                          VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME))
-+            have_drm_modifier = true;
-+      }
-+
-+      /* vkr_device.c enables the dma-buf extension on the host device as a
-+       * marker; it is replaced by VK_ANDROID_external_memory_android_hardware_buffer
-+       * at vkCreateDevice time. */
++#if defined (__ANDROID__)
++   if (getenv("ANDROID_VENUS")) {
 +      physical_dev->EXT_external_memory_dma_buf = true;
 +
-+      const uint32_t extra = !have_dma_buf + !have_drm_modifier;
-+      if (extra) {
-+         VkExtensionProperties *tmp =
-+            realloc(exts, sizeof(*exts) * (advertised_count + extra));
-+         if (!tmp) {
-+            free(exts);
-+            return;
-+         }
-+         exts = tmp;
++      if (advertised_count + 2 > count)
++         exts = realloc(exts, sizeof(*exts) * (advertised_count + 2));
 +
-+         if (!have_dma_buf) {
-+            exts[advertised_count++] = (VkExtensionProperties){
-+               VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
-+               VK_EXT_EXTERNAL_MEMORY_DMA_BUF_SPEC_VERSION };
-+         }
-+         if (!have_drm_modifier) {
-+            exts[advertised_count++] = (VkExtensionProperties){
-+               VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME,
-+               VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_SPEC_VERSION };
-+         }
-+      }
++      exts[advertised_count++] =
++         (VkExtensionProperties){ VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
++                                  VK_EXT_EXTERNAL_MEMORY_DMA_BUF_SPEC_VERSION };
++      exts[advertised_count++] =
++         (VkExtensionProperties){ VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME,
++                                  VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_SPEC_VERSION };
 +   }
 +#endif
 +
     if (physical_dev->KHR_external_fence_fd) {
        const VkPhysicalDeviceExternalFenceInfo fence_info = {
           .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FENCE_INFO,
-@@ -646,9 +701,38 @@ vkr_dispatch_vkGetPhysicalDeviceFormatProperties2(
-    UNUSED struct vn_dispatch_context *dispatch,
-    struct vn_command_vkGetPhysicalDeviceFormatProperties2 *args)
- {
-+#if defined(__ANDROID__)
-+   /* The DRM format modifier extension is advertised to the guest but not
-+    * supported by the host driver; answer with the linear modifier only and
-+    * hide the query from the driver. */
+@@ -698,9 +714,36 @@ vkr_dispatch_vkGetPhysicalDeviceFormatProperties2(
+       vkr_physical_device_from_handle(args->physicalDevice);
+    struct vn_physical_device_proc_table *vk = &physical_dev->proc_table;
+ 
++#if defined (__ANDROID__)
 +   VkDrmFormatModifierPropertiesListEXT *mod_list = vkr_find_struct(
 +      args->pFormatProperties, VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT);
-+   if (mod_list) {
-+      VkBaseInStructure *prev_of_mod_list = vkr_find_prev_struct(
-+         args->pFormatProperties, VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT);
-+
++   if (getenv("ANDROID_VENUS") && mod_list) {
++      VkBaseInStructure *prev_of_mod_list =
++         vkr_find_prev_struct(args->pFormatProperties,
++                              VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT);
 +      prev_of_mod_list->pNext = mod_list->pNext;
 +
 +      mod_list->drmFormatModifierCount = 1;
++
 +      if (mod_list->pDrmFormatModifierProperties) {
 +         mod_list->pDrmFormatModifierProperties[0] = (VkDrmFormatModifierPropertiesEXT){
 +            .drmFormatModifier = 0 /* DRM_FORMAT_MOD_LINEAR */,
@@ -570,11 +428,11 @@ index 5c4c23b..5e667c1 100644
 +#endif
 +
     vn_replace_vkGetPhysicalDeviceFormatProperties2_args_handle(args);
-    vkGetPhysicalDeviceFormatProperties2(args->physicalDevice, args->format,
-                                         args->pFormatProperties);
+    vk->GetPhysicalDeviceFormatProperties2(args->physicalDevice, args->format,
+                                           args->pFormatProperties);
 +
-+#if defined(__ANDROID__)
-+   if (mod_list) {
++#if defined (__ANDROID__)
++   if (getenv("ANDROID_VENUS") && mod_list) {
 +      mod_list->pNext = args->pFormatProperties->pNext;
 +      args->pFormatProperties->pNext = mod_list;
 +   }
@@ -582,34 +440,32 @@ index 5c4c23b..5e667c1 100644
  }
  
  static void
-@@ -656,6 +740,20 @@ vkr_dispatch_vkGetPhysicalDeviceImageFormatProperties2(
-    UNUSED struct vn_dispatch_context *dispatch,
-    struct vn_command_vkGetPhysicalDeviceImageFormatProperties2 *args)
- {
-+#if defined(__ANDROID__)
-+   /* Same as above: the driver would reject a DRM format modifier info it does
-+    * not know; images are linear, so just drop it before calling down. */
-+   VkPhysicalDeviceImageDrmFormatModifierInfoEXT *mod_info = vkr_find_struct(
-+      args->pImageFormatInfo->pNext,
-+      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT);
-+   if (mod_info) {
-+      VkBaseInStructure *prev_of_mod_info = vkr_find_prev_struct(
-+         args->pImageFormatInfo,
+@@ -712,6 +755,20 @@ vkr_dispatch_vkGetPhysicalDeviceImageFormatProperties2(
+       vkr_physical_device_from_handle(args->physicalDevice);
+    struct vn_physical_device_proc_table *vk = &physical_dev->proc_table;
+ 
++#if defined (__ANDROID__)
++   if (getenv("ANDROID_VENUS")) {
++      VkPhysicalDeviceImageDrmFormatModifierInfoEXT *mod_info = vkr_find_struct(
++         args->pImageFormatInfo->pNext,
 +         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT);
-+      prev_of_mod_info->pNext = mod_info->pNext;
++      if (mod_info) {
++         VkBaseInStructure *prev_of_mod_info = vkr_find_prev_struct(
++            args->pImageFormatInfo,
++            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT);
++         prev_of_mod_info->pNext = mod_info->pNext;
++      }
 +   }
 +#endif
 +
     vn_replace_vkGetPhysicalDeviceImageFormatProperties2_args_handle(args);
-    args->ret = vkGetPhysicalDeviceImageFormatProperties2(
+    args->ret = vk->GetPhysicalDeviceImageFormatProperties2(
        args->physicalDevice, args->pImageFormatInfo, args->pImageFormatProperties);
-diff --git a/src/vrend_renderer.c b/src/vrend_renderer.c
---- a/src/vrend_renderer.c
-+++ b/src/vrend_renderer.c
-@@ -7628,8 +7628,22 @@ int vrend_renderer_init(const struct vrend_if_cbs *cbs, uint32_t flags)
-    if (!gl_context) {
-       virgl_error("Unable to create %s context >= 3.0\n",
-                   flags & VREND_USE_GLES ? "GLES" : "OpenGL");
+diff --git a/src/vrend/vrend_renderer.c b/src/vrend/vrend_renderer.c
+index 4bf88e0..ac11849 100644
+--- a/src/vrend/vrend_renderer.c
++++ b/src/vrend/vrend_renderer.c
+@@ -7627,7 +7627,21 @@ int vrend_renderer_init(const struct vrend_if_cbs *cbs, uint32_t flags)
        goto fail;
     }
  
@@ -630,4 +486,5 @@ diff --git a/src/vrend_renderer.c b/src/vrend_renderer.c
 +      goto fail;
 +   }
     gl_ver = epoxy_gl_version();
-
+ 
+    /* enable error output as early as possible */

@@ -22,6 +22,10 @@ as = '@TOOLCHAIN_CLANG_PREFIX@/llvm-as'
 ranlib = '@TOOLCHAIN_CLANG_PREFIX@/llvm-ranlib'
 ld = '@TOOLCHAIN_CLANG_PREFIX@/ld'
 strip = '@TOOLCHAIN_CLANG_PREFIX@/llvm-strip'
+# Meson newer than ~1.9 no longer guesses "<triple>-pkg-config"; without this
+# entry dependency('epoxy') fails with "Pkg-config for machine host machine not
+# found".  The other cross files (glib/pixman/slirp/spice) already list it.
+pkgconfig = '@PKG_CONFIG@'
 
 [built-in options]
 prefix = '@VIRGL_INSTALL_DIR@'

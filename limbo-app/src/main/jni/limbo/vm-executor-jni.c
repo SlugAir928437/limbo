@@ -351,6 +351,12 @@ static int limbo_apply_gl_backend(void) {
     void (*set_library_path)(const char *) = NULL;
     int backend = limbo_pending_gl_backend;
 
+    /* virglrenderer 的 venus Android 适配（AHB 支撑 host blob，见
+     * patches/virglrenderer-android-egl.patch）由 ANDROID_VENUS 开关。venus 只有
+     * 在 QEMU 带 ,venus=on 时才会建上下文，这里无条件设置对非 venus 场景没有
+     * 影响；必须在 qemu_init()（vkCreateDevice）之前生效。 */
+    setenv("ANDROID_VENUS", "1", 1);
+
     if (limbo_gl_backend_applied != -1) {
         return limbo_gl_backend_applied;
     }

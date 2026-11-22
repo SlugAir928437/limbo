@@ -154,9 +154,10 @@ USE_VIRGL ?= true
 #     android in patches/virglrenderer-android-egl.patch.  Nothing on this
 #     configuration calls libdrm - its only real users are the DRM
 #     native-context renderers, which stay disabled;
-#   * the render server worker is forced to 'thread', because venus turns the
-#     render server on and its default 'process' mode fork+execs
-#     virgl_render_server, which does not exist inside the app sandbox;
+#   * the render server runs inside libvirglrenderer on a QEMU thread instead of
+#     as the separate virgl_render_server executable, which cannot be executed
+#     from an app sandbox (ENABLE_RENDER_SERVER_INPROCESS in the same patch);
+#     the worker is forced to 'thread' so contexts also stay in-process;
 #   * the guest blobs are backed by AHardwareBuffers instead of dma-buf
 #     exports: Android's vendor Vulkan drivers cannot export dma-bufs, so the
 #     same patch makes venus allocate an AHardwareBuffer, import it through

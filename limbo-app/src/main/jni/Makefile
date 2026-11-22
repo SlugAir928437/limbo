@@ -649,9 +649,13 @@ config-virgl: ndk pkg-config-link ffi glib pixman $(if $(filter true,$(USE_GTK))
 	# device is started with ,venus=on (see VMExecutor#addGraphicsOptions).
 	# Everything else found stays OFF - Android has no libdrm/gbm, and the venus
 	# validation layer / DRM native contexts are desktop-only.  With venus the
-	# render server (which venus switches on by itself) is told to service its
-	# contexts from a thread: the default 'process' worker fork+execs
-	# virgl_render_server, which does not exist inside the app sandbox.
+	# render server is required: the app sandbox cannot exec the separate
+	# virgl_render_server helper, so the server sources are compiled into
+	# libvirglrenderer and proxy_server_create() runs the server loop on a
+	# thread of the QEMU process (ENABLE_RENDER_SERVER_INPROCESS, see
+	# patches/virglrenderer-android-egl.patch).  render-server-worker=thread
+	# makes each context run as a thread of that same process as well; 'process'
+	# would fork+exec virgl_render_server and fail.
 	cd $(LIMBO_JNI_ROOT)/virglrenderer && \
 	virgl_opts="-Dplatforms=egl"; \
 	if [ "$(USE_VIRGL_VENUS)" = "true" ]; then venus_on=1; else venus_on=0; fi; \

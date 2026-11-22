@@ -1,5 +1,17 @@
+diff --git a/config.h.meson b/config.h.meson
+index 55497ff..129eb33 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -46,6 +46,7 @@
+ #mesondefine ENABLE_DRM_I915
+ #mesondefine ENABLE_LIBDRM
+ #mesondefine ENABLE_RENDER_SERVER
++#mesondefine ENABLE_RENDER_SERVER_INPROCESS
+ #mesondefine ENABLE_RENDER_SERVER_WORKER_PROCESS
+ #mesondefine ENABLE_RENDER_SERVER_WORKER_THREAD
+ #mesondefine ENABLE_RENDER_SERVER_WORKER_MINIJAIL
 diff --git a/meson.build b/meson.build
-index 69c1bb8..8d0a1bf 100644
+index 69c1bb8..4489393 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -295,7 +295,13 @@ have_glx = false
@@ -17,6 +29,185 @@ index 69c1bb8..8d0a1bf 100644
           have_egl = true
        else
           if libdrm_dep.found()
+@@ -395,6 +401,28 @@ if with_venus
+    else
+      error('unknown render server worker ' + with_render_server_worker)
+    endif
++
++   if host_machine.system() == 'android'
++      # There is no way to exec the virgl_render_server helper from an app
++      # sandbox, so the proxy starts the server on a thread of the client
++      # process instead (src/proxy/proxy_server.c).
++      if with_render_server_worker != 'thread'
++         error('Android requires -Drender-server-worker=thread')
++      endif
++      conf_data.set('ENABLE_RENDER_SERVER_INPROCESS', 1)
++   endif
++
++   # Server implementation, without main().  Built into the standalone
++   # virgl_render_server executable, and on Android into the library itself.
++   render_server_impl_sources = files(
++      'server/render_client.c',
++      'server/render_common.c',
++      'server/render_context.c',
++      'server/render_server.c',
++      'server/render_socket.c',
++      'server/render_state.c',
++      'server/render_worker.c',
++   )
+ endif
+ 
+ with_video = get_option('video')
+diff --git a/server/meson.build b/server/meson.build
+index e73f8de..0ba00e2 100644
+--- a/server/meson.build
++++ b/server/meson.build
+@@ -1,16 +1,7 @@
+ # Copyright 2021 Google LLC
+ # SPDX-License-Identifier: MIT
+ 
+-virgl_render_server_sources = [
+-   'main.c',
+-   'render_client.c',
+-   'render_common.c',
+-   'render_context.c',
+-   'render_server.c',
+-   'render_socket.c',
+-   'render_state.c',
+-   'render_worker.c',
+-]
++virgl_render_server_sources = ['main.c'] + render_server_impl_sources
+ 
+ virgl_render_server_depends = [libvirglrenderer_dep, epoll_dep]
+ 
+@@ -24,6 +15,7 @@ if with_tracing == 'percetto'
+    virgl_render_server_depends += [percetto_dep]
+ endif
+ 
++if host_machine.system() != 'android'
+ virgl_render_server = executable(
+    'virgl_render_server',
+    virgl_render_server_sources,
+@@ -31,3 +23,4 @@ virgl_render_server = executable(
+    install : true,
+    install_dir : render_server_install_dir,
+ )
++endif
+diff --git a/server/render_common.c b/server/render_common.c
+index e51bb88..3b83112 100644
+--- a/server/render_common.c
++++ b/server/render_common.c
+@@ -9,6 +9,10 @@
+ #include <stdio.h>
+ #include <syslog.h>
+ 
++#if defined(__ANDROID__)
++#include <android/log.h>
++#endif
++
+ void
+ render_log_init(void)
+ {
+@@ -21,6 +25,12 @@ render_log(const char *fmt, ...)
+    va_list va;
+ 
+    va_start(va, fmt);
++#if defined(__ANDROID__)
++   /* bionic's syslog goes to /dev/log, which does not exist on Android; log
++    * to logcat so in-process server failures are visible. */
++   __android_log_vprint(ANDROID_LOG_DEBUG, "virgl_render_server", fmt, va);
++#else
+    vsyslog(LOG_DEBUG, fmt, va);
++#endif
+    va_end(va);
+ }
+diff --git a/server/render_server.c b/server/render_server.c
+index 6b129e4..6381a7a 100644
+--- a/server/render_server.c
++++ b/server/render_server.c
+@@ -13,6 +13,14 @@
+ #include "render_client.h"
+ #include "render_worker.h"
+ 
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++/* An in-process server must run its contexts as threads: a forked worker would
++ * not be able to talk back to the client through the shared address space. */
++#if !defined(ENABLE_RENDER_SERVER_WORKER_THREAD)
++#error "in-process render server requires render-server-worker=thread"
++#endif
++#endif
++
+ #define RENDER_SERVER_MAX_WORKER_COUNT 256
+ 
+ enum render_server_poll_type {
+@@ -218,3 +226,51 @@ render_server_main(int argc, char **argv, struct render_context_args *ctx_args)
+ 
+    return ok;
+ }
++
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++
++/* Same setup as render_server_main(), but takes an already connected fd and
++ * skips option parsing (getopt state is process-global and already used by the
++ * host).  Used to host the server on a thread inside the client process.
++ *
++ * Owns client_fd from the moment it is called, even on failure. */
++bool
++render_server_main_fd(int client_fd, struct render_context_args *ctx_args)
++{
++   struct render_server srv;
++
++   memset(&srv, 0, sizeof(srv));
++   srv.state = RENDER_SERVER_STATE_RUN;
++   srv.context_args = ctx_args;
++   srv.client_fd = client_fd;
++
++   if (srv.client_fd < 0 || !render_socket_is_seqpacket(srv.client_fd)) {
++      render_log("no valid client fd specified");
++      render_server_fini(&srv);
++      return false;
++   }
++
++   srv.worker_jail = render_worker_jail_create(RENDER_SERVER_MAX_WORKER_COUNT,
++                                               RENDER_WORKER_JAIL_SECCOMP_NONE, NULL);
++   if (!srv.worker_jail) {
++      render_log("failed to create worker jail");
++      render_server_fini(&srv);
++      return false;
++   }
++
++   srv.client = render_client_create(&srv, srv.client_fd);
++   if (!srv.client) {
++      render_log("failed to create client");
++      render_server_fini(&srv);
++      return false;
++   }
++   /* ownership transferred */
++   srv.client_fd = -1;
++
++   const bool ok = render_server_run(&srv);
++   render_server_fini(&srv);
++
++   return ok;
++}
++
++#endif /* ENABLE_RENDER_SERVER_INPROCESS */
+diff --git a/server/render_server.h b/server/render_server.h
+index ba71ce2..753eed2 100644
+--- a/server/render_server.h
++++ b/server/render_server.h
+@@ -34,4 +34,11 @@ struct render_server {
+ bool
+ render_server_main(int argc, char **argv, struct render_context_args *ctx_args);
+ 
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++/* Run the server loop on the calling thread instead of a standalone
++ * virgl_render_server process.  Takes ownership of client_fd. */
++bool
++render_server_main_fd(int client_fd, struct render_context_args *ctx_args);
++#endif
++
+ #endif /* RENDER_SERVER_H */
 diff --git a/src/mesa/util/os_misc.c b/src/mesa/util/os_misc.c
 index ca9bf7d..4c03952 100644
 --- a/src/mesa/util/os_misc.c
@@ -46,7 +237,7 @@ index ca9bf7d..4c03952 100644
  #  include <unistd.h>
  #elif DETECT_OS_OPENBSD || DETECT_OS_FREEBSD
 diff --git a/src/meson.build b/src/meson.build
-index 138301c..ca4d62a 100644
+index 138301c..2a17a91 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -167,6 +167,13 @@ virgl_depends = [
@@ -63,6 +254,205 @@ index 138301c..ca4d62a 100644
  if with_tracing == 'perfetto'
     virgl_depends += [vperfetto_min_dep]
  endif
+@@ -228,6 +235,12 @@ endif
+ 
+ if with_render_server
+    virgl_sources += proxy_sources
++   if host_machine.system() == 'android'
++      # The app sandbox cannot exec the virgl_render_server helper, so build
++      # the server into the library and let the proxy run it on a thread of
++      # the client process.
++      virgl_sources += render_server_impl_sources
++   endif
+ endif
+ 
+ if with_video
+diff --git a/src/proxy/proxy_server.c b/src/proxy/proxy_server.c
+index c9ea27e..344a275 100644
+--- a/src/proxy/proxy_server.c
++++ b/src/proxy/proxy_server.c
+@@ -11,24 +11,61 @@
+ 
+ #include "server/render_protocol.h"
+ 
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++#include <pthread.h>
++#include <sys/socket.h>
++
++#include "server/render_server.h"
++
++static void *
++proxy_server_thread(void *opaque)
++{
++   struct proxy_server *srv = opaque;
++
++   /* takes ownership of server_fd */
++   render_server_main_fd(srv->server_fd, NULL);
++
++   return NULL;
++}
++#endif /* ENABLE_RENDER_SERVER_INPROCESS */
++
+ int
+ proxy_server_connect(struct proxy_server *srv)
+ {
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++   /* Keep our end so proxy_server_destroy() can still shut the connection down
++    * and join the server thread. */
++   if (srv->client_fd < 0)
++      return -1;
++   return dup(srv->client_fd);
++#else
+    int client_fd = srv->client_fd;
+    /* transfer ownership */
+    srv->client_fd = -1;
+    return client_fd;
++#endif
+ }
+ 
+ void
+ proxy_server_destroy(struct proxy_server *srv)
+ {
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++   if (srv->thread_started) {
++      /* wake the server thread up; it closes the server end by itself */
++      if (srv->client_fd >= 0)
++         shutdown(srv->client_fd, SHUT_RDWR);
++
++      pthread_join(srv->thread, NULL);
++      srv->thread_started = false;
++   }
++#else
+    if (srv->pid >= 0) {
+       kill(srv->pid, SIGKILL);
+ 
+       siginfo_t siginfo = { 0 };
+       waitid(P_PID, srv->pid, &siginfo, WEXITED);
+    }
++#endif
+ 
+    if (srv->client_fd >= 0)
+       close(srv->client_fd);
+@@ -36,6 +73,8 @@ proxy_server_destroy(struct proxy_server *srv)
+    free(srv);
+ }
+ 
++#ifndef ENABLE_RENDER_SERVER_INPROCESS
++
+ static bool
+ proxy_server_fork(struct proxy_server *srv)
+ {
+@@ -78,12 +117,50 @@ proxy_server_fork(struct proxy_server *srv)
+ 
+       proxy_log("failed to exec %s: %s", argv[0], strerror(errno));
+       close(remote_fd);
+-      exit(-1);
++      /* _exit() and not exit(): the child inherited the host's atexit handlers
++       * (SDL, EGL, ...) which must not run here. */
++      _exit(-1);
++   }
++
++   return true;
++}
++
++#else /* ENABLE_RENDER_SERVER_INPROCESS */
++
++static bool
++proxy_server_create_thread(struct proxy_server *srv)
++{
++   int socket_fds[2];
++   if (!proxy_socket_pair(socket_fds))
++      return false;
++   const int client_fd = socket_fds[0];
++   const int server_fd = socket_fds[1];
++
++   if (!proxy_socket_is_seqpacket(client_fd)) {
++      proxy_log("invalid client fd type");
++      close(client_fd);
++      close(server_fd);
++      return false;
++   }
++
++   srv->client_fd = client_fd;
++   srv->server_fd = server_fd;
++
++   if (pthread_create(&srv->thread, NULL, proxy_server_thread, srv)) {
++      proxy_log("failed to create render server thread");
++      srv->client_fd = -1;
++      srv->server_fd = -1;
++      close(client_fd);
++      close(server_fd);
++      return false;
+    }
++   srv->thread_started = true;
+ 
+    return true;
+ }
+ 
++#endif /* ENABLE_RENDER_SERVER_INPROCESS */
++
+ static bool
+ proxy_server_init_fd(struct proxy_server *srv)
+ {
+@@ -102,13 +179,21 @@ proxy_server_create(void)
+    if (!srv)
+       return NULL;
+ 
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++   srv->server_fd = -1;
++#else
+    srv->pid = -1;
++#endif
+ 
+    if (!proxy_server_init_fd(srv)) {
+       /* start the render server on demand when the client does not provide a
+        * server fd
+        */
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++      if (!proxy_server_create_thread(srv)) {
++#else
+       if (!proxy_server_fork(srv)) {
++#endif
+          free(srv);
+          return NULL;
+       }
+@@ -121,7 +206,11 @@ proxy_server_create(void)
+       return NULL;
+    }
+ 
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++   proxy_log("proxy server running in-process");
++#else
+    proxy_log("proxy server with pid %d", srv->pid);
++#endif
+ 
+    return srv;
+ }
+diff --git a/src/proxy/proxy_server.h b/src/proxy/proxy_server.h
+index 1b5ca02..33413dc 100644
+--- a/src/proxy/proxy_server.h
++++ b/src/proxy/proxy_server.h
+@@ -10,8 +10,20 @@
+ 
+ #include <sys/types.h>
+ 
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++#include <pthread.h>
++#endif
++
+ struct proxy_server {
++#ifdef ENABLE_RENDER_SERVER_INPROCESS
++   /* the server runs on a thread in this process; the server end of the
++    * socket pair is handed to that thread */
++   pthread_t thread;
++   int server_fd;
++   bool thread_started;
++#else
+    pid_t pid;
++#endif
+    int client_fd;
+ };
+ 
 diff --git a/src/venus/vkr_buffer.c b/src/venus/vkr_buffer.c
 index 9e466f8..e0f7d4a 100644
 --- a/src/venus/vkr_buffer.c

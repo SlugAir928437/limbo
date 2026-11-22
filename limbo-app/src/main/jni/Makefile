@@ -797,6 +797,12 @@ config-mesa: ndk
 			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_HW_STUB_PATCH)" \
 				|| { echo 'ERROR: Mesa 的 hw_get_module() 补丁没打上'; exit 1; }; \
 		fi; \
+		if [ -f "$(MESA_ANDROID_EGL_PLATFORM)" ] && \
+		   ! grep -q 'droid_kopper_display_vtbl' "$(MESA_ANDROID_EGL_PLATFORM)"; then \
+			echo ">> Mesa: 应用 zink 的 Android 表面(kopper)补丁"; \
+			patch -p1 -d "$(MESA_SRC_DIR)" --forward < "$(MESA_ZINK_ANDROID_PATCH)" \
+				|| { echo 'ERROR: Mesa 的 zink Android 表面补丁没打上'; exit 1; }; \
+		fi; \
 		$(CREATE_MESA_MESON_CROSS_FILE); \
 		rm -rf "$(MESA_BUILD_DIR)" "$(MESA_INSTALL_DIR)"; \
 		$(CREATE_MESA_PC); \

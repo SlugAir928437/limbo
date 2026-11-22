@@ -15,6 +15,8 @@ Limbo 是一款运行在 Android 上的虚拟机模拟器，基于 [QEMU](https:
  * [ruvolof/nc-for-android](https://github.com/ruvolof/nc-for-android)（实现 QEMU Console）
  * [rosuH/AndroidFilePicker](https://github.com/rosuH/AndroidFilePicker)（文件选取器）
  * [getActivity/XXPermissions](https://github.com/getActivity/XXPermissions)（权限请求器）
+ * [mesa3d/mesa](https://gitlab.freedesktop.org/mesa/mesa)（Zink 渲染后端：libEGL_zink / libGLESv2_zink）
+ * [Llerey/panvk-kbase-android](https://github.com/Llerey/panvk-kbase-android)（zink 的 Android 表面 `VK_KHR_android_surface` 实现参考）
 
 仓库维护者
  * [FreshingAir](https://github.com/FreshingAir)

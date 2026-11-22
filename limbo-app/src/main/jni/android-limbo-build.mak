@@ -202,6 +202,12 @@ MESA_STUB_PUBLIC_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-stub-public-lib
 # NULL 去 strcmp 模块名，eglInitialize() 直接 SIGSEGV。补丁让它如实返回失败。
 MESA_HW_STUB_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-android-stub-honest-hwmodule.patch
 MESA_HW_STUB := $(MESA_SRC_DIR)/src/android_stub/hardware_stub.cpp
+# zink 的 Android 表面：Mesa 的 Android EGL 平台原来必须走 vendor gralloc HAL +
+# DRM 渲染节点，普通 App 两样都拿不到。补丁给 zink 加一条 kopper 路径，把 EGL
+# 窗口表面映射成 VK_KHR_android_surface，交给系统 libvulkan 分配 buffer 和 present
+# （思路参考 Llerey/panvk-kbase-android 的 Android WSI 实现）。
+MESA_ZINK_ANDROID_PATCH := $(LIMBO_JNI_ROOT)/patches/mesa-zink-android-kopper.patch
+MESA_ANDROID_EGL_PLATFORM := $(MESA_SRC_DIR)/src/egl/drivers/dri2/platform_android.c
 MESA_BUILDTYPE := $(if $(filter 1,$(NDK_DEBUG)),debug,release)
 
 # pixman (shared with QEMU, meson build)

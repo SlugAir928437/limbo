@@ -170,6 +170,38 @@ limbo-app/src/main/jni/patches/ 下的同名补丁仅作为来源与许可追溯
       以各上游文件自身声明为准。
 
 --------------------------------------------------------------------------------
+11. Mesa 3D（zink / EGL / gallium 渲染后端）
+许可证：MIT（全文见 LICENSES/Mesa.txt；上游各文件另含 Khronos SGI/X11 等声明，
+以 Mesa 源码树的 LICENSES/ 目录与各文件头为准）
+地址：https://gitlab.freedesktop.org/mesa/mesa
+说明：设置中的 Zink 渲染后端由本项目在构建阶段下载并编译 Mesa 25.2.0
+（`make fetch` 的 fetch-mesa、`make mesa` 的 config-mesa，见
+limbo-app/src/main/jni/Makefile），产物为 libEGL_zink.so、
+libGLESv1_CM_zink.so、libGLESv2_zink.so，随 APK 分发。本项目不随仓库分发
+Mesa 源码；limbo-app/src/main/jni/patches/ 下的 mesa-*.patch 是对 Mesa 源码的
+本地修改（Android 构建适配、android-stub、Android 表面等），其许可证沿用
+Mesa 上游，不构成新的授权；补丁文件头已注明 limbo 侧修改者与日期。
+limbo 侧修改者：FreshingAir（Limbo Emulator Project）。
+
+--------------------------------------------------------------------------------
+12. panvk-kbase-android（Android 表面 / VK_KHR_android_surface 参考实现）
+地址：https://github.com/Llerey/panvk-kbase-android
+许可证：MIT（仓库脚手架与补丁；其中 Mesa 派生补丁沿用 Mesa 上游许可，
+kbase UAPI 头为 GPL-2.0 WITH Linux-syscall-note，详见该仓库的
+LICENSES/README.md、NOTICE.md；本项目仅使用前者）
+全文见：LICENSES/panvk-kbase-android-MIT.txt
+引用与修改：zink 的 Android 窗口表面实现（补丁
+limbo-app/src/main/jni/patches/mesa-zink-android-kopper.patch：zink/kopper 的
+VK_KHR_android_surface 接入、Mesa Android EGL 平台的 kopper 路径）参考了该项目
+patches/wsi/016-android-surface-swapchain.patch 对 VK_KHR_android_surface 与
+ANativeWindow swapchain 的处理方式（surface caps、swapchain extent 取值、
+present 模式选择、swapchain 生命周期）。本项目只实现 Vulkan WSI 客户端一侧
+（即 Mesa 内部的 zink/kopper/EGL），不包含该项目的 PanVK kbase 驱动、ICD
+导出层或 AHB/gralloc 分配器代码；实际 buffer 分配与 present 由设备系统的
+libvulkan 完成。原始实现的版权归 Llerey/panvk-kbase-android 的贡献者所有。
+limbo 侧实现者：FreshingAir（Limbo Emulator Project），2026-11-21。
+
+--------------------------------------------------------------------------------
 许可证兼容性
 --------------------------------------------------------------------------------
 本项目采用 GPLv3 作为主要许可证。以上第三方组件的许可证均与 GPLv3 兼容；

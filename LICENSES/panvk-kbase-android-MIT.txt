@@ -1,0 +1,37 @@
+MIT License
+
+Copyright (c) 2026 panvk-kbase-android contributors
+https://github.com/Llerey/panvk-kbase-android
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files in this repository's
+scaffolding (scripts, profiles, packaging, tests and docs, excluding upstream
+Mesa sources and derivations noted in that repository's NOTICE.md), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Notes:
+
+  The repository is not uniformly MIT: its Mesa-derived patches
+  (patches/**/*.patch) keep Mesa's upstream license, and the Arm/Linux kbase
+  UAPI headers are GPL-2.0 WITH Linux-syscall-note. See that repository's
+  LICENSES/README.md and NOTICE.md.
+
+  Limbo only consults the approach of patches/wsi/016-android-surface-swapchain.patch
+  (VK_KHR_android_surface + ANativeWindow swapchain); the implementation in
+  limbo-app/src/main/jni/patches/mesa-zink-android-kopper.patch is a
+  modification of Mesa's own zink/kopper/EGL Android platform code and keeps
+  Mesa's upstream license.

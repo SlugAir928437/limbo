@@ -1,0 +1,530 @@
+diff --git a/src/egl/drivers/dri2/platform_android.c b/src/egl/drivers/dri2/platform_android.c
+index 7db9f6b..2eff637 100644
+--- a/src/egl/drivers/dri2/platform_android.c
++++ b/src/egl/drivers/dri2/platform_android.c
+@@ -38,10 +38,16 @@
+ #include <drm-uapi/drm_fourcc.h>
+ #include <sync/sync.h>
+ #include <sys/types.h>
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++/* kopper 路径要用 VkAndroidSurfaceCreateInfoKHR（vulkan_core.h 里没有，
++ * 它在 vulkan_android.h，由 vulkan.h 按平台宏引入）。 */
++#include <vulkan/vulkan.h>
++#endif
+ 
+ #include "util/compiler.h"
+ #include "util/libsync.h"
+ #include "util/os_file.h"
++#include "util/os_misc.h"
+ 
+ #include "main/glconfig.h"
+ #include "egl_dri2.h"
+@@ -50,6 +56,7 @@
+ #include "loader_dri_helper.h"
+ #include "platform_android.h"
+ #include "dri_util.h"
++#include "kopper_interface.h"
+ 
+ static struct dri_image *
+ droid_create_image_from_buffer_info(
+@@ -341,7 +348,11 @@ droid_create_surface(_EGLDisplay *disp, EGLint type, _EGLConfig *conf,
+       if (dri2_surf->base.ActiveRenderBuffer == EGL_SINGLE_BUFFER)
+          dri2_surf->gralloc_usage |= dri2_dpy->front_rendering_usage;
+ 
+-      if (ANativeWindow_setUsage(window, dri2_surf->gralloc_usage)) {
++      /* Limbo: kopper 不从 ANativeWindow 里 dequeue buffer，usage 由系统
++       * libvulkan 的 Android swapchain 按 Vulkan 的 swapchain 需求自己设置，
++       * 这里别去改，免得两边打架。 */
++      if (!dri2_dpy->kopper &&
++          ANativeWindow_setUsage(window, dri2_surf->gralloc_usage)) {
+          _eglError(EGL_BAD_NATIVE_WINDOW, "droid_create_surface");
+          goto cleanup_surface;
+       }
+@@ -354,17 +365,23 @@ droid_create_surface(_EGLDisplay *disp, EGLint type, _EGLConfig *conf,
+       goto cleanup_surface;
+    }
+ 
+-   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf, dri2_surf))
+-      goto cleanup_surface;
+-
++   /* Limbo: 必须在 dri2_create_drawable() 之前记下 ANativeWindow —— kopper 的
++    * SetSurfaceCreateInfo 回调（由 dri2_create_drawable → kopper_init_drawable
++    * 调用）要读 dri2_surf->window 填 VkAndroidSurfaceCreateInfoKHR。原来的
++    * gralloc 路径只在最后 acquire，对 kopper 来说就太晚了。 */
+    if (window) {
+       ANativeWindow_acquire(window);
+       dri2_surf->window = window;
+    }
+ 
++   if (!dri2_create_drawable(dri2_dpy, config, dri2_surf, dri2_surf))
++      goto cleanup_surface;
++
+    return &dri2_surf->base;
+ 
+ cleanup_surface:
++   if (dri2_surf->window)
++      ANativeWindow_release(dri2_surf->window);
+    if (dri2_surf->color_buffers_count)
+       free(dri2_surf->color_buffers);
+    free(dri2_surf);
+@@ -779,7 +796,7 @@ droid_destroy_loader_image_state(void *loaderPrivate)
+ }
+ 
+ static void
+-droid_add_configs_for_visuals(_EGLDisplay *disp)
++droid_add_configs_for_visuals(_EGLDisplay *disp, bool zink)
+ {
+    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+    static const struct {
+@@ -796,6 +813,9 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
+    };
+ 
+    unsigned int format_count[ARRAY_SIZE(visuals)] = {0};
++   /* Limbo: zink(kopper) 的 swapchain 由系统 libvulkan 的 Android WSI 分配，
++    * 它只认 RGBA8888 / RGBX8888，565/BGRA 建 swapchain 会失败，所以只报前两个。 */
++   const int num_visuals = zink ? 2 : ARRAY_SIZE(visuals);
+ 
+    /* The nesting of loops is significant here. Also significant is the order
+     * of the HAL pixel formats. Many Android apps (such as Google's official
+@@ -816,7 +836,7 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
+     * the buggy clients.
+     */
+    bool has_rgba = false;
+-   for (int i = 0; i < ARRAY_SIZE(visuals); i++) {
++   for (int i = 0; i < num_visuals; i++) {
+       /* Only enable BGRA configs when RGBA is not available. BGRA configs are
+        * buggy on stock Android.
+        */
+@@ -857,7 +877,7 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
+          has_rgba = true;
+    }
+ 
+-   for (int i = 0; i < ARRAY_SIZE(format_count); i++) {
++   for (int i = 0; i < num_visuals; i++) {
+       if (!format_count[i]) {
+          _eglLog(_EGL_DEBUG, "No DRI config supports native format 0x%x",
+                  visuals[i].hal_format);
+@@ -865,6 +885,135 @@ droid_add_configs_for_visuals(_EGLDisplay *disp)
+    }
+ }
+ 
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++/*
++ * Limbo: zink(kopper) 的 Android 窗口表面。
++ *
++ * 原来的 gralloc 路径要求 eglCreateWindowSurface() 通过 vendor 的 gralloc HAL
++ * 分配 buffer、再由 DRM 渲染节点上屏。普通 App 的 linker 命名空间既拿不到
++ * gralloc HAL，也打不开 /dev/dri/renderD*，所以 zink 的 eglInitialize() 直接
++ * 失败。kopper 换成另一条路：EGL 窗口表面直接映射成 VK_KHR_android_surface
++ * （ANativeWindow），由系统的 libvulkan 负责真正的 buffer 分配与 present，
++ * Mesa 只把 swapchain image 当渲染目标。
++ *
++ * Android WSI 的用法参考了 Llerey/panvk-kbase-android 的
++ * patches/wsi/016-android-surface-swapchain.patch（VK_KHR_android_surface +
++ * ANativeWindow 的 swapchain 支持）。
++ */
++static void
++droid_kopper_set_surface_create_info(void *draw, struct kopper_loader_info *ci)
++{
++   struct dri2_egl_surface *dri2_surf = draw;
++   VkAndroidSurfaceCreateInfoKHR *android = (VkAndroidSurfaceCreateInfoKHR *)&ci->bos;
++
++   if (dri2_surf->base.Type != EGL_WINDOW_BIT)
++      return;
++   android->sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
++   android->pNext = NULL;
++   android->flags = 0;
++   android->window = dri2_surf->window;
++   ci->has_alpha = dri2_surf->base.Config->AlphaSize > 0;
++   ci->present_opaque = dri2_surf->base.PresentOpaque;
++}
++
++static void
++droid_kopper_get_drawable_info(struct dri_drawable *draw, int *w, int *h,
++                               void *loaderPrivate)
++{
++   struct dri2_egl_surface *dri2_surf = loaderPrivate;
++   int width = 0, height = 0;
++
++   if (dri2_surf->window) {
++      ANativeWindow_query(dri2_surf->window,
++                          ANATIVEWINDOW_QUERY_DEFAULT_WIDTH, &width);
++      ANativeWindow_query(dri2_surf->window,
++                          ANATIVEWINDOW_QUERY_DEFAULT_HEIGHT, &height);
++   }
++   /* 刚建好时 Surface 可能还没有 geometry，退回 EGL 配置里的尺寸。 */
++   if (width <= 0)
++      width = dri2_surf->base.Width > 0 ? dri2_surf->base.Width : 1;
++   if (height <= 0)
++      height = dri2_surf->base.Height > 0 ? dri2_surf->base.Height : 1;
++   *w = width;
++   *h = height;
++}
++
++static const __DRIkopperLoaderExtension droid_kopper_loader_extension = {
++   .base = {__DRI_KOPPER_LOADER, 1},
++
++   .SetSurfaceCreateInfo = droid_kopper_set_surface_create_info,
++   .GetDrawableInfo = droid_kopper_get_drawable_info,
++};
++
++static const __DRIextension *droid_kopper_loader_extensions[] = {
++   &droid_kopper_loader_extension.base,
++   &image_lookup_extension.base,
++   NULL,
++};
++
++static EGLBoolean
++droid_kopper_swap_interval(_EGLDisplay *disp, _EGLSurface *surf, EGLint interval)
++{
++   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
++
++   kopperSetSwapInterval(dri2_surf->dri_drawable, interval);
++   surf->SwapInterval = interval;
++   return EGL_TRUE;
++}
++
++static EGLBoolean
++droid_kopper_swap_buffers_with_damage(_EGLDisplay *disp, _EGLSurface *draw,
++                                      const EGLint *rects, EGLint numRects)
++{
++   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
++
++   if (numRects)
++      kopperSwapBuffersWithDamage(dri2_surf->dri_drawable,
++                                  __DRI2_FLUSH_INVALIDATE_ANCILLARY,
++                                  numRects, rects);
++   else
++      kopperSwapBuffers(dri2_surf->dri_drawable,
++                        __DRI2_FLUSH_INVALIDATE_ANCILLARY);
++
++   /* 窗口尺寸变了的话，kopper 会在 present/acquire 时重建 swapchain，
++    * 这里把 EGLSurface 的尺寸同步过来。 */
++   kopperQuerySurfaceSize(dri2_surf->dri_drawable,
++                          &dri2_surf->base.Width,
++                          &dri2_surf->base.Height);
++   return EGL_TRUE;
++}
++
++static EGLBoolean
++droid_kopper_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
++{
++   return droid_kopper_swap_buffers_with_damage(disp, draw, NULL, 0);
++}
++
++static EGLint
++droid_kopper_query_buffer_age(_EGLDisplay *disp, _EGLSurface *surf)
++{
++   struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
++
++   return kopperQueryBufferAge(dri2_surf->dri_drawable);
++}
++
++static const struct dri2_egl_display_vtbl droid_kopper_display_vtbl = {
++   .authenticate = NULL,
++   .create_window_surface = droid_create_window_surface,
++   .create_pbuffer_surface = droid_create_pbuffer_surface,
++   .destroy_surface = droid_destroy_surface,
++   /* kopper 没有 gralloc：droid_create_image_khr() 处理
++    * EGL_NATIVE_BUFFER_ANDROID 时要查 gralloc，这里用通用的 dmabuf 实现。 */
++   .create_image = dri2_create_image_khr,
++   .swap_buffers = droid_kopper_swap_buffers,
++   .swap_buffers_with_damage = droid_kopper_swap_buffers_with_damage,
++   .swap_interval = droid_kopper_swap_interval,
++   .query_buffer_age = droid_kopper_query_buffer_age,
++   .query_surface = droid_query_surface,
++   .get_dri_drawable = dri2_surface_get_dri_drawable,
++};
++#endif /* VK_USE_PLATFORM_ANDROID_KHR */
++
+ static const struct dri2_egl_display_vtbl droid_display_vtbl = {
+    .authenticate = NULL,
+    .create_window_surface = droid_create_window_surface,
+@@ -1171,6 +1320,68 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
+    return EGL_TRUE;
+ }
+ 
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++/*
++ * Limbo: zink(kopper) 的 eglInitialize()。完全不碰 gralloc / DRM：
++ *   - u_gralloc_create() 会去找 vendor gralloc HAL（/vendor/lib64/hw/gralloc*），
++ *     App 的 linker 命名空间加载不到；
++ *   - droid_open_device() 需要 /dev/dri/renderD*，Mali 这类走 kbase 的内核没有。
++ * 两者任一失败，eglInitialize() 就返回失败。zink 其实只需要一块 Vulkan 设备：
++ * 屏幕表面在 eglCreateWindowSurface() 时才通过 VK_KHR_android_surface 绑定到
++ * ANativeWindow，所以这里走 kopper 的 screen 初始化即可。
++ */
++static EGLBoolean
++dri2_initialize_android_kopper(_EGLDisplay *disp)
++{
++   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
++   const char *err;
++
++   dri2_dpy->loader_extensions = droid_kopper_loader_extensions;
++
++   /* 没有 DRM fd，驱动名只能自己给：dri2_detect_swrast_kopper() 靠它判断走
++    * kopper，dri2_display_destroy() 也会 free 它。 */
++   dri2_dpy->driver_name = strdup("zink");
++   if (!dri2_dpy->driver_name) {
++      err = "DRI2: failed to allocate driver name";
++      goto cleanup;
++   }
++   dri2_dpy->fd_render_gpu = -1;
++   dri2_dpy->fd_display_gpu = -1;
++
++   dri2_detect_swrast_kopper(disp);
++   assert(dri2_dpy->kopper);
++
++   if (!dri2_create_screen(disp)) {
++      err = "DRI2: failed to create kopper screen";
++      goto cleanup;
++   }
++
++   /* zink 没有 DRM 节点：software=true 让 dri2_setup_device() 用 fd=-1 的
++    * EGLDevice（和 x11 的 kopper 路径一样）。 */
++   if (!dri2_setup_device(disp, true)) {
++      err = "DRI2: failed to setup EGLDevice";
++      goto cleanup;
++   }
++
++   dri2_setup_screen(disp);
++   dri2_setup_swap_interval(disp, 1);
++
++   disp->Extensions.KHR_image = EGL_TRUE;
++
++   droid_add_configs_for_visuals(disp, true);
++
++   /* Fill vtbl last to prevent accidentally calling virtual function during
++    * initialization.
++    */
++   dri2_dpy->vtbl = &droid_kopper_display_vtbl;
++
++   return EGL_TRUE;
++
++cleanup:
++   return _eglError(EGL_NOT_INITIALIZED, err);
++}
++#endif /* VK_USE_PLATFORM_ANDROID_KHR */
++
+ EGLBoolean
+ dri2_initialize_android(_EGLDisplay *disp)
+ {
+@@ -1178,6 +1389,14 @@ dri2_initialize_android(_EGLDisplay *disp)
+    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+    const char *err;
+ 
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++   /* Limbo: 指定 zink 时走 kopper（见 dri2_initialize_android_kopper），不要再
++    * 走需要 vendor gralloc + DRM 渲染节点的老路径。 */
++   const char *driver_override = os_get_option("MESA_LOADER_DRIVER_OVERRIDE");
++   if (driver_override && !strcmp(driver_override, "zink"))
++      return dri2_initialize_android_kopper(disp);
++#endif
++
+    dri2_dpy->gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
+    if (dri2_dpy->gralloc == NULL) {
+       err = "DRI2: failed to get gralloc";
+@@ -1286,7 +1505,7 @@ dri2_initialize_android(_EGLDisplay *disp)
+    /* Create configs *after* enabling extensions because presence of DRI
+     * driver extensions can affect the capabilities of EGLConfigs.
+     */
+-   droid_add_configs_for_visuals(disp);
++   droid_add_configs_for_visuals(disp, false);
+ 
+    /* Fill vtbl last to prevent accidentally calling virtual function during
+     * initialization.
+diff --git a/src/egl/meson.build b/src/egl/meson.build
+index 66bb48d..bbcdae9 100644
+--- a/src/egl/meson.build
++++ b/src/egl/meson.build
+@@ -134,6 +134,11 @@ if with_dri
+   endif
+   if with_platform_android
+     deps_for_egl += [dep_android, idep_u_gralloc]
++    if with_gallium_zink
++      # Limbo: platform_android.c 的 kopper 路径要用 VkAndroidSurfaceCreateInfoKHR，
++      # 需要 -DVK_USE_PLATFORM_ANDROID_KHR（和 Vulkan WSI 用的是同一份定义）。
++      deps_for_egl += idep_vulkan_wsi_defines
++    endif
+     files_egl += files('drivers/dri2/platform_android.c')
+   endif
+ elif with_platform_haiku
+diff --git a/src/gallium/drivers/zink/zink_instance.py b/src/gallium/drivers/zink/zink_instance.py
+index 1ab36be..8b2d8c0 100644
+--- a/src/gallium/drivers/zink/zink_instance.py
++++ b/src/gallium/drivers/zink/zink_instance.py
+@@ -47,6 +47,7 @@ EXTENSIONS = [
+     Extension("VK_KHR_wayland_surface"),
+     Extension("VK_KHR_xcb_surface"),
+     Extension("VK_KHR_win32_surface"),
++    Extension("VK_KHR_android_surface"),
+ ]
+ 
+ if platform.system() == "Darwin":
+diff --git a/src/gallium/drivers/zink/zink_kopper.c b/src/gallium/drivers/zink/zink_kopper.c
+index f2fee4f..5ce1ec5 100644
+--- a/src/gallium/drivers/zink/zink_kopper.c
++++ b/src/gallium/drivers/zink/zink_kopper.c
+@@ -37,6 +37,12 @@ zink_kopper_set_present_mode_for_interval(struct kopper_displaytarget *cdt, int
+     // not hooked up yet so let's not sabotage benchmarks
+     cdt->present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+ #else
++   /* Limbo: Android 的 WSI（系统 libvulkan 里的 swapchain）只保证 FIFO，
++    * IMMEDIATE / MAILBOX 不一定存在，走通用分支会命中下面的 assert。 */
++   if (cdt->type == KOPPER_ANDROID) {
++      cdt->present_mode = VK_PRESENT_MODE_FIFO_KHR;
++      return;
++   }
+    assert(interval >= 0); /* TODO: VK_PRESENT_MODE_FIFO_RELAXED_KHR */
+    if (interval == 0) {
+       if (cdt->present_modes & BITFIELD_BIT(VK_PRESENT_MODE_IMMEDIATE_KHR))
+@@ -69,6 +75,11 @@ init_dt_type(struct kopper_displaytarget *cdt)
+    case VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR:
+       cdt->type = KOPPER_WIN32;
+       break;
++#endif
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++   case VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR:
++      cdt->type = KOPPER_ANDROID;
++      break;
+ #endif
+    default:
+       unreachable("unsupported!");
+@@ -108,6 +119,13 @@ kopper_CreateSurface(struct zink_screen *screen, struct kopper_displaytarget *cd
+       error = VKSCR(CreateWin32SurfaceKHR)(screen->instance, win32, NULL, &surface);
+       break;
+    }
++#endif
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++   case VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: {
++      VkAndroidSurfaceCreateInfoKHR *android = (VkAndroidSurfaceCreateInfoKHR *)&cdt->info.bos;
++      error = VKSCR(CreateAndroidSurfaceKHR)(screen->instance, android, NULL, &surface);
++      break;
++   }
+ #endif
+    default:
+       unreachable("unsupported!");
+@@ -224,6 +242,13 @@ find_dt_entry(struct zink_screen *screen, const struct kopper_displaytarget *cdt
+       he = _mesa_hash_table_search(&screen->dts, win32->hwnd);
+       break;
+    }
++#endif
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++   case KOPPER_ANDROID: {
++      VkAndroidSurfaceCreateInfoKHR *android = (VkAndroidSurfaceCreateInfoKHR *)&cdt->info.bos;
++      he = _mesa_hash_table_search(&screen->dts, android->window);
++      break;
++   }
+ #endif
+    default:
+       unreachable("unsupported!");
+@@ -300,7 +325,10 @@ kopper_CreateSwapchain(struct zink_screen *screen, struct kopper_displaytarget *
+    switch (cdt->type) {
+    case KOPPER_X11:
+    case KOPPER_WIN32:
++   case KOPPER_ANDROID:
+       /* With Xcb, minImageExtent, maxImageExtent, and currentExtent must always equal the window size.
++       * Android 的 WSI 也一样：currentExtent 就是 ANativeWindow 的当前尺寸，
++       * swapchain 的 imageExtent 必须与之相等，否则 vkCreateSwapchainKHR 失败。
+        * ...
+        * Due to above restrictions, it is only possible to create a new swapchain on this
+        * platform with imageExtent being equal to the current size of the window.
+@@ -431,6 +459,7 @@ zink_kopper_displaytarget_create(struct zink_screen *screen, unsigned tex_usage,
+             break;
+          case KOPPER_WAYLAND:
+          case KOPPER_WIN32:
++         case KOPPER_ANDROID:
+             _mesa_hash_table_init(&screen->dts, screen, _mesa_hash_pointer, _mesa_key_pointer_equal);
+             break;
+          default:
+@@ -457,7 +486,15 @@ zink_kopper_displaytarget_create(struct zink_screen *screen, unsigned tex_usage,
+    cdt->info = *info;
+ 
+    enum pipe_format srgb = PIPE_FORMAT_NONE;
+-   if (screen->info.have_KHR_swapchain_mutable_format) {
++   /* Limbo: Android 的 WSI 走系统 libvulkan 的 Android swapchain，它不支持
++    * VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR / VkImageFormatListCreateInfo，
++    * 带上这些会直接让 vkCreateSwapchainKHR 失败，所以 Android 上不走 sRGB 双格式。 */
++   bool allow_mutable_format = screen->info.have_KHR_swapchain_mutable_format;
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++   if (info->bos.sType == VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR)
++      allow_mutable_format = false;
++#endif
++   if (allow_mutable_format) {
+       srgb = util_format_is_srgb(format) ? util_format_linear(format) : util_format_srgb(format);
+       /* why do these helpers have different default return values? */
+       if (srgb == format)
+@@ -502,6 +539,13 @@ zink_kopper_displaytarget_create(struct zink_screen *screen, unsigned tex_usage,
+       _mesa_hash_table_insert(&screen->dts, win32->hwnd, cdt);
+       break;
+    }
++#endif
++#ifdef VK_USE_PLATFORM_ANDROID_KHR
++   case KOPPER_ANDROID: {
++      VkAndroidSurfaceCreateInfoKHR *android = (VkAndroidSurfaceCreateInfoKHR *)&cdt->info.bos;
++      _mesa_hash_table_insert(&screen->dts, android->window, cdt);
++      break;
++   }
+ #endif
+    default:
+       unreachable("unsupported!");
+@@ -1095,7 +1139,9 @@ zink_kopper_update(struct pipe_screen *pscreen, struct pipe_resource *pres, int
+    if (!res->obj->dt)
+       return false;
+    struct kopper_displaytarget *cdt = res->obj->dt;
+-   if (cdt->type != KOPPER_X11) {
++   /* Android 和 X11 一样，窗口尺寸由 surface 决定：要重新查询 caps，让
++    * swapchain 跟随 ANativeWindow 的当前大小重建。 */
++   if (cdt->type != KOPPER_X11 && cdt->type != KOPPER_ANDROID) {
+       *w = res->base.b.width0;
+       *h = res->base.b.height0;
+       return true;
+diff --git a/src/gallium/drivers/zink/zink_kopper.h b/src/gallium/drivers/zink/zink_kopper.h
+index fba05a0..5c20065 100644
+--- a/src/gallium/drivers/zink/zink_kopper.h
++++ b/src/gallium/drivers/zink/zink_kopper.h
+@@ -74,7 +74,8 @@ struct kopper_swapchain {
+ enum kopper_type {
+    KOPPER_X11,
+    KOPPER_WAYLAND,
+-   KOPPER_WIN32
++   KOPPER_WIN32,
++   KOPPER_ANDROID
+ };
+ 
+ struct kopper_displaytarget
+diff --git a/src/gallium/frontends/dri/kopper.c b/src/gallium/frontends/dri/kopper.c
+index 22e155c..a5f22b1 100644
+--- a/src/gallium/frontends/dri/kopper.c
++++ b/src/gallium/frontends/dri/kopper.c
+@@ -365,7 +365,10 @@ kopper_update_drawable_info(struct dri_drawable *drawable)
+                                 drawable->textures[ST_ATTACHMENT_FRONT_LEFT];
+ 
+    bool do_kopper_update = is_window && ptex && screen->fd == -1;
+-   if (drawable->info.bos.sType == VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR && do_kopper_update)
++   /* Limbo: 这里原来只认 XCB 表面，Android（VK_KHR_android_surface）窗口同样要
++    * 通过 zink_kopper_update() 刷新 surface caps 并跟随窗口尺寸重建 swapchain，
++    * 否则旋转/改变窗口大小后 swapchain 仍是旧尺寸。 */
++   if (do_kopper_update)
+       zink_kopper_update(kopper_get_zink_screen(screen->base.screen), ptex, &drawable->w, &drawable->h);
+    else
+       get_drawable_info(drawable, &drawable->w, &drawable->h);
+diff --git a/src/gallium/frontends/dri/meson.build b/src/gallium/frontends/dri/meson.build
+index a98c8c0..cf5a070 100644
+--- a/src/gallium/frontends/dri/meson.build
++++ b/src/gallium/frontends/dri/meson.build
+@@ -37,8 +37,12 @@ if with_dri2
+ endif
+ 
+ libdri_c_args = []
+-if with_gallium_zink and not with_platform_android
+-  if with_glvnd
++if with_gallium_zink
++  if with_platform_android
++    # Limbo: Android 上 zink 走 kopper（EGL 窗口表面直接映射到
++    # VK_KHR_android_surface 的 swapchain），不再依赖 gralloc HAL 和 DRM 渲染节点。
++    libdri_c_args += '-DKOPPER_LIB_NAMES="libEGL_zink and libGLESv2_zink"'
++  elif with_glvnd
+     libdri_c_args += '-DKOPPER_LIB_NAMES="libEGL_@0@ and libGLX_@0@"'.format(glvnd_vendor_name)
+   else
+     libdri_c_args += '-DKOPPER_LIB_NAMES="libEGL and libGLX"'

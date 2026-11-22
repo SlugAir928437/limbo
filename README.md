@@ -4,6 +4,8 @@ Limbo 是一款运行在 Android 上的虚拟机模拟器，基于 [QEMU](https:
 
 本项目在此前的 Limbo（原作者 limboemu）基础上，扩展了 **IA-64** 架构模拟支持，并通过 GTK 4 图形栈在 Android 上提供接近原生的窗口化渲染体验。
 
+<a target="_blank" href="https://qm.qq.com/cgi-bin/qm/qr?k=mTIyJOhPezkCC7iG3d1UMHbIFSUGaOoj&jump_from=webapi&authKey=7VDZdEA6nTlt0p9HkjiG+L7O0YWu+CCRb9UwQqhuZNeRS2HPjXiodjSViNZF2TW2"><img border="0" src="https://github.com/user-attachments/assets/b0f2c46f-a789-4e5a-b5ab-484c7059e77f" alt="QEMU交流1群" title="QEMU交流1群"></a>
+
 ## 特别感谢
 引用组件
  * [limboemu/limbo](https://github.com/limboemu/limbo)（原版）

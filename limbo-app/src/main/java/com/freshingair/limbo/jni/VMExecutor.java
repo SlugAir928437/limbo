@@ -638,6 +638,9 @@ public class VMExecutor extends MachineExecutor {
             // Android 的 SDL 不支持多于一个窗口。
             paramsList.add("-monitor");
             paramsList.add("vc");
+            // VNC 模式原来不接串口，guest 的控制台输出全丢了；debug 构建补一条
+            // 只落文件的串口日志，用来抓 UEFI / 内核启动阶段的异常现场。
+            addDebugSerialLog(context, paramsList);
 
         } else if (spice) {
             // SPICE 服务端输出：QEMU 的 spice server 自己就是一种显示后端。
@@ -666,11 +669,11 @@ public class VMExecutor extends MachineExecutor {
             paramsList.add("none");
             addSpiceOptions(context, paramsList, glGpu && BuildFeatures.virgl());
             // 没有本地窗口，monitor/serial/parallel 通过 TCP 暴露给 nc 模块
-            addConsoleTcpOptions(paramsList);
+            addConsoleTcpOptions(context, paramsList);
         } else {
             // gtk 允许多窗口
             if (!gtk) {
-                addConsoleTcpOptions(paramsList);
+                addConsoleTcpOptions(context, paramsList);
             }
             paramsList.add("-display");
             if (gtk) {
@@ -678,6 +681,8 @@ public class VMExecutor extends MachineExecutor {
                 // 默认全屏铺满整个屏幕，并按等比缩放铺满可用区域（zoom-to-fit）。
                 paramsList.add("gtk" + getDisplayGLOption()
                         + ",full-screen=on,zoom-to-fit=on");
+                // GTK 分支不走 addConsoleTcpOptions，这里单独补 debug 串口日志。
+                addDebugSerialLog(context, paramsList);
             } else if (agl) {
                 // AGL (Android Graphics Layer): LimboAglActivity hands its
                 // Surface to the backend through nativeAglSetSurface(), and the
@@ -754,15 +759,49 @@ public class VMExecutor extends MachineExecutor {
      * 连接查看控制台。使用 raw tcp（非 telnet）不会打开 SDL 窗口，避免 SDL
      * 多窗口限制。
      */
-    private void addConsoleTcpOptions(ArrayList<String> paramsList) {
+    private void addConsoleTcpOptions(Context context, ArrayList<String> paramsList) {
         paramsList.add("-monitor");
         paramsList.add("tcp:127.0.0.1:" + Config.monitorPort + ",server,nowait");
 
-        paramsList.add("-serial");
-        paramsList.add("tcp:127.0.0.1:" + Config.serialPort + ",server,nowait");
+        if (Config.debug) {
+            // debug 构建：串口既给 nc 控制台，又把收发内容镜像到文件。
+            addDebugSerialLog(context, paramsList);
+        } else {
+            paramsList.add("-serial");
+            paramsList.add("tcp:127.0.0.1:" + Config.serialPort + ",server,nowait");
+        }
 
         paramsList.add("-parallel");
         paramsList.add("tcp:127.0.0.1:" + Config.parallelPort + ",server,nowait");
+    }
+
+    /**
+     * 把 guest 的串口 0 输出同时写进应用私有目录，只对 debug 构建生效。
+     *
+     * <p>用来抓 UEFI / 内核启动阶段的异常输出，例如 EDK2 打印的
+     * {@code Synchronous Exception} 后面还有 ESR / FAR / ELR 和寄存器现场，
+     * 这些在 VNC / SDL 下都看不到。release 构建直接返回，不会产生该文件，
+     * 行为与原来完全一致。
+     *
+     * <p>用 {@code chardev socket} 的 {@code logfile=} 而不是
+     * {@code -serial file:...}：nc 控制台还要连同一个串口，socket chardev 能
+     * 同时做服务端和文件镜像。{@code logappend=off} 让每次启动虚拟机重新写，
+     * 避免把上一次的日志混进来。
+     *
+     * <p>文件位置：{@code /data/data/<包名>/files/serial.log}，debug 包可直接
+     * 用 {@code adb shell run-as com.freshingair.limbo cat files/serial.log} 取走。
+     */
+    private void addDebugSerialLog(Context context, ArrayList<String> paramsList) {
+        if (!Config.debug) {
+            return;
+        }
+        File logFile = new File(context.getFilesDir(), "serial.log");
+        Log.i(TAG, "串口日志（debug）：" + logFile);
+        paramsList.add("-chardev");
+        paramsList.add("socket,id=limboSerial,host=127.0.0.1,port=" + Config.serialPort
+                + ",server=on,wait=off,logfile=" + logFile + ",logappend=off");
+        paramsList.add("-serial");
+        paramsList.add("chardev:limboSerial");
     }
 
     /**

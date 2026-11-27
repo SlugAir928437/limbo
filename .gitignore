@@ -5,3 +5,6 @@ build
 local.properties
 # 构建期功能开关，由 jni/Makefile 生成
 limbo-app/src/main/assets/build-features.properties
+# ANGLE 构建期下载的工具链缓存（cipd / gcs）
+limbo-app/src/main/jni/.cipd/
+limbo-app/src/main/jni/.gcs_entries

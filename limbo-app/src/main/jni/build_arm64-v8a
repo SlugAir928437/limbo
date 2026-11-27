@@ -4,6 +4,25 @@ export PATH=$PATH:$NDK_ROOT
 export BUILD_THREADS=$(nproc --all)
 export BUILD_GUEST='x86_64-softmmu,aarch64-softmmu'
 export BUILD_HOST='arm64-v8a'
+# 平台特性宏（仅告诉源码构建平台可用哪些 bionic 特性，不抬高设备 API 下限）
+export USE_NDK_PLATFORM21=true
+export USE_NDK_PLATFORM26=true
+# 编译选项
+export USE_OPTIMIZATION=true
+export USE_SECURITY=true
+# 显示 / 音频 / 虚拟化
 export USE_GTK=true
+export USE_SDL=true
+export USE_SDL_AUDIO=true
+export USE_AAUDIO=true
+export USE_KVM=true
+export USE_SPICE=true
+# 图形栈：VirGL + venus + Mesa zink + ANGLE
+export USE_VIRGL=true
+export USE_VIRGL_VENUS=true
+export USE_VIRGL_ZINK=true
+export USE_ANGLE=true
+# 客户机固件
+export USE_EDK2=true
 # 完整构建链
 make limbo

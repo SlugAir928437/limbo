@@ -116,6 +116,21 @@ public class LimboSDLSurface extends SDLActivity.ExSDLSurface
          */
         if (LimboSDLActivity.mouseMode == LimboSDLActivity.MouseMode.TOUCHSCREEN
                 && event.getToolType(0) == MotionEvent.TOOL_TYPE_FINGER) {
+            // TODO(debug): 临时日志，定位多指失效后删除
+            if (event.getActionMasked() != MotionEvent.ACTION_MOVE) {
+                int pointerCount = event.getPointerCount();
+                StringBuilder ids = new StringBuilder();
+                for (int i = 0; i < pointerCount; i++) {
+                    if (i > 0) {
+                        ids.append(',');
+                    }
+                    ids.append(event.getPointerId(i));
+                }
+                android.util.Log.d("LIMBO-TOUCH", "sdl action=" + event.getActionMasked()
+                        + " index=" + event.getActionIndex()
+                        + " pointers=" + pointerCount
+                        + " ids=" + ids);
+            }
             return super.onTouch(v, event);
         }
 

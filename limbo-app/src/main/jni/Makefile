@@ -334,6 +334,14 @@ glib: ndk ffi
 		/usr/bin/glib-genmarshal /usr/bin/glib-mkenums /usr/bin/gdbus-codegen \
 		$(GLIB_INSTALL_DIR)/bin/
 	$(INSTALL_GLIB_LIBS)
+	# Limbo: 下游工程（gdk-pixbuf/GTK/QEMU）的 gi18n-lib.h 会无条件
+	# #include <libintl.h>。这个头以前由 proxy-libintl 安装进 glib 前缀，
+	# 改用 compat/intl 的真实实现后不再构建 proxy-libintl，需要按同样的
+	# 位置（<prefix>/include、<prefix>/lib）补上，glib-2.0.pc 的
+	# -lintl 才能找到对应的静态库。
+	mkdir -p "$(GLIB_INSTALL_DIR)/include" "$(GLIB_INSTALL_DIR)/lib"
+	cp -f "$(LIMBO_JNI_ROOT)/compat/musl/libintl.h" "$(GLIB_INSTALL_DIR)/include/"
+	cp -f "$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/libintl.a" "$(GLIB_INSTALL_DIR)/lib/"
 
 clean-glib:
 	-rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)" "$(GLIB_CROSS_FILE)"

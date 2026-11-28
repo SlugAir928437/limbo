@@ -511,7 +511,10 @@ public class LimboSettingsManager extends PreferenceActivity {
             Machine machine = MachineController.getInstance().getMachine();
             boolean gtkUi = machine != null
                     && "GTK".equals(ArchDefinitions.resolveUI(machine.getUI()));
-            gtkMenubar.setVisible(gtkUi);
+            // Preference 没有 setVisible()，只能从父分组里移除。
+            if (!gtkUi && gtkMenubar.getParent() != null) {
+                gtkMenubar.getParent().removePreference(gtkMenubar);
+            }
         }
         getPreferenceManager().findPreference("enableVNCPassword").setOnPreferenceChangeListener(
                 (preference, newValue) -> {

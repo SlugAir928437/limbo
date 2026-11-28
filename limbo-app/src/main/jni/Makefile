@@ -327,6 +327,12 @@ glib: ndk ffi
 	sed -i -e 's|^glib_compile_schemas=.*|glib_compile_schemas=/usr/bin/glib-compile-schemas|' \
 		-e 's|^glib_mkenums=.*|glib_mkenums=/usr/bin/glib-mkenums|' \
 		"$(GLIB_PKG_CONFIG_DIR)/glib-2.0.pc"
+	# Limbo: glib 通过 pkg-config 找到 libintl 后，meson 只会把它写进
+	# Requires.private，`pkg-config --libs glib-2.0` 不会带 -lintl；而
+	# gdk-pixbuf/GTK 自己调用 bindtextdomain 并不会单独链接 intl（以前
+	# proxy-libintl 作为 internal 依赖会公开输出 -lintl）。这里显式补上，
+	# 静态库已经随 glib 前缀的 lib/ 安装。
+	sed -i -e '/^Libs:/ s|$$| -lintl|' "$(GLIB_PKG_CONFIG_DIR)/glib-2.0.pc"
 	# replace the Android-ELF glib tools with the host ones: meson's
 	# glib_compile_schemas module resolves them via the installed bindir even
 	# in cross builds, and the Android ELFs cannot run on the build machine

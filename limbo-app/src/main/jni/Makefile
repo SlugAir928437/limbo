@@ -157,6 +157,19 @@ COPY_ROMS=-mkdir -p ../assets/roms && cp -rf ./qemu/pc-bios/*.rom \
 ../assets/roms/
 
 COPY_KEYMAPS=cp -rf ./qemu/pc-bios/keymaps ../assets/roms/
+
+# gettext 翻译文件：QEMU 在 gettext 启用后由 meson 生成
+# qemu/po/<lang>/LC_MESSAGES/qemu.mo（in-tree 构建），这里按同样的语言目录
+# 结构复制到 assets/roms/locale/<lang>/LC_MESSAGES/qemu.mo。运行时
+# FileInstaller 随 roms 安装到基础目录，native 层再用 LIMBO_LOCALE_DIR
+# 绑定给 gettext。
+COPY_QEMU_LOCALES=for f in ./qemu/po/*/LC_MESSAGES/qemu.mo; do \
+    [ -f "$$f" ] || continue; \
+    lang=$$(basename "$$(dirname "$$(dirname "$$f")")"); \
+    mkdir -p "../assets/roms/locale/$$lang/LC_MESSAGES"; \
+    cp -f "$$f" "../assets/roms/locale/$$lang/LC_MESSAGES/qemu.mo"; \
+    echo ">> qemu locale: $$lang"; \
+done
 COPY_QEMU_VERSION=cp -f ./qemu/VERSION ../assets/QEMU_VERSION
 COPY_RESOLV_CONF=mkdir -p ../assets/roms/etc/ && printf "nameserver 8.8.8.8\n\n" > ../assets/roms/etc/resolv.conf
 
@@ -292,6 +305,7 @@ ffi:
 	$(CREATE_LIBFFI_PC)
 
 config-glib: ndk ffi pkg-config-link
+	$(CREATE_INTL_PC)
 	$(CREATE_GLIB_MESON_CROSS_FILE)
 	cd $(LIMBO_JNI_ROOT)/glib && rm -rf "$(GLIB_BUILD_DIR)" "$(GLIB_INSTALL_DIR)"
 	# pkg-config sees only the jni libs (glib itself + libffi): GTK's install dir
@@ -1032,6 +1046,7 @@ _build-qemu: ndk
 	$(RENAME_TUNCTL)
 	$(RENAME_PARPROUTED)
 	$(COPY_ROMS)
+	$(COPY_QEMU_LOCALES)
 	$(COPY_KEYMAPS)
 	$(COPY_QEMU_VERSION)
 	$(COPY_RESOLV_CONF)

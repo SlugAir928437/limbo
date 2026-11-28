@@ -24,6 +24,8 @@
     <string name="zoom_out">缩小</string>
     <string name="one_to_one">原始分辨率 (1:1)</string>
     <string name="scaling">显示方式</string>
+    <string name="GtkShowMenubar">显示 GTK 内置菜单</string>
+    <string name="GtkShowMenubarSummary">在 GTK 窗口中显示 QEMU 自带的菜单栏（启动参数改为 full-screen=off，重启虚拟机后生效）。</string>
     <string name="refresh_rate">可变刷新率</string>
     <string name="refresh_rate_off">关闭</string>
     <string name="refresh_rate_auto">跟随屏幕</string>

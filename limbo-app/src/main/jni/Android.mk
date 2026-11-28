@@ -2,6 +2,7 @@
 
 #dep libs
 include $(NDK_PROJECT_PATH)/jni/compat/musl/Android.mk
+include $(NDK_PROJECT_PATH)/jni/compat/intl/Android.mk
 include $(NDK_PROJECT_PATH)/jni/compat/Android.mk
 ifeq ($(USE_SDL),true)
 	include $(NDK_PROJECT_PATH)/jni/SDL2/Android.mk

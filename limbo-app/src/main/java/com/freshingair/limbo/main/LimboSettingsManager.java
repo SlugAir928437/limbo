@@ -42,6 +42,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.freshingair.limbo.R;
+import com.freshingair.limbo.machine.ArchDefinitions;
+import com.freshingair.limbo.machine.Machine;
+import com.freshingair.limbo.machine.MachineController;
 import com.freshingair.limbo.network.NetworkUtils;
 import com.freshingair.limbo.toast.ToastUtils;
 
@@ -84,6 +87,15 @@ public class LimboSettingsManager extends PreferenceActivity {
     public static boolean getFullscreen(Context activity) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
         return prefs.getBoolean("ShowFullscreen", true);
+    }
+
+    /**
+     * GTK 内置菜单：打开时 GTK 以 full-screen=off 启动，在窗口内显示
+     * QEMU 自带的菜单栏；关闭时以 full-screen=on 启动并由 GTK 请求全屏。
+     */
+    public static boolean getGtkShowMenubar(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return prefs.getBoolean("gtkShowMenubar", false);
     }
 
     // updates
@@ -493,6 +505,14 @@ public class LimboSettingsManager extends PreferenceActivity {
         migrateCpuAffinityPreference();
         addPrefs();
         setupCpuAffinityPreference();
+        // "显示 GTK 内置菜单" 只对 GTK 显示方式有意义，其他显示方式下隐藏。
+        Preference gtkMenubar = getPreferenceManager().findPreference("gtkShowMenubar");
+        if (gtkMenubar != null) {
+            Machine machine = MachineController.getInstance().getMachine();
+            boolean gtkUi = machine != null
+                    && "GTK".equals(ArchDefinitions.resolveUI(machine.getUI()));
+            gtkMenubar.setVisible(gtkUi);
+        }
         getPreferenceManager().findPreference("enableVNCPassword").setOnPreferenceChangeListener(
                 (preference, newValue) -> {
                     if ((boolean) newValue)

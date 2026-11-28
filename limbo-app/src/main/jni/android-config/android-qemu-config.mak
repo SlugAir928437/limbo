@@ -107,6 +107,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--disable-vhost-user --disable-vhost-vdpa --disable-vhost-kernel \
 	--disable-libvduse \
 	--disable-curses --disable-cocoa $(GTK_CONFIGURE_FLAGS) \
+	-Dgettext=enabled \
 	--disable-usb-redir \
 	--disable-libusb \
 	--disable-xkbcommon \
@@ -126,6 +127,7 @@ PKG_CONFIG="$(PKG_CONFIG)" PKG_CONFIG_PATH="$(PKG_CONFIG_PATH)" PKG_CONFIG_LIBDI
 	--extra-cflags=" \
 	$(SYSTEM_INCLUDE) \
 	-I$(LIMBO_JNI_ROOT)/compat \
+	-I$(LIMBO_JNI_ROOT)/compat/musl \
 	-I$(LIMBO_JNI_ROOT)/qemu/dtc/libfdt \
 	-D__LIMBO_SDL_FORCE_HARDWARE_RENDERING__ \
 	-DCONFIG_IOVEC=1 \

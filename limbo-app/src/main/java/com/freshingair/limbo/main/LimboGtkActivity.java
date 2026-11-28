@@ -20,6 +20,8 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.Surface;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
@@ -142,6 +144,7 @@ public class LimboGtkActivity extends ToplevelActivity
 
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        hideSystemStatusBar();
         imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         LimboGtk.init(this);
         setupListeners();
@@ -510,6 +513,26 @@ public class LimboGtkActivity extends ToplevelActivity
     public void postWindowConfiguration(int color, boolean fullscreen) {
         // GTK 上报的窗口背景色来自 GTK 主题（默认浅色）；显示区域统一用黑色底色。
         super.postWindowConfiguration(Color.BLACK, fullscreen);
+        // full-screen=on 时 GTK 会自己请求全屏，这里在 Java 侧同步隐藏系统状态栏，
+        // 避免状态栏占用 GTK 画面空间。
+        hideSystemStatusBar();
+    }
+
+    private void hideSystemStatusBar() {
+        // 打开“显示 GTK 内置菜单”时 GTK 以 full-screen=off 启动，窗口不是全屏，
+        // 此时保留系统状态栏；默认 full-screen=on 由 GTK 请求全屏，
+        // Java 侧同步隐藏状态栏，避免它占用 GTK 画面空间。
+        if (LimboSettingsManager.getGtkShowMenubar(this)) {
+            return;
+        }
+        runOnUiThread(() -> {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars());
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        });
     }
 
     @Override

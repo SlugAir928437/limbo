@@ -159,6 +159,8 @@
     <string name="WatchdogCpuAffinityCore">Core %1$d</string>
     <string name="AlwaysShowToolbar">Always show the Toolbar</string>
     <string name="AlwaysToolbar">Always Toolbar</string>
+    <string name="GtkShowMenubar">Show GTK Menu Bar</string>
+    <string name="GtkShowMenubarSummary">Show QEMU\'s built-in menu bar inside the GTK window (starts GTK with full-screen=off; takes effect after restarting the VM).</string>
     <string name="KeyMapperButtonLayout">Key Mapper button layout</string>
     <string name="KeyMapperLayout">Key Mapper layout</string>
     <string name="EnableLegacyFileManagerSummary">Enable legacy file manager for older devices. SD Card might not be supported</string>

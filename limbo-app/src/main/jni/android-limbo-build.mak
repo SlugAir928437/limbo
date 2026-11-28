@@ -150,6 +150,11 @@ GLIB_PKG_CONFIG_DIR := $(GLIB_INSTALL_DIR)/lib/pkgconfig
 LIBFFI_PKG_CONFIG_DIR := $(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)/pkgconfig
 LIBFFI_PC_FILE := $(LIBFFI_PKG_CONFIG_DIR)/libffi.pc
 
+# Limbo: 真正的 gettext 静态库（jni/compat/intl）的 pkg-config 描述。glib 的
+# meson 用 dependency('intl') 找 libintl，命中这里就不会再回落到 proxy-libintl
+# 的 stub；glib-2.0.pc 也会随之带上 -lintl，QEMU 链接时就能拿到实现。
+INTL_PC_FILE := $(LIBFFI_PKG_CONFIG_DIR)/intl.pc
+
 # GTK4 (gtk4android) build dirs - disabled unless USE_GTK=true (see android-limbo-config.mak)
 GTK_BUILD_DIR := $(LIMBO_JNI_ROOT)/gtk4android/build-android-$(APP_ABI)
 GTK_INSTALL_DIR := $(LIMBO_JNI_ROOT)/gtk4android/android-install/$(APP_ABI)
@@ -306,6 +311,21 @@ CREATE_LIBFFI_PC = \
 		'Libs.private: -llog' \
 		'Cflags: -I$${includedir}' \
 		> "$(LIBFFI_PC_FILE)"
+
+CREATE_INTL_PC = \
+	mkdir -p "$(LIBFFI_PKG_CONFIG_DIR)" && \
+	printf '%s\n' \
+		'prefix=$(NDK_PROJECT_PATH)/obj/local/$(APP_ABI)' \
+		'exec_prefix=$${prefix}' \
+		'libdir=$${prefix}' \
+		'includedir=$(LIMBO_JNI_ROOT)/compat/musl' \
+		'' \
+		'Name: intl' \
+		'Description: GNU gettext libintl (Limbo implementation)' \
+		'Version: 1.0' \
+		'Libs: -L$${libdir} -lintl' \
+		'Cflags: -I$${includedir}' \
+		> "$(INTL_PC_FILE)"
 
 CREATE_GLIB_MESON_CROSS_FILE = \
 	sed \

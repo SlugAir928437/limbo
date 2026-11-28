@@ -1785,6 +1785,80 @@ static void limbo_pin_watchdog_start(void) {
 	}
 }
 
+/* Limbo：gettext 的运行时环境。QEMU 的 GTK 菜单通过 glib/gi18n.h 的 _()
+ * 走 gettext 翻译，翻译文件由 jni/Makefile 从
+ * qemu/po/<lang>/LC_MESSAGES/qemu.mo 复制成
+ * assets/roms/locale/<lang>/LC_MESSAGES/qemu.mo，并随 roms 安装到基础目录。
+ * compat 里的 libintl 实现读这两个环境变量：
+ *   LIMBO_LOCALE_DIR  .mo 根目录（<base_dir>/locale）
+ *   LIMBO_LANG        界面语言（默认取 Java 的 Locale）
+ * 必须在 qemu_init() 之前设置：ui/gtk.c 初始化时就会 bindtextdomain()。 */
+static void limbo_setup_locale_env(JNIEnv *env, jobject thiz, jstring base_dir)
+{
+    char path[1024];
+
+    if (base_dir != NULL) {
+        const char *base = (*env)->GetStringUTFChars(env, base_dir, 0);
+        if (base != NULL) {
+            snprintf(path, sizeof(path), "%s/locale", base);
+            setenv("LIMBO_LOCALE_DIR", path, 1);
+            (*env)->ReleaseStringUTFChars(env, base_dir, base);
+        }
+    }
+
+    /* root 子进程（thiz == NULL）调不到 Java，沿用启动脚本里 export 的值 */
+    if (thiz != NULL) {
+        jclass locale_cls = (*env)->FindClass(env, "java/util/Locale");
+        if (locale_cls != NULL) {
+            jmethodID get_default = (*env)->GetStaticMethodID(env, locale_cls,
+                    "getDefault", "()Ljava/util/Locale;");
+            if (get_default != NULL) {
+                jobject locale = (*env)->CallStaticObjectMethod(env, locale_cls,
+                        get_default);
+                if (locale != NULL) {
+                    /* 用 getLanguage()/getCountry() 拼 "zh_CN"：Locale.toString()
+                     * 在带 script 的 locale 上会拼出 "zh_#Hans_CN" 之类。 */
+                    jmethodID get_language = (*env)->GetMethodID(env, locale_cls,
+                            "getLanguage", "()Ljava/lang/String;");
+                    jmethodID get_country = (*env)->GetMethodID(env, locale_cls,
+                            "getCountry", "()Ljava/lang/String;");
+                    if (get_language != NULL && get_country != NULL) {
+                        jstring lang = (jstring)(*env)->CallObjectMethod(env, locale,
+                                get_language);
+                        jstring country = (jstring)(*env)->CallObjectMethod(env, locale,
+                                get_country);
+                        const char *lang_str = lang
+                                ? (*env)->GetStringUTFChars(env, lang, 0) : NULL;
+                        const char *country_str = country
+                                ? (*env)->GetStringUTFChars(env, country, 0) : NULL;
+                        if (lang_str != NULL && *lang_str) {
+                            if (country_str != NULL && *country_str) {
+                                snprintf(path, sizeof(path), "%s_%s",
+                                         lang_str, country_str);
+                                setenv("LIMBO_LANG", path, 1);
+                            } else {
+                                setenv("LIMBO_LANG", lang_str, 1);
+                            }
+                        }
+                        if (lang_str != NULL)
+                            (*env)->ReleaseStringUTFChars(env, lang, lang_str);
+                        if (country_str != NULL)
+                            (*env)->ReleaseStringUTFChars(env, country, country_str);
+                        if (lang != NULL)
+                            (*env)->DeleteLocalRef(env, lang);
+                        if (country != NULL)
+                            (*env)->DeleteLocalRef(env, country);
+                    }
+                    (*env)->DeleteLocalRef(env, locale);
+                }
+            }
+        }
+        if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+        }
+    }
+}
+
 /* Shared VM bootstrap used by both the in-process VMExecutor.start() and
  * the root child process (RootVmLauncher.startVm).  In the root child
  * thiz is NULL, so the per-instance JNI wiring (set_jni) is skipped. */
@@ -1884,6 +1958,8 @@ static jstring start_qemu(JNIEnv* env, jobject thiz,
 	if (thiz != NULL) {
 		setup_jni(env, thiz, storage_dir, base_dir);
 	}
+    /* NLS：.mo 目录与界面语言，必须赶在 qemu_init() 之前生效 */
+    limbo_setup_locale_env(env, thiz, base_dir);
     /* 把 Java 侧选择的显示方式（缩放模式）下发给 QEMU 显示后端，SDL 和 GTK
      * 共用同一个取值：0 = 拉伸至全屏，1 = 等比缩放，2 = 1:1 原始像素。
      * 符号由 patches/qemu-v11.0.0-limbo-sdl-scale.patch 与 GTK 补丁在

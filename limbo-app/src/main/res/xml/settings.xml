@@ -40,6 +40,14 @@
             android:summary="@string/pref_summary_show_fullscreen"
             android:title="@string/pref_title_fullscreen" />
 
+        <!-- 仅显示方式选择 GTK 时生效：打开后 GTK 以 full-screen=off 启动，
+             在窗口内显示 QEMU 自带的菜单栏。 -->
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:key="gtkShowMenubar"
+            android:summary="@string/GtkShowMenubarSummary"
+            android:title="@string/GtkShowMenubar" />
+
         <ListPreference
             android:defaultValue="3"
             android:entries="@array/keyMapperLabels"

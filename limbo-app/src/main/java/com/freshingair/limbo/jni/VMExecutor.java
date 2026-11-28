@@ -679,8 +679,12 @@ public class VMExecutor extends MachineExecutor {
             if (gtk) {
                 // GTK4 Android 后端（由 activity 侧的 LimboGtk 初始化）。
                 // 默认全屏铺满整个屏幕，并按等比缩放铺满可用区域（zoom-to-fit）。
+                // 设置里打开“显示 GTK 内置菜单”后改为 full-screen=off，
+                // GTK 才会在窗口内显示 QEMU 自带的菜单栏。
+                String fullScreen = LimboSettingsManager.getGtkShowMenubar(context)
+                        ? "off" : "on";
                 paramsList.add("gtk" + getDisplayGLOption()
-                        + ",full-screen=on,zoom-to-fit=on");
+                        + ",full-screen=" + fullScreen + ",zoom-to-fit=on");
                 // GTK 分支不走 addConsoleTcpOptions，这里单独补 debug 串口日志。
                 addDebugSerialLog(context, paramsList);
             } else if (agl) {
@@ -2058,6 +2062,14 @@ public class VMExecutor extends MachineExecutor {
         sb.append("export LIMBO_WATCHDOG_CPUS=")
                 .append(shq(LimboSettingsManager.getWatchdogCpuAffinity(
                         LimboApplication.getInstance()))).append("\n");
+        // 界面语言：root 子进程的 native 层拿不到 JNI 的 Locale，这里从父进程
+        // 导出，gettext 会在 <base_dir>/locale 下找对应的 .mo。
+        java.util.Locale locale = java.util.Locale.getDefault();
+        String localeName = locale.getLanguage();
+        if (!locale.getCountry().isEmpty()) {
+            localeName += "_" + locale.getCountry();
+        }
+        sb.append("export LIMBO_LANG=").append(shq(localeName)).append("\n");
         sb.append("export LD_LIBRARY_PATH=").append(shq(nativeLibDir)).append("\n");
         sb.append("export CLASSPATH=").append(shq(apkPath)).append("\n");
         sb.append("echo $$ > ").append(shq(pidFile.getAbsolutePath())).append("\n");

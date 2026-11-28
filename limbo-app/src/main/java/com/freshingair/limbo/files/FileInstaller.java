@@ -94,49 +94,53 @@ public class FileInstaller {
             }
         }
 
-        //Get each file in assets under ./roms/ and install in SDCARD
+        // 递归安装 assets/roms 下的所有文件。原来只处理一层子目录，而 gettext
+        // 的翻译文件在 locale/<lang>/LC_MESSAGES/qemu.mo（两层），所以改成按
+        // 目录递归；目录层级本身在递归里创建。
+        installAssetDir(activity, "roms", new File(destDir), force);
+    }
+
+    /**
+     * 递归安装 assets 下的一个目录到本地目录。
+     *
+     * @param assetPath 资产目录，如 "roms"、"roms/locale"
+     * @param destDir   对应的本地目录
+     * @param force     为 true 时覆盖已存在的文件
+     */
+    private static void installAssetDir(Activity activity, String assetPath,
+                                        File destDir, boolean force) {
         AssetManager am = activity.getResources().getAssets();
-        String[] files = null;
+        String[] files;
         try {
-            files = am.list("roms");
+            files = am.list(assetPath);
         } catch (IOException ex) {
             Logger.getLogger(FileInstaller.class.getName()).log(Level.SEVERE, null, ex);
-            Log.e(TAG, "Could not install files: " + ex.getMessage());
+            Log.e(TAG, "Could not list assets: " + assetPath + ": " + ex.getMessage());
+            return;
+        }
+        if (files == null || files.length == 0) {
+            return;
+        }
+        if (!destDir.exists() && !destDir.mkdirs()) {
+            Log.e(TAG, "Could not create Dir: " + destDir.getPath());
             return;
         }
 
-        for (int i = 0; i < files.length; i++) {
-            String[] subfiles = null;
+        for (String name : files) {
+            String childAsset = assetPath + "/" + name;
+            File childDest = new File(destDir, name);
+
+            String[] children = null;
             try {
-                subfiles = am.list("roms/" + files[i]);
+                children = am.list(childAsset);
             } catch (IOException ex) {
                 Logger.getLogger(FileInstaller.class.getName()).log(Level.SEVERE, null, ex);
             }
-            if (subfiles != null && subfiles.length > 0) {
-                //Install base dir
-                File dir1 = new File(LimboApplication.getBasefileDir() + files[i]);
-                if (dir1.exists() && dir1.isDirectory()) {
-                    //don't create again
-                } else if (dir1.exists() && !dir1.isDirectory()) {
-                    Log.e(TAG, "Could not create Dir, file found: " + LimboApplication.getBasefileDir() + files[i]);
-                    return;
-                } else if (!dir1.exists()) {
-                    dir1.mkdir();
-                }
-                for (int k = 0; k < subfiles.length; k++) {
-
-                    File file = new File(destDir, files[i] + "/" + subfiles[k]);
-                    if(!file.exists() || force) {
-                        Log.d(TAG, "Installing file: " + file.getPath());
-                        installAssetFile(activity, files[i] + "/" + subfiles[k], destDir, "roms", null);
-                    }
-                }
-            } else {
-                File file = new File(destDir, files[i]);
-                if(!file.exists() || force) {
-                    Log.d(TAG, "Installing file: " + file.getPath());
-                    installAssetFile(activity, files[i], LimboApplication.getBasefileDir(), "roms", null);
-                }
+            if (children != null && children.length > 0) {
+                installAssetDir(activity, childAsset, childDest, force);
+            } else if (!childDest.exists() || force) {
+                Log.d(TAG, "Installing file: " + childDest.getPath());
+                installAssetFile(activity, name, destDir.getPath(), assetPath, null);
             }
         }
     }
